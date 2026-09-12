@@ -1,0 +1,59 @@
+import { z } from "zod";
+
+import { routeError } from "@/lib/env";
+import {
+  BASE_CHAPTERS,
+  MAX_CHAPTERS,
+  bookPrice,
+  luluInteriorPages,
+  storyPages,
+} from "@/lib/pricing";
+import { supabaseAdmin } from "@/lib/supabase/server";
+
+const requestSchema = z.object({
+  petName: z.string().max(80).default(""),
+  chapterCount: z.number().int().min(BASE_CHAPTERS).max(MAX_CHAPTERS),
+  email: z.string().email().max(200).nullable().optional(),
+});
+
+/**
+ * Opens an order in `pending_payment`.
+ *
+ * Page counts and the book price are always recomputed here from the chapter
+ * count. A price sent by the browser is never trusted.
+ */
+export async function POST(request: Request): Promise<Response> {
+  try {
+    const parsed = requestSchema.safeParse(await request.json());
+    if (!parsed.success) {
+      return Response.json(
+        { error: "That book size isn't one we can print." },
+        { status: 400 },
+      );
+    }
+
+    const { petName, chapterCount, email } = parsed.data;
+    const orderId = crypto.randomUUID();
+
+    const { error } = await supabaseAdmin().from("orders").insert({
+      id: orderId,
+      email: email ?? null,
+      pet_name: petName || null,
+      chapter_count: chapterCount,
+      story_pages: storyPages(chapterCount),
+      total_pages: luluInteriorPages(chapterCount),
+      book_price: bookPrice(chapterCount),
+      status: "pending_payment",
+    });
+
+    if (error) throw new Error(error.message);
+
+    return Response.json({
+      orderId,
+      totalPages: luluInteriorPages(chapterCount),
+      bookPrice: bookPrice(chapterCount),
+    });
+  } catch (error) {
+    return routeError(error, "Your order could not be started.");
+  }
+}
