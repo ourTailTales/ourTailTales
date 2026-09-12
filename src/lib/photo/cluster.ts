@@ -52,7 +52,6 @@ export function proposeChapters(
       places: [],
       heroPhotoId: hero?.id ?? null,
       aiStatus: "idle",
-      confidenceNotes: [],
     };
   });
 }

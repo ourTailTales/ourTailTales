@@ -5,54 +5,49 @@ import { parseStoryDraft, type StoryProvider } from "@/lib/ai/provider";
 import { readEnv, requireEnv } from "@/lib/env";
 
 const PROVIDER_ID = "gemini";
-const DEFAULT_MODEL = "gemini-2.5-flash-lite";
+const DEFAULT_MODEL = "gemini-3.1-flash-lite";
 
 /** Only these arrive from the browser's thumbnail renderer. */
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
 const DATA_URL = /^data:([a-z]+\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/]+={0,2})$/;
 
 /**
- * Gemini's structured-output schema.
+ * Gemini structured-output schema — declared in code, not in AI Studio.
  *
- * `propertyOrdering` makes the model emit the title before the blurb, which
- * keeps the title from being a summary of prose it has already written.
+ * Exactly three fields. No tools, grounding, or playground-saved state is
+ * involved; production behavior is whatever this file says.
  */
 const RESPONSE_SCHEMA: Schema = {
   type: Type.OBJECT,
   properties: {
     title: {
       type: Type.STRING,
-      description: "Chapter title, at most 5 words, no quotation marks.",
+      description: "A short, warm chapter title, ideally 2 to 6 words.",
     },
     dateLabel: {
       type: Type.STRING,
       description:
-        "Short date label such as '2018' or 'Spring 2019', taken from the supplied chapter dates.",
+        "A concise human-readable date and optional general location label. Do not include exact addresses.",
     },
     blurb: {
       type: Type.STRING,
       description:
-        "60 to 110 words introducing this chapter, inventing nothing.",
-    },
-    confidenceNotes: {
-      type: Type.ARRAY,
-      items: { type: Type.STRING },
-      description:
-        "Two to four short notes naming the evidence behind the draft, and anything left vague for lack of it.",
+        "A warm 60 to 110 word memorial-book chapter introduction based only on the supplied images and metadata.",
     },
   },
-  required: ["title", "dateLabel", "blurb", "confidenceNotes"],
-  propertyOrdering: ["title", "dateLabel", "blurb", "confidenceNotes"],
+  required: ["title", "dateLabel", "blurb"],
+  propertyOrdering: ["title", "dateLabel", "blurb"],
 };
 
 /**
- * Chapter copy from Google Gemini.
+ * Chapter copy from Google Gemini via `@google/genai`.
  *
- * `GEMINI_API_KEY` is read here, on the server, and the SDK client is created
- * per request inside the route handler's process. It is never serialized into a
- * response and never reaches the browser.
+ * Every generation setting lives here so a Google AI Studio playground cannot
+ * silently change production. `GEMINI_API_KEY` is server-only — never a
+ * `NEXT_PUBLIC_` variable — and never reaches the browser.
  */
 export function createGeminiProvider(): StoryProvider {
+  // Server-side only. Do not rename to NEXT_PUBLIC_GEMINI_API_KEY.
   const [apiKey] = requireEnv("GEMINI_API_KEY");
   const model = readEnv("AI_MODEL") ?? DEFAULT_MODEL;
   const client = new GoogleGenAI({ apiKey });
@@ -74,12 +69,16 @@ export function createGeminiProvider(): StoryProvider {
           },
         ],
         config: {
+          // Memorial-writing rules travel with every request — not AI Studio state.
           systemInstruction: STORY_SYSTEM_PROMPT,
           responseMimeType: "application/json",
           responseSchema: RESPONSE_SCHEMA,
-          // Warm but not florid; the rules matter more than the flourish.
-          temperature: 0.6,
-          maxOutputTokens: 900,
+          temperature: 0.7,
+          maxOutputTokens: 2000,
+          // Thinking and tools are intentionally unset. Flash-lite rejects
+          // `thinkingBudget: 0`, and omitting both is the reproducible way to
+          // keep this call free of thinking, Google Search, Maps, code
+          // execution, and URL context.
           abortSignal: signal,
         },
       });

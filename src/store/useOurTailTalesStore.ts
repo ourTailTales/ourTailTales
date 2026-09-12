@@ -244,7 +244,6 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set) => ({
               title: story.title || chapter.title,
               dateLabel: story.dateLabel || chapter.dateLabel,
               blurb: story.blurb || chapter.blurb,
-              confidenceNotes: story.confidenceNotes,
               aiStatus: "done",
               aiError: undefined,
             }

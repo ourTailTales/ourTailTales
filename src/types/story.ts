@@ -30,6 +30,4 @@ export type StoryDraft = {
   title: string;
   dateLabel: string;
   blurb: string;
-  /** What each claim was grounded in, so the owner can judge the draft. */
-  confidenceNotes: string[];
 };

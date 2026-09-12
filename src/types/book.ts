@@ -23,8 +23,6 @@ export type Chapter = {
   heroPhotoId: string | null;
   aiStatus: AiStatus;
   aiError?: string;
-  /** What the model said its draft was grounded in. Never printed. */
-  confidenceNotes: string[];
 };
 
 export type LayoutId =

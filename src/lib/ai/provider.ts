@@ -21,12 +21,14 @@ export type StoryProvider = {
   ): Promise<StoryDraft>;
 };
 
-/** Providers must return this shape regardless of how their SDK spells it. */
-export const storyDraftSchema = z.object({
-  title: z.string().trim().min(1).max(120),
-  dateLabel: z.string().trim().max(60).default(""),
-  blurb: z.string().trim().min(1).max(1200),
-  confidenceNotes: z.array(z.string().trim().min(1).max(300)).max(6).default([]),
+/**
+ * Server-side validation of every chapter draft, whatever provider produced it.
+ * Structured output makes the shape likely; Zod makes it required.
+ */
+export const ChapterStorySchema = z.object({
+  title: z.string().min(1),
+  dateLabel: z.string(),
+  blurb: z.string().min(1),
 });
 
 /**
@@ -43,9 +45,11 @@ export function parseStoryDraft(raw: string, providerId: string): StoryDraft {
     throw new Error(`The ${providerId} model did not return usable JSON.`);
   }
 
-  const parsed = storyDraftSchema.safeParse(json);
+  const parsed = ChapterStorySchema.safeParse(json);
   if (!parsed.success) {
-    throw new Error(`The ${providerId} model returned an unexpected story shape.`);
+    throw new Error(
+      `The ${providerId} model returned an unexpected story shape.`,
+    );
   }
   return parsed.data;
 }

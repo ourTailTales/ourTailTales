@@ -133,21 +133,6 @@ export function ChapterEditor({
             </p>
           )}
         </div>
-
-        {chapter.confidenceNotes.length > 0 && (
-          <details className="mt-4 border-t border-line pt-3">
-            <summary className="cursor-pointer text-xs text-ink-faint hover:text-ink-soft">
-              What this draft was based on
-            </summary>
-            <ul className="mt-2 space-y-1">
-              {chapter.confidenceNotes.map((note) => (
-                <li key={note} className="text-xs leading-relaxed text-ink-faint">
-                  {note}
-                </li>
-              ))}
-            </ul>
-          </details>
-        )}
       </div>
 
       <div className="rounded-2xl border border-line bg-paper p-5 shadow-lift sm:p-6">
