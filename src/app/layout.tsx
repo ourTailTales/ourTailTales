@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Fraunces, Inter } from "next/font/google";
 import "./globals.css";
 
@@ -27,6 +29,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="paper-grain min-h-full flex flex-col bg-paper text-ink">
         {children}
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );
