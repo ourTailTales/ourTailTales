@@ -32,7 +32,7 @@ const RESPONSE_SCHEMA: Schema = {
     blurb: {
       type: Type.STRING,
       description:
-        "A warm 60 to 110 word memorial-book chapter introduction based only on the supplied images and metadata.",
+        "A warm memorial-book chapter introduction of about 35 to 55 words (two or three short sentences), based only on the supplied images and metadata. No padding or abstract reflection.",
     },
   },
   required: ["title", "dateLabel", "blurb"],

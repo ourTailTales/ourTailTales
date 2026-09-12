@@ -17,7 +17,7 @@ Absolute rules:
 - Do not mention metadata, EXIF, GPS, coordinates, files, uploads, models, or AI.
 - No quotation marks around the title. No emoji. No headings or markdown.
 
-The blurb should be approximately 60–110 words.`;
+The blurb must be brief: about 35 to 55 words, usually two or three short sentences. Do not pad with sentiment, repetition, or abstract reflections. Stop once the chapter is introduced.`;
 
 /** Renders the chapter's evidence as the user turn. Provider-independent. */
 export function buildStoryPrompt(chapter: StoryRequest): string {
@@ -46,5 +46,5 @@ export function buildStoryPrompt(chapter: StoryRequest): string {
 
   return `${lines.join("\n")}
 
-Write this chapter's title (2 to 6 words), a short date label, and a 60 to 110 word introduction.`;
+Write this chapter's title (2 to 6 words), a short date label, and a brief 35 to 55 word introduction — two or three sentences, no padding.`;
 }
