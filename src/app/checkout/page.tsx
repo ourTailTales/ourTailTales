@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 
+import { BrandMark } from "@/components/BrandMark";
 import { CheckoutForm } from "@/components/CheckoutForm";
 import { readEnv } from "@/lib/env";
 import { readOrder } from "@/lib/order/read";
@@ -22,11 +23,9 @@ export default async function CheckoutPage({
 
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-5 pb-24 pt-10 sm:pt-16">
-      <header className="flex items-baseline justify-between">
-        <Link href="/" className="font-display text-xl text-ink">
-          ourTailTales
-        </Link>
-        <p className="text-xs uppercase tracking-[0.2em] text-ink-faint">
+      <header className="flex items-center justify-between gap-4">
+        <BrandMark href="/" size="md" />
+        <p className="text-xs font-medium tracking-wide text-ink-faint">
           Checkout
         </p>
       </header>
@@ -34,10 +33,10 @@ export default async function CheckoutPage({
       {!supabaseConfigured() ? (
         <Notice title="Checkout is not connected yet">
           Supabase credentials are missing, so orders cannot be stored. Add{" "}
-          <code className="text-tail-deep">NEXT_PUBLIC_SUPABASE_URL</code> and{" "}
-          <code className="text-tail-deep">SUPABASE_SERVICE_ROLE_KEY</code> to{" "}
-          <code className="text-tail-deep">.env.local</code> and run the
-          migration in <code className="text-tail-deep">supabase/migrations</code>.
+          <code className="text-periwinkle-deep">NEXT_PUBLIC_SUPABASE_URL</code> and{" "}
+          <code className="text-periwinkle-deep">SUPABASE_SERVICE_ROLE_KEY</code> to{" "}
+          <code className="text-periwinkle-deep">.env.local</code> and run the
+          migration in <code className="text-periwinkle-deep">supabase/migrations</code>.
         </Notice>
       ) : !order ? (
         <Notice title="We couldn't find that order">
@@ -76,7 +75,7 @@ function Notice({
   children: React.ReactNode;
 }) {
   return (
-    <section className="mt-12 rounded-2xl border border-line bg-paper-deep/40 p-8">
+    <section className="mt-12 rounded-2xl border border-line bg-white p-8 shadow-lift">
       <h1 className="font-display text-2xl text-ink">{title}</h1>
       <p className="mt-3 text-sm leading-6 text-ink-soft">{children}</p>
     </section>

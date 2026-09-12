@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { track } from "@/lib/analytics";
+import { brand } from "@/lib/brand";
 import { formatUsd } from "@/lib/pricing";
 import type { OrderView } from "@/lib/order/read";
 import type { ShippingAddress, ShippingOption } from "@/types/order";
@@ -141,7 +142,7 @@ export function CheckoutForm({
     <div className="mt-10 grid gap-8 lg:grid-cols-[1.4fr_1fr]">
       <div className="space-y-6">
         {step === "address" && (
-          <section className="rounded-2xl border border-line bg-paper p-6 shadow-lift">
+          <section className="rounded-2xl border border-line bg-white p-6 shadow-lift">
             <h1 className="font-display text-2xl text-ink">Where should it go?</h1>
             <p className="mt-2 text-sm text-ink-soft">
               We print and ship within the United States.
@@ -243,11 +244,11 @@ export function CheckoutForm({
         )}
 
         {step === "shipping" && (
-          <section className="rounded-2xl border border-line bg-paper p-6 shadow-lift">
+          <section className="rounded-2xl border border-line bg-white p-6 shadow-lift">
             <h1 className="font-display text-2xl text-ink">Delivery</h1>
 
             {addressWarning && (
-              <p className="mt-3 rounded-lg border border-tail/30 bg-tail-wash/50 px-3 py-2 text-sm text-tail-deep">
+              <p className="mt-3 rounded-lg border border-periwinkle/30 bg-periwinkle-wash/50 px-3 py-2 text-sm text-periwinkle-deep">
                 {addressWarning} Please confirm this is right before paying.
               </p>
             )}
@@ -258,8 +259,8 @@ export function CheckoutForm({
                   <label
                     className={`flex cursor-pointer items-center justify-between gap-4 rounded-xl border px-4 py-3 transition-colors ${
                       level === option.level
-                        ? "border-tail bg-tail-wash/40"
-                        : "border-line hover:border-tail/60"
+                        ? "border-periwinkle bg-periwinkle-wash/40"
+                        : "border-line hover:border-periwinkle/60"
                     }`}
                   >
                     <span className="flex items-center gap-3">
@@ -271,7 +272,7 @@ export function CheckoutForm({
                           setLevel(option.level);
                           setShippingPrice(option.price);
                         }}
-                        className="accent-[var(--color-tail)]"
+                        className="accent-[var(--color-periwinkle)]"
                       />
                       <span>
                         <span className="block text-sm font-medium text-ink">
@@ -314,7 +315,7 @@ export function CheckoutForm({
         )}
 
         {step === "payment" && clientSecret && stripePromise && (
-          <section className="rounded-2xl border border-line bg-paper p-6 shadow-lift">
+          <section className="rounded-2xl border border-line bg-white p-6 shadow-lift">
             <h1 className="font-display text-2xl text-ink">Payment</h1>
             <Elements
               stripe={stripePromise}
@@ -323,10 +324,10 @@ export function CheckoutForm({
                 appearance: {
                   theme: "flat",
                   variables: {
-                    colorPrimary: "#b1573a",
-                    colorBackground: "#fbf7f0",
-                    colorText: "#241f1a",
-                    fontFamily: "system-ui, sans-serif",
+                    colorPrimary: brand.colors.periwinkle,
+                    colorBackground: brand.colors.white,
+                    colorText: brand.colors.ink,
+                    fontFamily: "Inter, system-ui, sans-serif",
                     borderRadius: "8px",
                   },
                 },
@@ -345,29 +346,29 @@ export function CheckoutForm({
         )}
 
         {step === "payment" && !stripePromise && (
-          <section className="rounded-2xl border border-line bg-paper-deep/40 p-6">
+          <section className="rounded-2xl border border-line bg-white p-6 shadow-lift">
             <h1 className="font-display text-2xl text-ink">
               Payments are not connected yet
             </h1>
             <p className="mt-3 text-sm leading-6 text-ink-soft">
               Add{" "}
-              <code className="text-tail-deep">
+              <code className="text-periwinkle-deep">
                 NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
               </code>{" "}
-              to <code className="text-tail-deep">.env.local</code> to take
+              to <code className="text-periwinkle-deep">.env.local</code> to take
               payments.
             </p>
           </section>
         )}
 
         {error && (
-          <p role="alert" className="text-sm text-tail-deep">
+          <p role="alert" className="text-sm text-periwinkle-deep">
             {error}
           </p>
         )}
       </div>
 
-      <aside className="h-fit rounded-2xl border border-line bg-paper-deep/40 p-6">
+      <aside className="h-fit rounded-2xl border border-line bg-white p-6 shadow-lift">
         <h2 className="font-display text-lg text-ink">Your book</h2>
         <dl className="mt-4 space-y-2.5 text-sm">
           <Row label={`${order.petName ?? "Pet"} — hardcover 8.5 × 8.5 in`} />
@@ -437,7 +438,7 @@ function PaymentStep({ orderId, total }: { orderId: string; total: number }) {
         {busy ? "Processing…" : `Pay ${formatUsd(total)}`}
       </button>
       {error && (
-        <p role="alert" className="mt-3 text-sm text-tail-deep">
+        <p role="alert" className="mt-3 text-sm text-periwinkle-deep">
           {error}
         </p>
       )}
@@ -449,13 +450,13 @@ function PaymentStep({ orderId, total }: { orderId: string; total: number }) {
 }
 
 const inputClass =
-  "w-full rounded-lg border border-line bg-paper px-3.5 py-2.5 text-ink outline-none transition-colors placeholder:text-ink-faint focus:border-tail focus:ring-2 focus:ring-tail/20";
+  "w-full rounded-lg border border-line bg-white px-3.5 py-2.5 text-ink outline-none transition-colors placeholder:text-ink-faint focus:border-periwinkle focus:ring-2 focus:ring-periwinkle/20";
 
 const primaryButton =
-  "mt-6 rounded-full bg-tail px-7 py-3 text-base font-medium text-paper shadow-lift transition-colors hover:bg-tail-deep disabled:cursor-not-allowed disabled:opacity-50";
+  "mt-6 rounded-xl bg-periwinkle px-7 py-3 text-base font-semibold text-white shadow-lift transition-colors hover:bg-periwinkle-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-periwinkle disabled:cursor-not-allowed disabled:opacity-50";
 
 const linkButton =
-  "text-sm text-ink-soft underline decoration-line underline-offset-4 transition-colors hover:text-tail-deep";
+  "text-sm text-ink-soft underline decoration-line underline-offset-4 transition-colors hover:text-periwinkle-deep";
 
 function Field({
   label,

@@ -23,7 +23,7 @@ export function ProcessingProgress({
       : Math.min(100, Math.round((progress.processed / progress.total) * 100));
 
   return (
-    <section className="animate-fade-up rounded-2xl border border-line bg-paper-deep/40 p-8">
+    <section className="animate-fade-up rounded-2xl border border-line bg-memory-blue/40 p-8">
       <h2 className="font-display text-2xl text-ink">
         Organizing {progress.total.toLocaleString()} photos
       </h2>
@@ -39,10 +39,10 @@ export function ProcessingProgress({
         aria-valuemax={100}
         aria-valuenow={percent}
         aria-label="Album processing progress"
-        className="mt-5 h-2 overflow-hidden rounded-full bg-paper-edge"
+        className="mt-5 h-2 overflow-hidden rounded-full bg-memory-blue"
       >
         <div
-          className="h-full rounded-full bg-tail transition-[width] duration-200 ease-out"
+          className="h-full rounded-full bg-periwinkle transition-[width] duration-200 ease-out"
           style={{ width: `${percent}%` }}
         />
       </div>
@@ -56,7 +56,7 @@ export function ProcessingProgress({
         <button
           type="button"
           onClick={onCancel}
-          className="rounded-full border border-line px-4 py-1.5 text-sm text-ink-soft transition-colors hover:border-tail hover:text-tail-deep"
+          className="rounded-xl border border-line px-4 py-1.5 text-sm text-ink-soft transition-colors hover:border-periwinkle hover:text-periwinkle-deep"
         >
           Cancel
         </button>

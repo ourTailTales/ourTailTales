@@ -34,7 +34,7 @@ export function BookSizeSlider({
 
   return (
     <section className="animate-fade-up space-y-6">
-      <div className="rounded-2xl border border-line bg-paper p-6 shadow-lift sm:p-8">
+      <div className="rounded-2xl border border-line bg-white p-6 shadow-lift sm:p-8">
         <h2 className="font-display text-2xl text-ink">Choose your book size</h2>
         <p className="mt-2 text-sm text-ink-soft">
           More photos never cost more. Chapters do — each one adds 10 story pages
@@ -58,7 +58,7 @@ export function BookSizeSlider({
             step={1}
             value={chapterCount}
             onChange={(event) => onChange(Number(event.target.value))}
-            className="mt-3 w-full accent-tail"
+            className="mt-3 w-full accent-periwinkle"
             aria-describedby="chapterCountHelp"
           />
 
@@ -81,10 +81,10 @@ export function BookSizeSlider({
                     }
                     className={`h-8 w-8 rounded-md border text-xs transition-colors ${
                       count === chapterCount
-                        ? "border-tail bg-tail text-paper"
+                        ? "border-periwinkle bg-periwinkle text-white"
                         : supported
-                          ? "border-line bg-paper text-ink-soft hover:border-tail"
-                          : "cursor-not-allowed border-dashed border-line bg-paper-deep/50 text-ink-faint/60"
+                          ? "border-line bg-white text-ink-soft hover:border-periwinkle"
+                          : "cursor-not-allowed border-dashed border-line bg-memory-blue/50 text-ink-faint/60"
                     }`}
                   >
                     {count}
@@ -135,14 +135,14 @@ export function BookSizeSlider({
           <button
             type="button"
             onClick={onConfirm}
-            className="rounded-full bg-tail px-7 py-3 text-base font-medium text-paper shadow-lift transition-colors hover:bg-tail-deep"
+            className="rounded-xl bg-periwinkle px-7 py-3 text-base font-semibold text-white shadow-lift transition-colors hover:bg-periwinkle-deep"
           >
             Confirm book size
           </button>
           <button
             type="button"
             onClick={onBack}
-            className="text-sm text-ink-soft underline decoration-line underline-offset-4 transition-colors hover:text-tail-deep"
+            className="text-sm text-ink-soft underline decoration-line underline-offset-4 transition-colors hover:text-periwinkle-deep"
           >
             Back
           </button>
@@ -180,7 +180,7 @@ function Stat({
     <div>
       <dt className="text-xs uppercase tracking-wide text-ink-faint">{label}</dt>
       <dd
-        className={`mt-1 font-display text-xl ${emphasis ? "text-tail-deep" : "text-ink"}`}
+        className={`mt-1 font-display text-xl ${emphasis ? "text-periwinkle-deep" : "text-ink"}`}
       >
         {value}
       </dd>

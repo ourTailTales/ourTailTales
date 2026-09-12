@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 
+import { BrandMark } from "@/components/BrandMark";
 import { readOrder, type OrderView } from "@/lib/order/read";
 import { formatUsd } from "@/lib/pricing";
 import type { OrderStatus } from "@/types/order";
@@ -48,17 +49,15 @@ export default async function OrderPage({ params }: PageProps<"/order/[id]">) {
 
   return (
     <main className="mx-auto w-full max-w-2xl flex-1 px-5 pb-24 pt-10 sm:pt-16">
-      <header className="flex items-baseline justify-between">
-        <Link href="/" className="font-display text-xl text-ink">
-          ourTailTales
-        </Link>
-        <p className="text-xs uppercase tracking-[0.2em] text-ink-faint">
+      <header className="flex items-center justify-between gap-4">
+        <BrandMark href="/" size="md" />
+        <p className="text-xs font-medium tracking-wide text-ink-faint">
           Your order
         </p>
       </header>
 
       {!order ? (
-        <section className="mt-12 rounded-2xl border border-line bg-paper-deep/40 p-8">
+        <section className="mt-12 rounded-2xl border border-line bg-white p-8 shadow-lift">
           <h1 className="font-display text-2xl text-ink">
             We couldn&rsquo;t find that order
           </h1>
@@ -132,13 +131,13 @@ function OrderDetail({ order }: { order: OrderView }) {
               <li
                 key={entry.status}
                 className={`flex gap-4 rounded-xl px-4 py-3.5 ${
-                  active ? "bg-tail-wash/50" : ""
+                  active ? "bg-periwinkle-wash/50" : ""
                 }`}
               >
                 <span
                   aria-hidden
                   className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${
-                    done ? "bg-tail" : "bg-paper-edge"
+                    done ? "bg-periwinkle" : "bg-line"
                   }`}
                 />
                 <span>
@@ -159,7 +158,7 @@ function OrderDetail({ order }: { order: OrderView }) {
         </ol>
       )}
 
-      <dl className="mt-10 space-y-2.5 rounded-2xl border border-line bg-paper-deep/40 p-6 text-sm">
+      <dl className="mt-10 space-y-2.5 rounded-2xl border border-line bg-white p-6 text-sm shadow-lift">
         <Row label="Book" value={formatUsd(order.bookPrice)} />
         <Row
           label="Shipping"
@@ -197,7 +196,7 @@ function Callout({
   return (
     <section
       className={`mt-8 rounded-2xl border p-6 ${
-        tone === "warn" ? "border-tail/30 bg-tail-wash/40" : "border-line"
+        tone === "warn" ? "border-periwinkle/30 bg-periwinkle-wash/40" : "border-line"
       }`}
     >
       <h2 className="font-display text-lg text-ink">{title}</h2>

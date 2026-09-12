@@ -9,6 +9,7 @@ import {
 
 import { FIXED_SLOTS, LAYOUTS, PAGE_INCHES } from "@/lib/book/layouts";
 import { CLOSING_LINE, possessivePetName } from "@/lib/book/pagination";
+import { brand, hexToRgb01 } from "@/lib/brand";
 import * as assetStore from "@/lib/photo/assetStore";
 import { rasterizeForPlacement } from "@/lib/photo/pipeline";
 import type { BookMeta, BookPage, Chapter, Slot } from "@/types/book";
@@ -17,11 +18,18 @@ import type { PhotoAsset } from "@/types/photo";
 const PT_PER_INCH = 72;
 const PAGE_PT = PAGE_INCHES * PT_PER_INCH; // 630pt for an 8.75in bleed page
 
-const PAPER = rgb(0.984, 0.969, 0.941);
-const INK = rgb(0.141, 0.122, 0.102);
-const INK_SOFT = rgb(0.353, 0.318, 0.278);
-const INK_FAINT = rgb(0.553, 0.514, 0.463);
-const TAIL = rgb(0.694, 0.341, 0.229);
+function brandRgb(hex: string) {
+  const { r, g, b } = hexToRgb01(hex);
+  return rgb(r, g, b);
+}
+
+const PAPER = brandRgb(brand.colors.white);
+const INK = brandRgb(brand.colors.ink);
+const INK_SOFT = brandRgb(brand.colors.inkSoft);
+const INK_FAINT = brandRgb(brand.colors.inkFaint);
+const ACCENT = brandRgb(brand.colors.periwinkle);
+const BLANK_SLOT = brandRgb(brand.colors.memoryBlue);
+const CHAPTER_FIELD = brandRgb(brand.colors.lavender);
 
 /** Below this effective resolution a placement is flagged to the customer. */
 export const LOW_PPI_THRESHOLD = 180;
@@ -237,6 +245,16 @@ async function drawOpenerPage(context: DrawContext): Promise<void> {
   const boxTop = PAGE_PT - box.y * PAGE_PT;
   const boxBottom = PAGE_PT - (box.y + box.h) * PAGE_PT;
 
+  // Soft pastel field behind chapter title / date / blurb.
+  page.drawRectangle({
+    x: left - 10,
+    y: boxBottom - 8,
+    width: maxWidth + 20,
+    height: boxTop - boxBottom + 16,
+    color: CHAPTER_FIELD,
+    opacity: 0.55,
+  });
+
   let cursor = boxTop - 26;
 
   if (chapter?.dateLabel) {
@@ -245,7 +263,7 @@ async function drawOpenerPage(context: DrawContext): Promise<void> {
       y: cursor,
       font: fonts.sans,
       size: 9,
-      color: TAIL,
+      color: ACCENT,
       tracking: 2.4,
     });
     cursor -= 26;
@@ -380,7 +398,7 @@ async function drawSlotPhoto(
     // A single unreadable original must not abandon the whole book.
     context.page.drawRectangle({
       ...rect,
-      color: rgb(0.953, 0.918, 0.851),
+      color: BLANK_SLOT,
     });
   }
 }
@@ -500,7 +518,7 @@ function drawWatermark(page: PDFPage, font: PDFFont, text: string): void {
     y: PAGE_PT * 0.28,
     font,
     size: 46,
-    color: rgb(0.694, 0.341, 0.229),
+    color: ACCENT,
     opacity: 0.16,
     rotate: degrees(38),
   });

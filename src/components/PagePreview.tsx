@@ -22,13 +22,13 @@ export function PagePreview({
 }) {
   return (
     /* Container query units keep page typography proportional at any preview size. */
-    <div className="@container relative aspect-square w-full overflow-hidden bg-paper">
+    <div className="@container relative aspect-square w-full overflow-hidden bg-white">
       {renderBody({ page, chapter, meta, photos })}
 
       {showTrimGuide && (
         <div
           aria-hidden
-          className="pointer-events-none absolute border border-dashed border-tail/25"
+          className="pointer-events-none absolute border border-dashed border-periwinkle/25"
           style={{
             inset: `${TRIM_INSET_PERCENT}%`,
           }}
@@ -146,10 +146,10 @@ function OpenerPage({
       </div>
 
       <div
-        className="absolute flex flex-col justify-center"
+        className="absolute flex flex-col justify-center rounded-sm bg-lavender/50 px-[3%] py-[2%]"
         style={percentStyle(text)}
       >
-        <p className="text-[2.4cqw] tracking-[0.24em] text-tail uppercase">
+        <p className="text-[2.4cqw] tracking-[0.24em] text-periwinkle uppercase">
           {chapter?.dateLabel || ""}
         </p>
         <h3 className="mt-[2%] font-display text-[6cqw] leading-tight text-ink">
@@ -245,7 +245,7 @@ function Thumb({ photo }: { photo: PhotoAsset }) {
 }
 
 function BlankSlot() {
-  return <div className="h-full w-full bg-paper-deep" />;
+  return <div className="h-full w-full bg-memory-blue/50" />;
 }
 
 function percentStyle(slot: { x: number; y: number; w: number; h: number }) {

@@ -66,7 +66,7 @@ export function EmailSampleModal({
         className="absolute inset-0 cursor-default bg-ink/40 backdrop-blur-sm"
       />
 
-      <div className="relative w-full max-w-md rounded-2xl border border-line bg-paper p-6 shadow-book">
+      <div className="relative w-full max-w-md rounded-2xl border border-line bg-white p-6 shadow-book">
         <h2 id="sampleTitle" className="font-display text-2xl text-ink">
           See 5 pages first
         </h2>
@@ -89,7 +89,7 @@ export function EmailSampleModal({
             }}
             placeholder="you@example.com"
             autoComplete="email"
-            className="w-full rounded-lg border border-line bg-paper px-3.5 py-2.5 text-ink outline-none transition-colors placeholder:text-ink-faint focus:border-tail focus:ring-2 focus:ring-tail/20"
+            className="w-full rounded-lg border border-line bg-white px-3.5 py-2.5 text-ink outline-none transition-colors placeholder:text-ink-faint focus:border-periwinkle focus:ring-2 focus:ring-periwinkle/20"
           />
         </label>
 
@@ -101,7 +101,7 @@ export function EmailSampleModal({
         {message && (
           <p
             role="status"
-            className={`mt-4 text-sm ${status === "error" ? "text-tail-deep" : "text-moss"}`}
+            className={`mt-4 text-sm ${status === "error" ? "text-periwinkle-deep" : "text-sage-deep"}`}
           >
             {message}
           </p>
@@ -112,14 +112,14 @@ export function EmailSampleModal({
             type="button"
             onClick={() => void handleSubmit()}
             disabled={status === "working"}
-            className="rounded-full bg-tail px-6 py-2.5 text-sm font-medium text-paper transition-colors hover:bg-tail-deep disabled:opacity-60"
+            className="rounded-xl bg-periwinkle px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-periwinkle-deep disabled:opacity-60"
           >
             {status === "working" ? "Building…" : "Send my sample"}
           </button>
           <button
             type="button"
             onClick={onClose}
-            className="text-sm text-ink-soft underline decoration-line underline-offset-4 hover:text-tail-deep"
+            className="text-sm text-ink-soft underline decoration-line underline-offset-4 hover:text-periwinkle-deep"
           >
             Not now
           </button>

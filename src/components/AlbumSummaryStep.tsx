@@ -30,7 +30,7 @@ export function AlbumSummaryStep({
 
   return (
     <section className="animate-fade-up space-y-8">
-      <div className="rounded-2xl border border-line bg-paper-deep/40 p-6 sm:p-8">
+      <div className="rounded-2xl border border-line bg-memory-blue/40 p-6 sm:p-8">
         <h2 className="font-display text-2xl text-ink">Here&rsquo;s what we found</h2>
 
         <dl className="mt-5 grid grid-cols-2 gap-5 sm:grid-cols-4">
@@ -74,7 +74,7 @@ export function AlbumSummaryStep({
         </ul>
       </div>
 
-      <div className="rounded-2xl border border-line bg-paper p-6 shadow-lift sm:p-8">
+      <div className="rounded-2xl border border-line bg-white p-6 shadow-lift sm:p-8">
         <h2 className="font-display text-2xl text-ink">
           Tell us about them
         </h2>
@@ -147,14 +147,14 @@ export function AlbumSummaryStep({
             type="button"
             onClick={onContinue}
             disabled={!canContinue}
-            className="rounded-full bg-tail px-7 py-3 text-base font-medium text-paper shadow-lift transition-colors hover:bg-tail-deep disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-xl bg-periwinkle px-7 py-3 text-base font-semibold text-white shadow-lift transition-colors hover:bg-periwinkle-deep disabled:cursor-not-allowed disabled:opacity-50"
           >
             Continue
           </button>
           <button
             type="button"
             onClick={onStartOver}
-            className="text-sm text-ink-soft underline decoration-line underline-offset-4 transition-colors hover:text-tail-deep"
+            className="text-sm text-ink-soft underline decoration-line underline-offset-4 transition-colors hover:text-periwinkle-deep"
           >
             Choose a different album
           </button>
@@ -170,7 +170,7 @@ export function AlbumSummaryStep({
 }
 
 const inputClass =
-  "w-full rounded-lg border border-line bg-paper px-3.5 py-2.5 text-ink outline-none transition-colors placeholder:text-ink-faint focus:border-tail focus:ring-2 focus:ring-tail/20";
+  "w-full rounded-lg border border-line bg-white px-3.5 py-2.5 text-ink outline-none transition-colors placeholder:text-ink-faint focus:border-periwinkle focus:ring-2 focus:ring-periwinkle/20";
 
 function Field({
   label,
@@ -190,7 +190,7 @@ function Field({
         className="mb-1.5 block text-sm font-medium text-ink-soft"
       >
         {label}
-        {required && <span className="text-tail"> *</span>}
+        {required && <span className="text-periwinkle"> *</span>}
       </label>
       {children}
     </div>

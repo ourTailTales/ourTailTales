@@ -7,6 +7,7 @@ import { AlbumDropzone } from "@/components/AlbumDropzone";
 import { AlbumSummaryStep } from "@/components/AlbumSummaryStep";
 import { BookPreview } from "@/components/BookPreview";
 import { BookSizeSlider } from "@/components/BookSizeSlider";
+import { BrandMark } from "@/components/BrandMark";
 import { ChapterEditor } from "@/components/ChapterEditor";
 import { EmailSampleModal } from "@/components/EmailSampleModal";
 import { KeepTabBanner } from "@/components/KeepTabBanner";
@@ -194,7 +195,10 @@ export function Funnel() {
         {store.funnelState === "idle" && (
           <section className="mt-10 space-y-8">
             <div className="max-w-2xl">
-              <h1 className="text-balance-tight font-display text-4xl leading-[1.1] text-ink sm:text-6xl">
+              <p className="text-sm font-medium tracking-wide text-periwinkle">
+                Their life, in chapters.
+              </p>
+              <h1 className="text-balance-tight mt-3 font-display text-4xl leading-[1.1] text-ink sm:text-5xl md:text-6xl">
                 Turn their camera roll into the story of their life.
               </h1>
               <p className="mt-5 text-lg leading-relaxed text-ink-soft">
@@ -207,7 +211,7 @@ export function Funnel() {
             <AlbumDropzone onFiles={handleFiles} />
 
             {store.processingError && (
-              <p role="alert" className="text-sm text-tail-deep">
+              <p role="alert" className="text-sm text-periwinkle-deep">
                 {store.processingError}
               </p>
             )}
@@ -284,7 +288,7 @@ export function Funnel() {
                   <button
                     type="button"
                     onClick={() => void handleCreateStory()}
-                    className="rounded-full bg-tail px-6 py-2.5 text-sm font-medium text-paper shadow-lift transition-colors hover:bg-tail-deep"
+                    className="rounded-xl bg-periwinkle px-6 py-2.5 text-sm font-semibold text-white shadow-lift transition-colors hover:bg-periwinkle-deep"
                   >
                     Create My Story
                   </button>
@@ -295,14 +299,14 @@ export function Funnel() {
                     <button
                       type="button"
                       onClick={() => setSampleOpen(true)}
-                      className="rounded-full border border-line px-5 py-2.5 text-sm text-ink-soft transition-colors hover:border-tail hover:text-tail-deep"
+                      className="rounded-xl border border-line px-5 py-2.5 text-sm text-ink-soft transition-colors hover:border-periwinkle hover:text-periwinkle-deep"
                     >
                       See 5 pages free
                     </button>
                     <button
                       type="button"
                       onClick={() => void handleCheckout()}
-                      className="rounded-full bg-tail px-6 py-2.5 text-sm font-medium text-paper shadow-lift transition-colors hover:bg-tail-deep"
+                      className="rounded-xl bg-periwinkle px-6 py-2.5 text-sm font-semibold text-white shadow-lift transition-colors hover:bg-periwinkle-deep"
                     >
                       Order this book — {formatUsd(spec.price)}
                     </button>
@@ -326,14 +330,14 @@ export function Funnel() {
             {store.funnelState === "exporting" && (
               <p
                 role="status"
-                className="rounded-xl border border-tail/30 bg-tail-wash/40 px-4 py-3 text-sm text-tail-deep"
+                className="rounded-xl border border-periwinkle/30 bg-periwinkle-wash/40 px-4 py-3 text-sm text-periwinkle-deep"
               >
                 {store.exportMessage ?? "Preparing your book…"}
               </p>
             )}
 
             {notice && (
-              <p role="alert" className="text-sm text-tail-deep">
+              <p role="alert" className="text-sm text-periwinkle-deep">
                 {notice}
               </p>
             )}
@@ -375,12 +379,10 @@ export function Funnel() {
 
 function Header() {
   return (
-    <header className="flex items-baseline justify-between">
-      <p className="font-display text-xl tracking-tight text-ink">
-        ourTailTales
-      </p>
-      <p className="text-xs uppercase tracking-[0.2em] text-ink-faint">
-        Hardcover pet life stories
+    <header className="flex items-center justify-between gap-4">
+      <BrandMark href="/" size="md" priority />
+      <p className="hidden text-xs font-medium tracking-wide text-ink-faint sm:block">
+        Their life, in chapters.
       </p>
     </header>
   );
@@ -406,7 +408,7 @@ function HowItWorks() {
     <div className="grid gap-6 border-t border-line pt-8 sm:grid-cols-3">
       {steps.map((step, index) => (
         <div key={step.title}>
-          <p className="font-display text-sm text-tail">0{index + 1}</p>
+          <p className="font-display text-sm text-periwinkle">0{index + 1}</p>
           <h2 className="mt-1.5 font-display text-lg text-ink">{step.title}</h2>
           <p className="mt-1.5 text-sm leading-6 text-ink-soft">{step.body}</p>
         </div>
@@ -417,7 +419,7 @@ function HowItWorks() {
 
 function PrivacyNote() {
   return (
-    <div className="rounded-xl border border-moss/25 bg-moss-wash/60 px-4 py-3 text-sm leading-6 text-ink-soft">
+    <div className="rounded-2xl border border-sage/60 bg-sage/40 px-4 py-3 text-sm leading-6 text-ink-soft">
       <strong className="font-medium text-ink">Before you continue:</strong> when
       you choose <em>Create My Story</em>, we send a few small preview images from
       each chapter — three to five per chapter — along with dates and
@@ -432,7 +434,7 @@ function StoryProgress({ total, done }: { total: number; done: number }) {
   return (
     <div
       role="status"
-      className="rounded-xl border border-line bg-paper-deep/50 px-4 py-3 text-sm text-ink-soft"
+      className="rounded-2xl border border-line bg-lavender/40 px-4 py-3 text-sm text-ink-soft"
     >
       Writing your chapters — {done} of {total} done. You&rsquo;ll be able to edit
       every word.

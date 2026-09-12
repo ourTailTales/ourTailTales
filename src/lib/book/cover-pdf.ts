@@ -2,6 +2,7 @@ import { PDFDocument, StandardFonts, degrees, rgb, type PDFPage } from "pdf-lib"
 
 import { BLEED_INCHES, TRIM_INCHES } from "@/lib/book/layouts";
 import { CLOSING_LINE } from "@/lib/book/pagination";
+import { brand, hexToRgb01 } from "@/lib/brand";
 import * as assetStore from "@/lib/photo/assetStore";
 import { rasterizeForPlacement } from "@/lib/photo/pipeline";
 import type { BookMeta } from "@/types/book";
@@ -10,10 +11,15 @@ const PT_PER_INCH = 72;
 const TRIM_PT = TRIM_INCHES * PT_PER_INCH;
 const BLEED_PT = BLEED_INCHES * PT_PER_INCH;
 
-const PAPER = rgb(0.984, 0.969, 0.941);
-const INK = rgb(0.141, 0.122, 0.102);
-const PAPER_SOFT = rgb(0.953, 0.918, 0.851);
-const SCRIM = rgb(0.09, 0.08, 0.07);
+function brandRgb(hex: string) {
+  const { r, g, b } = hexToRgb01(hex);
+  return rgb(r, g, b);
+}
+
+const PAPER = brandRgb(brand.colors.white);
+const INK = brandRgb(brand.colors.ink);
+const PAPER_SOFT = brandRgb(brand.colors.memoryBlue);
+const SCRIM = brandRgb(brand.colors.ink);
 const SCRIM_MAX_OPACITY = 0.72;
 
 /** Below this a spine is too narrow to carry legible type. */

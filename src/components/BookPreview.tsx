@@ -93,8 +93,8 @@ export function BookPreview({
               title={`${pageLabel(candidate)} — page ${candidate.pageNumber}`}
               className={`block w-full overflow-hidden rounded-sm ring-1 transition-all ${
                 index === clamped
-                  ? "ring-2 ring-tail"
-                  : "ring-ink/10 hover:ring-tail/50"
+                  ? "ring-2 ring-periwinkle"
+                  : "ring-ink/10 hover:ring-periwinkle/50"
               }`}
             >
               <PagePreview
@@ -116,7 +116,7 @@ export function BookPreview({
 }
 
 const navClass =
-  "rounded-full border border-line px-3 py-1.5 text-xs text-ink-soft transition-colors enabled:hover:border-tail enabled:hover:text-tail-deep disabled:opacity-40";
+  "rounded-xl border border-line px-3 py-1.5 text-xs text-ink-soft transition-colors enabled:hover:border-periwinkle enabled:hover:text-periwinkle-deep disabled:opacity-40";
 
 function pageLabel(page: BookPage): string {
   switch (page.kind) {

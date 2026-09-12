@@ -52,8 +52,8 @@ export function ChapterEditor({
             }}
             className={`rounded-full border px-3.5 py-1.5 text-sm transition-colors ${
               entry.id === chapter.id
-                ? "border-tail bg-tail text-paper"
-                : "border-line bg-paper text-ink-soft hover:border-tail"
+                ? "border-periwinkle bg-periwinkle text-white"
+                : "border-line bg-white text-ink-soft hover:border-periwinkle"
             }`}
           >
             {entry.index + 1}. {truncate(entry.title, 22)}
@@ -62,7 +62,7 @@ export function ChapterEditor({
         ))}
       </nav>
 
-      <div className="rounded-2xl border border-line bg-paper p-5 shadow-lift sm:p-6">
+      <div className="rounded-2xl border border-line bg-white p-5 shadow-lift sm:p-6">
         <div className="grid gap-4 sm:grid-cols-[2fr_1fr]">
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-ink-soft">
@@ -115,7 +115,7 @@ export function ChapterEditor({
             type="button"
             onClick={() => onRegenerate(chapter.id)}
             disabled={chapter.aiStatus === "pending"}
-            className="rounded-full border border-line px-4 py-1.5 text-sm text-ink-soft transition-colors enabled:hover:border-tail enabled:hover:text-tail-deep disabled:opacity-50"
+            className="rounded-xl border border-line px-4 py-1.5 text-sm text-ink-soft transition-colors enabled:hover:border-periwinkle enabled:hover:text-periwinkle-deep disabled:opacity-50"
           >
             {chapter.aiStatus === "pending"
               ? "Writing…"
@@ -127,7 +127,7 @@ export function ChapterEditor({
             </p>
           )}
           {chapter.aiStatus === "error" && (
-            <p className="text-xs text-tail-deep">
+            <p className="text-xs text-periwinkle-deep">
               {chapter.aiError ?? "That chapter could not be written."} You can
               type it yourself.
             </p>
@@ -135,7 +135,7 @@ export function ChapterEditor({
         </div>
       </div>
 
-      <div className="rounded-2xl border border-line bg-paper p-5 shadow-lift sm:p-6">
+      <div className="rounded-2xl border border-line bg-white p-5 shadow-lift sm:p-6">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h3 className="font-display text-lg text-ink">
             Photos in this chapter
@@ -174,8 +174,8 @@ export function ChapterEditor({
                   }
                   className={`block w-full overflow-hidden rounded-md ring-1 transition-all ${
                     swapTarget === photoId
-                      ? "ring-2 ring-tail"
-                      : "ring-ink/10 hover:ring-tail/60"
+                      ? "ring-2 ring-periwinkle"
+                      : "ring-ink/10 hover:ring-periwinkle/60"
                   }`}
                   title={`Photo ${index + 1}${isHero ? " · chapter opener" : ""}`}
                 >
@@ -191,14 +191,14 @@ export function ChapterEditor({
                 </button>
 
                 {(isHero || isCover) && (
-                  <span className="pointer-events-none absolute left-1 top-1 rounded bg-ink/75 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-paper">
+                  <span className="pointer-events-none absolute left-1 top-1 rounded bg-ink/75 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-white">
                     {isCover ? "Cover" : "Opener"}
                   </span>
                 )}
 
                 {photo.qualityScore < 0.3 && (
                   <span
-                    className="pointer-events-none absolute right-1 top-1 rounded bg-tail px-1 py-0.5 text-[10px] text-paper"
+                    className="pointer-events-none absolute right-1 top-1 rounded bg-periwinkle px-1 py-0.5 text-[10px] text-white"
                     title="This photo may look soft in print"
                   >
                     !
@@ -234,7 +234,7 @@ export function ChapterEditor({
         </ol>
 
         {swapTarget && (
-          <div className="mt-5 rounded-xl border border-tail/30 bg-tail-wash/40 p-4">
+          <div className="mt-5 rounded-xl border border-periwinkle/30 bg-periwinkle-wash/40 p-4">
             <p className="text-sm text-ink-soft">
               {available.length > 0
                 ? "Choose a replacement from this chapter."
@@ -253,7 +253,7 @@ export function ChapterEditor({
                           onSwap(chapter.id, swapTarget, candidateId);
                           setSwapTarget(null);
                         }}
-                        className="block w-full overflow-hidden rounded-md ring-1 ring-ink/10 transition-all hover:ring-2 hover:ring-tail"
+                        className="block w-full overflow-hidden rounded-md ring-1 ring-ink/10 transition-all hover:ring-2 hover:ring-periwinkle"
                       >
                         <span className="block aspect-square">
                           {/* eslint-disable-next-line @next/next/no-img-element -- local object URL */}
@@ -273,7 +273,7 @@ export function ChapterEditor({
             <button
               type="button"
               onClick={() => setSwapTarget(null)}
-              className="mt-3 text-xs text-ink-soft underline decoration-line underline-offset-4 hover:text-tail-deep"
+              className="mt-3 text-xs text-ink-soft underline decoration-line underline-offset-4 hover:text-periwinkle-deep"
             >
               Cancel swap
             </button>
@@ -302,7 +302,7 @@ function MoveButton({
       title={label}
       disabled={disabled}
       onClick={onClick}
-      className="rounded border border-line bg-paper px-1.5 text-[11px] leading-5 text-ink-soft transition-colors enabled:hover:border-tail enabled:hover:text-tail-deep disabled:opacity-30"
+      className="rounded border border-line bg-white px-1.5 text-[11px] leading-5 text-ink-soft transition-colors enabled:hover:border-periwinkle enabled:hover:text-periwinkle-deep disabled:opacity-30"
     >
       {children}
     </button>
@@ -310,7 +310,7 @@ function MoveButton({
 }
 
 const inputClass =
-  "w-full rounded-lg border border-line bg-paper px-3.5 py-2.5 text-ink outline-none transition-colors placeholder:text-ink-faint focus:border-tail focus:ring-2 focus:ring-tail/20";
+  "w-full rounded-lg border border-line bg-white px-3.5 py-2.5 text-ink outline-none transition-colors placeholder:text-ink-faint focus:border-periwinkle focus:ring-2 focus:ring-periwinkle/20";
 
 function wordCount(text: string): number {
   const trimmed = text.trim();

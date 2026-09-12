@@ -33,13 +33,14 @@ export function AlbumDropzone({
       }}
       onDragLeave={() => setIsOver(false)}
       onDrop={handleDrop}
-      className={`group relative rounded-2xl border-2 border-dashed p-8 text-center transition-colors sm:p-12 ${
+      className={`group relative rounded-3xl border border-dashed p-8 text-center transition-colors sm:p-12 ${
         isOver
-          ? "border-tail bg-tail-wash/60"
-          : "border-line bg-paper-deep/40 hover:border-tail/60"
+          ? "border-periwinkle bg-memory-blue shadow-lift"
+          : "border-line bg-memory-blue/70 hover:border-periwinkle/70 hover:bg-memory-blue"
       }`}
     >
-      <p className="font-display text-2xl text-ink">
+      <UploadIcon />
+      <p className="mt-4 font-display text-2xl text-ink sm:text-[1.75rem]">
         Drop your pet&rsquo;s photo album here
       </p>
       <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-ink-soft">
@@ -51,12 +52,12 @@ export function AlbumDropzone({
         type="button"
         onClick={() => inputRef.current?.click()}
         disabled={isReading}
-        className="mt-6 inline-flex items-center justify-center rounded-full bg-tail px-7 py-3 text-base font-medium text-paper shadow-lift transition-colors hover:bg-tail-deep disabled:opacity-60"
+        className="mt-6 inline-flex items-center justify-center rounded-xl bg-periwinkle px-7 py-3 text-base font-semibold text-white shadow-lift transition-colors hover:bg-periwinkle-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-periwinkle disabled:opacity-60"
       >
         {isReading ? "Reading your album…" : "Select album"}
       </button>
 
-      <p className="mt-4 text-xs text-ink-faint">
+      <p className="mt-4 text-xs font-medium text-ink-faint">
         JPEG, PNG, HEIC and more. 50 photos or 2,000 — the price never changes.
       </p>
 
@@ -73,5 +74,24 @@ export function AlbumDropzone({
         }}
       />
     </div>
+  );
+}
+
+function UploadIcon() {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 24 24"
+      className="mx-auto h-10 w-10 text-periwinkle"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <circle cx="8.5" cy="10" r="1.5" />
+      <path d="m21 15-4.5-4.5L9 18" />
+    </svg>
   );
 }
