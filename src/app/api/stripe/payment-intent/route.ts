@@ -1,7 +1,10 @@
 import { z } from "zod";
 
 import { routeError } from "@/lib/env";
-import { calculatePrintJobCost } from "@/lib/lulu/client";
+import {
+  calculatePrintJobCost,
+  isOfferedShippingLevel,
+} from "@/lib/lulu/client";
 import { bookPrice } from "@/lib/pricing";
 import { stripeClient, toMinorUnits } from "@/lib/stripe";
 import { supabaseAdmin } from "@/lib/supabase/server";
@@ -29,8 +32,14 @@ const addressSchema = z.object({
 const requestSchema = z.object({
   orderId: z.string().uuid(),
   email: z.string().email().max(200),
-  shippingLevel: z.enum(["MAIL", "GROUND", "EXPEDITED"]),
+  shippingLevel: z
+    .string()
+    .min(2)
+    .max(32)
+    .refine(isOfferedShippingLevel, "Unsupported shipping level."),
   address: addressSchema,
+  /** Required when Lulu returned an address warning or suggested correction. */
+  acceptedAddressWarning: z.boolean().optional(),
 });
 
 export async function POST(request: Request): Promise<Response> {
@@ -43,7 +52,8 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
 
-    const { orderId, email, shippingLevel, address } = parsed.data;
+    const { orderId, email, shippingLevel, address, acceptedAddressWarning } =
+      parsed.data;
     const supabase = supabaseAdmin();
 
     const { data: order, error } = await supabase
@@ -75,7 +85,22 @@ export async function POST(request: Request): Promise<Response> {
       pageCount: order.total_pages,
       address: address as ShippingAddress,
       shippingLevel,
+      email,
     });
+
+    const needsAddressConfirm = addressNeedsConfirmation(
+      cost,
+      address as ShippingAddress,
+    );
+    if (needsAddressConfirm && !acceptedAddressWarning) {
+      return Response.json(
+        {
+          error:
+            "Please confirm or update the suggested shipping address before paying.",
+        },
+        { status: 422 },
+      );
+    }
 
     const shippingPrice =
       Math.round(
@@ -146,4 +171,43 @@ export async function POST(request: Request): Promise<Response> {
   } catch (error) {
     return routeError(error, "Payment could not be set up.");
   }
+}
+
+function addressNeedsConfirmation(
+  cost: {
+    warnings?: { message?: string }[];
+    shipping_address?: {
+      warnings?: { message?: string }[];
+      suggested_address?: {
+        street1?: string | null;
+        city?: string | null;
+        state_code?: string | null;
+        postcode?: string | null;
+      };
+    };
+  },
+  entered: ShippingAddress,
+): boolean {
+  const warnings = [
+    ...(cost.warnings ?? []),
+    ...(cost.shipping_address?.warnings ?? []),
+  ].filter((item) => item.message);
+
+  if (warnings.length > 0) return true;
+
+  const raw = cost.shipping_address?.suggested_address;
+  if (!raw) return false;
+
+  const postcodeDiffers =
+    raw.postcode &&
+    normalizePostcode(raw.postcode) !== normalizePostcode(entered.postcode);
+  const streetDiffers = raw.street1 && raw.street1 !== entered.street1;
+  const cityDiffers = raw.city && raw.city !== entered.city;
+  const stateDiffers = raw.state_code && raw.state_code !== entered.state;
+
+  return Boolean(postcodeDiffers || streetDiffers || cityDiffers || stateDiffers);
+}
+
+function normalizePostcode(value: string): string {
+  return value.replace(/\s+/g, "").toUpperCase();
 }

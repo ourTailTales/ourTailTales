@@ -74,7 +74,7 @@ async function fulfill(paymentIntent: Stripe.PaymentIntent): Promise<void> {
    * matches a row proceeds, so retried or duplicated webhook deliveries cannot
    * each create a print job.
    */
-  const { data: claimed, error: claimError } = await supabase
+    const { data: claimed, error: claimError } = await supabase
     .from("orders")
     .update({ status: "paid", paid_at: new Date().toISOString() })
     .eq("id", orderId)
@@ -93,6 +93,11 @@ async function fulfill(paymentIntent: Stripe.PaymentIntent): Promise<void> {
 
   if (!claimed.interior_path || !claimed.cover_path) {
     await markNeedsReview(orderId, "Print files were missing at payment time.");
+    return;
+  }
+
+  if (!claimed.email) {
+    await markNeedsReview(orderId, "No customer email was recorded.");
     return;
   }
 
@@ -122,6 +127,7 @@ async function fulfill(paymentIntent: Stripe.PaymentIntent): Promise<void> {
       pageCount: claimed.total_pages,
       interiorUrl,
       coverUrl,
+      email: claimed.email,
       address: {
         name: shipping.name,
         phone: shipping.phone,
@@ -139,6 +145,8 @@ async function fulfill(paymentIntent: Stripe.PaymentIntent): Promise<void> {
       .from("orders")
       .update({
         lulu_print_job_id: String(printJob.id),
+        lulu_status: printJob.status?.name ?? null,
+        tracking_urls: printJob.tracking_urls ?? null,
         status: "submitted",
         submitted_at: new Date().toISOString(),
       })

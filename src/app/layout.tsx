@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
-import { DM_Serif_Display, Inter } from "next/font/google";
+import { Cormorant_Garamond, DM_Serif_Display, Inter } from "next/font/google";
 import { brand } from "@/lib/brand";
 import "./globals.css";
 
@@ -9,6 +9,13 @@ const display = DM_Serif_Display({
   variable: "--font-display",
   subsets: ["latin"],
   weight: "400",
+});
+
+/** Literary cover titles — distinct from UI display. */
+const cover = Cormorant_Garamond({
+  variable: "--font-cover",
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
 });
 
 const body = Inter({
@@ -42,7 +49,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${display.variable} ${body.variable} h-full antialiased`}
+      className={`${display.variable} ${cover.variable} ${body.variable} h-full antialiased`}
     >
       <body className="brand-atmosphere min-h-full flex flex-col bg-cloud text-ink">
         {children}

@@ -18,6 +18,7 @@
   --color-white: #ffffff;
 
   --font-display: var(--font-display), ui-serif, Georgia, "Times New Roman", serif;
+  --font-cover: var(--font-cover), "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
   --font-sans: var(--font-body), ui-sans-serif, system-ui, sans-serif;
 
   --shadow-book:

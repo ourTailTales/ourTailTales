@@ -16,6 +16,8 @@ const TOKEN_PATH = "/auth/realms/glasstree/protocol/openid-connect/token";
 /** Refresh a little early so a request never races expiry. */
 const TOKEN_SAFETY_WINDOW_MS = 60_000;
 
+const PT_PER_INCH = 72;
+
 let cachedToken: { value: string; expiresAt: number } | null = null;
 
 export function luluBaseUrl(): string {
@@ -97,14 +99,21 @@ async function luluFetch<T>(
 /* ------------------------------ cover dimensions ----------------------------- */
 
 export type CoverDimensions = {
+  /** PDF points (1/72 in). Converted from Lulu's inch response. */
   width: number;
   height: number;
-  unit: "pt" | "mm" | "inch";
+  unit: "pt";
+  /** Raw Lulu calculator values for validation / fixtures. */
+  widthInches: number;
+  heightInches: number;
 };
 
 /**
  * The one true source for cover size. Never guess a spine width — it depends on
  * the exact paper stock behind `pod_package_id` and the interior page count.
+ *
+ * Lulu is queried in inches (per Print API contract); we convert to PDF points
+ * for `pdf-lib`.
  */
 export async function fetchCoverDimensions(
   interiorPageCount: number,
@@ -112,24 +121,52 @@ export async function fetchCoverDimensions(
   const data = await luluFetch<{
     width: string;
     height: string;
-    unit: CoverDimensions["unit"];
+    unit: string;
   }>("/cover-dimensions/", {
     method: "POST",
     body: JSON.stringify({
       pod_package_id: luluPodPackageId(),
       interior_page_count: interiorPageCount,
-      unit: "pt",
+      unit: "inch",
     }),
   });
 
+  const widthInches = Number(data.width);
+  const heightInches = Number(data.height);
+
   return {
-    width: Number(data.width),
-    height: Number(data.height),
-    unit: data.unit,
+    width: widthInches * PT_PER_INCH,
+    height: heightInches * PT_PER_INCH,
+    unit: "pt",
+    widthInches,
+    heightInches,
   };
 }
 
 /* ------------------------------ shipping + cost ------------------------------ */
+
+/** Levels we surface at checkout when Lulu returns them for the destination. */
+export const OFFERED_SHIPPING_LEVELS = [
+  "MAIL",
+  "GROUND",
+  "GROUND_HD",
+  "PRIORITY_MAIL",
+  "EXPEDITED",
+] as const;
+
+export type OfferedShippingLevel = (typeof OFFERED_SHIPPING_LEVELS)[number];
+
+export const SHIPPING_LEVEL_LABELS: Record<string, string> = {
+  MAIL: "Economy mail",
+  GROUND: "Ground",
+  GROUND_HD: "Ground (home delivery)",
+  PRIORITY_MAIL: "Priority mail",
+  EXPEDITED: "Expedited",
+};
+
+export function isOfferedShippingLevel(level: string): level is OfferedShippingLevel {
+  return (OFFERED_SHIPPING_LEVELS as readonly string[]).includes(level);
+}
 
 export type LuluShippingOption = {
   id: number;
@@ -171,18 +208,33 @@ export async function fetchShippingOptions(
   });
 }
 
+export type LuluSuggestedAddress = {
+  street1?: string | null;
+  street2?: string | null;
+  city?: string | null;
+  state_code?: string | null;
+  postcode?: string | null;
+  country_code?: string | null;
+};
+
 export type LuluCostCalculation = {
   line_item_costs?: { total_cost_excl_discounts?: string }[];
   shipping_cost?: { total_cost_excl_tax?: string; total_cost_incl_tax?: string };
   total_tax?: string;
   total_cost_excl_tax?: string;
   total_cost_incl_tax?: string;
+  warnings?: { type?: string; message?: string }[];
+  shipping_address?: {
+    warnings?: { type?: string; message?: string }[];
+    suggested_address?: LuluSuggestedAddress;
+  };
 };
 
 export async function calculatePrintJobCost(args: {
   pageCount: number;
   address: ShippingAddress;
   shippingLevel: string;
+  email: string;
 }): Promise<LuluCostCalculation> {
   return luluFetch<LuluCostCalculation>("/print-job-cost-calculations/", {
     method: "POST",
@@ -194,7 +246,7 @@ export async function calculatePrintJobCost(args: {
           quantity: 1,
         },
       ],
-      shipping_address: toLuluAddress(args.address),
+      shipping_address: toLuluAddress(args.address, args.email),
       shipping_option: args.shippingLevel,
     }),
   });
@@ -209,9 +261,14 @@ export type LuluPrintJob = {
   line_items?: {
     status?: { name: string; messages?: Record<string, unknown> };
   }[];
+  tracking_id?: string | null;
   tracking_urls?: string[];
 };
 
+/**
+ * Submit one print job. Interior/cover are line-item source URLs (live schema),
+ * not nested under printable_normalization.
+ */
 export async function createPrintJob(args: {
   orderId: string;
   title: string;
@@ -219,6 +276,7 @@ export async function createPrintJob(args: {
   interiorUrl: string;
   coverUrl: string;
   address: ShippingAddress;
+  email: string;
   shippingLevel: string;
 }): Promise<LuluPrintJob> {
   const [contactEmail] = requireEnv("LULU_CONTACT_EMAIL");
@@ -234,13 +292,11 @@ export async function createPrintJob(args: {
           title: args.title,
           quantity: 1,
           pod_package_id: luluPodPackageId(),
-          printable_normalization: {
-            interior: { source_url: args.interiorUrl },
-            cover: { source_url: args.coverUrl },
-          },
+          interior: { source_url: args.interiorUrl },
+          cover: { source_url: args.coverUrl },
         },
       ],
-      shipping_address: toLuluAddress(args.address),
+      shipping_address: toLuluAddress(args.address, args.email),
       shipping_level: args.shippingLevel,
     }),
   });
@@ -252,9 +308,21 @@ export async function fetchPrintJob(printJobId: string): Promise<LuluPrintJob> {
   });
 }
 
-function toLuluAddress(address: ShippingAddress) {
+/** Look up by our order UUID when create response was ambiguous. */
+export async function findPrintJobByExternalId(
+  externalId: string,
+): Promise<LuluPrintJob | null> {
+  const data = await luluFetch<{ results?: LuluPrintJob[] }>(
+    `/print-jobs/?external_id=${encodeURIComponent(externalId)}`,
+    { method: "GET" },
+  );
+  return data.results?.[0] ?? null;
+}
+
+function toLuluAddress(address: ShippingAddress, email: string) {
   return {
     name: address.name,
+    email,
     street1: address.street1,
     street2: address.street2 || undefined,
     city: address.city,
@@ -270,7 +338,14 @@ function toLuluAddress(address: ShippingAddress) {
 /** Lulu print-job status -> ourTailTales order status. */
 export function mapLuluStatus(
   luluStatus: string,
-): "submitted" | "production" | "shipped" | "rejected" | "canceled" | null {
+):
+  | "submitted"
+  | "production"
+  | "shipped"
+  | "delivered"
+  | "rejected"
+  | "canceled"
+  | null {
   switch (luluStatus) {
     case "CREATED":
     case "UNPAID":
@@ -281,6 +356,8 @@ export function mapLuluStatus(
       return "production";
     case "SHIPPED":
       return "shipped";
+    case "DELIVERED":
+      return "delivered";
     case "REJECTED":
       return "rejected";
     case "CANCELED":

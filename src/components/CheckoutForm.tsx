@@ -37,6 +37,10 @@ export function CheckoutForm({
 
   const [options, setOptions] = useState<ShippingOption[]>([]);
   const [addressWarning, setAddressWarning] = useState<string | null>(null);
+  const [suggestedAddress, setSuggestedAddress] = useState<Partial<ShippingAddress> | null>(
+    null,
+  );
+  const [addressAccepted, setAddressAccepted] = useState(false);
   const [level, setLevel] = useState<string | null>(null);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [shippingPrice, setShippingPrice] = useState<number | null>(null);
@@ -69,6 +73,7 @@ export function CheckoutForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           orderId: order.id,
+          email: email.trim(),
           address: { ...address, state: address.state.toUpperCase() },
         }),
       });
@@ -76,6 +81,7 @@ export function CheckoutForm({
       const data = (await response.json()) as {
         options?: ShippingOption[];
         addressWarning?: string;
+        suggestedAddress?: Partial<ShippingAddress>;
         error?: string;
       };
 
@@ -83,6 +89,8 @@ export function CheckoutForm({
 
       setOptions(data.options ?? []);
       setAddressWarning(data.addressWarning ?? null);
+      setSuggestedAddress(data.suggestedAddress ?? null);
+      setAddressAccepted(false);
       setLevel(data.options?.[0]?.level ?? null);
       setShippingPrice(data.options?.[0]?.price ?? null);
       setStep("shipping");
@@ -99,6 +107,15 @@ export function CheckoutForm({
 
   const startPayment = async (): Promise<void> => {
     if (!level) return;
+
+    const needsConfirm = Boolean(addressWarning || suggestedAddress);
+    if (needsConfirm && !addressAccepted) {
+      setError(
+        "Please confirm the shipping address suggestion (or edit your address) before paying.",
+      );
+      return;
+    }
+
     setError(null);
     setBusy(true);
 
@@ -111,6 +128,7 @@ export function CheckoutForm({
           email: email.trim(),
           shippingLevel: level,
           address: { ...address, state: address.state.toUpperCase() },
+          acceptedAddressWarning: needsConfirm ? true : undefined,
         }),
       });
 
@@ -249,8 +267,67 @@ export function CheckoutForm({
 
             {addressWarning && (
               <p className="mt-3 rounded-lg border border-periwinkle/30 bg-periwinkle-wash/50 px-3 py-2 text-sm text-periwinkle-deep">
-                {addressWarning} Please confirm this is right before paying.
+                {addressWarning}
               </p>
+            )}
+
+            {suggestedAddress && (
+              <div className="mt-3 rounded-lg border border-line bg-cloud px-3 py-3 text-sm text-ink-soft">
+                <p className="font-medium text-ink">Suggested address</p>
+                <p className="mt-1 leading-6">
+                  {[
+                    suggestedAddress.street1,
+                    suggestedAddress.street2,
+                    [suggestedAddress.city, suggestedAddress.state]
+                      .filter(Boolean)
+                      .join(", "),
+                    suggestedAddress.postcode,
+                  ]
+                    .filter(Boolean)
+                    .join(", ")}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAddress((current) => ({
+                        ...current,
+                        street1: suggestedAddress.street1 ?? current.street1,
+                        street2:
+                          suggestedAddress.street2 ?? current.street2 ?? "",
+                        city: suggestedAddress.city ?? current.city,
+                        state: (
+                          suggestedAddress.state ?? current.state
+                        ).toUpperCase(),
+                        postcode:
+                          suggestedAddress.postcode ?? current.postcode,
+                      }));
+                      setSuggestedAddress(null);
+                      setAddressWarning(null);
+                      setAddressAccepted(true);
+                      setStep("address");
+                    }}
+                    className={linkButton}
+                  >
+                    Use suggested address
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {(addressWarning || suggestedAddress) && (
+              <label className="mt-4 flex items-start gap-3 text-sm text-ink-soft">
+                <input
+                  type="checkbox"
+                  checked={addressAccepted}
+                  onChange={(event) => setAddressAccepted(event.target.checked)}
+                  className="mt-1 accent-periwinkle"
+                />
+                <span>
+                  I&rsquo;ve checked this address and want to continue with it as
+                  entered (Lulu may still adjust formatting).
+                </span>
+              </label>
             )}
 
             <ul className="mt-5 space-y-3">
@@ -298,7 +375,12 @@ export function CheckoutForm({
               <button
                 type="button"
                 onClick={() => void startPayment()}
-                disabled={busy || !level}
+                disabled={
+                  busy ||
+                  !level ||
+                  (Boolean(addressWarning || suggestedAddress) &&
+                    !addressAccepted)
+                }
                 className={primaryButton}
               >
                 {busy ? "Preparing payment…" : "Continue to payment"}

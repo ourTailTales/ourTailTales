@@ -9,6 +9,9 @@ import { supabaseAdmin } from "@/lib/supabase/server";
  *
  * The HMAC is verified against the raw request body before any JSON parsing,
  * and a rejected job is flagged for review rather than silently resubmitted.
+ *
+ * Lulu signs with the owning API client secret for this environment — use
+ * LULU_CLIENT_SECRET (or an optional LULU_WEBHOOK_SECRET override).
  */
 export async function POST(request: Request): Promise<Response> {
   try {
@@ -36,6 +39,8 @@ export async function POST(request: Request): Promise<Response> {
         id?: number | string;
         external_id?: string;
         status?: { name?: string; message?: string };
+        tracking_id?: string | null;
+        tracking_urls?: string[];
       };
     };
 
@@ -58,10 +63,19 @@ export async function POST(request: Request): Promise<Response> {
       lulu_status_message: payload.data?.status?.message ?? null,
     };
 
+    if (payload.data?.tracking_urls?.length) {
+      update.tracking_urls = payload.data.tracking_urls;
+    }
+
     if (status === "rejected") {
       update.review_reason = `Lulu rejected the job: ${
         payload.data?.status?.message ?? "no reason given"
       }`;
+      console.error(
+        "[ourTailTales] Lulu rejected print job",
+        printJobId,
+        payload.data?.status?.message,
+      );
     }
 
     const { error } = await supabaseAdmin()

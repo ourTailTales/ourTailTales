@@ -14,6 +14,7 @@ export type OrderView = {
   luluPrintJobId: string | null;
   luluStatusMessage: string | null;
   reviewReason: string | null;
+  trackingUrls: string[];
   hasPrintFiles: boolean;
   createdAt: string;
 };
@@ -26,7 +27,7 @@ export async function readOrder(orderId: string): Promise<OrderView | null> {
   const { data, error } = await supabaseAdmin()
     .from("orders")
     .select(
-      "id, status, email, pet_name, chapter_count, story_pages, total_pages, book_price, shipping_price, lulu_print_job_id, lulu_status_message, review_reason, interior_path, cover_path, created_at",
+      "id, status, email, pet_name, chapter_count, story_pages, total_pages, book_price, shipping_price, lulu_print_job_id, lulu_status_message, review_reason, tracking_urls, interior_path, cover_path, created_at",
     )
     .eq("id", orderId)
     .maybeSingle();
@@ -47,6 +48,7 @@ export async function readOrder(orderId: string): Promise<OrderView | null> {
     luluPrintJobId: data.lulu_print_job_id,
     luluStatusMessage: data.lulu_status_message,
     reviewReason: data.review_reason,
+    trackingUrls: Array.isArray(data.tracking_urls) ? data.tracking_urls : [],
     hasPrintFiles: Boolean(data.interior_path && data.cover_path),
     createdAt: data.created_at,
   };

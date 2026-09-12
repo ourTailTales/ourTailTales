@@ -32,6 +32,11 @@ const TIMELINE: { status: OrderStatus; label: string; body: string }[] = [
     label: "On its way",
     body: "It has left the bindery and is heading to you.",
   },
+  {
+    status: "delivered",
+    label: "Delivered",
+    body: "The carrier marked your book as delivered.",
+  },
 ];
 
 const ORDER: OrderStatus[] = [
@@ -151,6 +156,23 @@ function OrderDetail({ order }: { order: OrderView }) {
                   <span className="mt-0.5 block text-sm leading-6 text-ink-soft">
                     {entry.body}
                   </span>
+                  {active &&
+                    entry.status === "shipped" &&
+                    order.trackingUrls.length > 0 && (
+                      <span className="mt-2 block space-y-1">
+                        {order.trackingUrls.map((url) => (
+                          <a
+                            key={url}
+                            href={url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="block text-sm text-periwinkle-deep underline decoration-line underline-offset-4"
+                          >
+                            Track shipment
+                          </a>
+                        ))}
+                      </span>
+                    )}
                 </span>
               </li>
             );

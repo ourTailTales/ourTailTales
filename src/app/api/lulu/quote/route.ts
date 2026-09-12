@@ -4,6 +4,10 @@ import { routeError } from "@/lib/env";
 import {
   calculatePrintJobCost,
   fetchShippingOptions,
+  isOfferedShippingLevel,
+  OFFERED_SHIPPING_LEVELS,
+  SHIPPING_LEVEL_LABELS,
+  type LuluCostCalculation,
   type LuluShippingOption,
 } from "@/lib/lulu/client";
 import { supabaseAdmin } from "@/lib/supabase/server";
@@ -29,17 +33,9 @@ const addressSchema = z.object({
 
 const requestSchema = z.object({
   orderId: z.string().uuid(),
+  email: z.string().email().max(200),
   address: addressSchema,
 });
-
-/** A short, understandable set rather than every carrier permutation. */
-const OFFERED_LEVELS = ["MAIL", "GROUND", "EXPEDITED"] as const;
-
-const LEVEL_LABELS: Record<string, string> = {
-  MAIL: "Standard post",
-  GROUND: "Ground",
-  EXPEDITED: "Expedited",
-};
 
 export async function POST(request: Request): Promise<Response> {
   try {
@@ -51,7 +47,7 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
 
-    const { orderId, address } = parsed.data;
+    const { orderId, email, address } = parsed.data;
 
     const { data: order, error } = await supabaseAdmin()
       .from("orders")
@@ -82,12 +78,14 @@ export async function POST(request: Request): Promise<Response> {
 
     const options: ShippingOption[] = [];
     let addressWarning: string | undefined;
+    let suggestedAddress: Partial<ShippingAddress> | undefined;
 
     for (const option of chosen) {
       const cost = await calculatePrintJobCost({
         pageCount: order.total_pages,
         address: address as ShippingAddress,
         shippingLevel: option.level,
+        email,
       });
 
       const shippingPrice = Number(
@@ -97,14 +95,17 @@ export async function POST(request: Request): Promise<Response> {
           0,
       );
 
-      const warnings = (cost as { warnings?: { message?: string }[] }).warnings;
-      if (!addressWarning && warnings?.[0]?.message) {
-        addressWarning = warnings[0].message;
+      const feedback = extractAddressFeedback(cost, address as ShippingAddress);
+      if (!addressWarning && feedback.warning) {
+        addressWarning = feedback.warning;
+      }
+      if (!suggestedAddress && feedback.suggested) {
+        suggestedAddress = feedback.suggested;
       }
 
       options.push({
         level: option.level,
-        label: LEVEL_LABELS[option.level] ?? option.level,
+        label: SHIPPING_LEVEL_LABELS[option.level] ?? option.level,
         price: Math.round(shippingPrice * 100) / 100,
         minDeliveryDays: option.total_days_min,
         maxDeliveryDays: option.total_days_max,
@@ -113,7 +114,7 @@ export async function POST(request: Request): Promise<Response> {
 
     options.sort((a, b) => a.price - b.price);
 
-    return Response.json({ options, addressWarning });
+    return Response.json({ options, addressWarning, suggestedAddress });
   } catch (error) {
     return routeError(error, "We could not calculate shipping for that address.");
   }
@@ -123,18 +124,64 @@ function cheapestPerLevel(options: LuluShippingOption[]): LuluShippingOption[] {
   const best = new Map<string, LuluShippingOption>();
 
   for (const option of options) {
-    if (!OFFERED_LEVELS.includes(option.level as (typeof OFFERED_LEVELS)[number])) {
-      continue;
-    }
+    if (!isOfferedShippingLevel(option.level)) continue;
     const current = best.get(option.level);
     if (!current || cost(option) < cost(current)) best.set(option.level, option);
   }
 
-  return OFFERED_LEVELS.map((level) => best.get(level)).filter(
+  return OFFERED_SHIPPING_LEVELS.map((level) => best.get(level)).filter(
     (option): option is LuluShippingOption => option !== undefined,
   );
 }
 
 function cost(option: LuluShippingOption): number {
   return Number(option.cost_excl_tax ?? Number.MAX_SAFE_INTEGER);
+}
+
+function extractAddressFeedback(
+  costResult: LuluCostCalculation,
+  entered: ShippingAddress,
+): {
+  warning?: string;
+  suggested?: Partial<ShippingAddress>;
+} {
+  const warningMessages = [
+    ...(costResult.warnings ?? []),
+    ...(costResult.shipping_address?.warnings ?? []),
+  ]
+    .map((item) => item.message)
+    .filter((message): message is string => Boolean(message));
+
+  const raw = costResult.shipping_address?.suggested_address;
+  let suggested: Partial<ShippingAddress> | undefined;
+
+  if (raw) {
+    const candidate: Partial<ShippingAddress> = {
+      street1: raw.street1 ?? undefined,
+      street2: raw.street2 ?? undefined,
+      city: raw.city ?? undefined,
+      state: raw.state_code ?? undefined,
+      postcode: raw.postcode ?? undefined,
+      country: raw.country_code === "US" ? "US" : undefined,
+    };
+
+    const differs =
+      (candidate.street1 && candidate.street1 !== entered.street1) ||
+      (candidate.city && candidate.city !== entered.city) ||
+      (candidate.state && candidate.state !== entered.state) ||
+      (candidate.postcode &&
+        normalizePostcode(candidate.postcode) !==
+          normalizePostcode(entered.postcode));
+
+    if (differs) suggested = candidate;
+  }
+
+  return {
+    warning: warningMessages[0],
+    suggested,
+  };
+}
+
+function normalizePostcode(value: string): string {
+  return value.replace(/\s+/g, "").toUpperCase();
 }

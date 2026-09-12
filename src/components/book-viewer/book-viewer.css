@@ -1,0 +1,345 @@
+/* BookViewer — GPU-friendly transforms / clips only during turns */
+
+.bv-scene {
+  position: relative;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.bv-viewport {
+  position: relative;
+  width: 100%;
+  max-width: 90rem;
+  overflow: visible;
+  display: flex;
+  justify-content: center;
+}
+
+/*
+  Stable right-page column — always centered, never moves on open/close.
+  Full book is right-aligned inside; left page extends out to the left.
+*/
+.bv-anchor {
+  position: relative;
+  flex-shrink: 0;
+  transform-style: preserve-3d;
+}
+
+.bv-anchor--closed {
+  overflow: hidden;
+  border-radius: 0 14px 14px 0;
+}
+
+.bv-anchor--open {
+  overflow: visible;
+}
+
+.bv-anchor__book {
+  position: absolute;
+  top: 0;
+  right: 0;
+  transform-style: preserve-3d;
+}
+
+.bv-book {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+}
+
+.bv-cover-hinge {
+  transform-style: preserve-3d;
+}
+
+.bv-slot {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.bv-slot--left {
+  left: 0;
+}
+
+.bv-slot--right {
+  right: 0;
+}
+
+.bv-hard-page {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: rotateY(0deg);
+  transform-style: preserve-3d;
+  transform-origin: left center;
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  will-change: transform;
+}
+
+.bv-hard-face {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 0 14px 14px 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  background: #c9d8fa;
+}
+
+.bv-hard-face--back {
+  transform: rotateY(180deg);
+  background: #eef1f8;
+  border-radius: 14px 0 0 14px;
+}
+
+.bv-hard-thickness {
+  position: absolute;
+  top: 8%;
+  bottom: 8%;
+  left: 0;
+  width: 4px;
+  transform: translateX(-100%) rotateY(-90deg);
+  transform-origin: right center;
+  background: linear-gradient(180deg, #d4e0f8, #8fa0d8);
+  pointer-events: none;
+}
+
+.bv-soft-page {
+  position: absolute;
+  inset: 0;
+  background: #fbfcff;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgb(37 42 58 / 0.06);
+}
+
+.bv-soft-page--left {
+  border-radius: 10px 0 0 10px;
+}
+
+.bv-soft-page--right {
+  border-radius: 0 10px 10px 0;
+}
+
+.bv-soft-page__content {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  padding: 1.25rem 1.35rem;
+}
+
+.bv-soft-page__content:has([data-bv-bleed]) {
+  padding: 0;
+}
+
+.bv-gutter {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 18%;
+  pointer-events: none;
+}
+
+.bv-gutter--left {
+  right: 0;
+  background: linear-gradient(90deg, transparent, rgb(37 42 58 / 0.07));
+}
+
+.bv-gutter--right {
+  left: 0;
+  background: linear-gradient(270deg, transparent, rgb(37 42 58 / 0.07));
+}
+
+.bv-spine {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 24px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  z-index: 35;
+}
+
+.bv-spine__left,
+.bv-spine__right {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+}
+
+.bv-spine__left {
+  left: 0;
+  background: linear-gradient(90deg, transparent, rgb(37 42 58 / 0.12));
+}
+
+.bv-spine__right {
+  right: 0;
+  background: linear-gradient(270deg, transparent, rgb(37 42 58 / 0.12));
+}
+
+.bv-turning {
+  position: absolute;
+  top: 0;
+  opacity: 0;
+  z-index: 500;
+  pointer-events: none;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.bv-turning--right {
+  right: 0;
+  transform-origin: left center;
+}
+
+.bv-turning--left {
+  left: 0;
+  transform-origin: right center;
+}
+
+.bv-turning__front,
+.bv-turning__back {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  background: #fbfcff;
+  border-radius: 0 10px 10px 0;
+}
+
+.bv-turning--left .bv-turning__front,
+.bv-turning--left .bv-turning__back {
+  border-radius: 10px 0 0 10px;
+}
+
+.bv-turning__back {
+  transform: rotateY(180deg);
+  background: #f0f3f8;
+}
+
+.bv-turning__face-inner {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  padding: 1.25rem 1.35rem;
+  background: #fbfcff;
+}
+
+.bv-turning__fold-shadow {
+  position: absolute;
+  inset: 0;
+  background: var(--fold-front-shadow, none);
+  pointer-events: none;
+}
+
+.bv-turning__back-shade {
+  position: absolute;
+  inset: 0;
+  background: var(--fold-back-shadow, transparent);
+  pointer-events: none;
+  mix-blend-mode: multiply;
+}
+
+.bv-turning__under-shadow {
+  position: absolute;
+  inset: 0;
+  background: var(--fold-under-shadow, none);
+  pointer-events: none;
+  z-index: -1;
+  transform: translateZ(-1px);
+}
+
+.bv-corner-hot {
+  position: absolute;
+  width: 64px;
+  height: 64px;
+  z-index: 60;
+  touch-action: none;
+}
+
+.bv-corner-hot--tr {
+  top: 0;
+  right: 0;
+  cursor: nesw-resize;
+}
+
+.bv-corner-hot--br {
+  bottom: 0;
+  right: 0;
+  cursor: nwse-resize;
+}
+
+.bv-corner-hot--tl {
+  top: 0;
+  left: 0;
+  cursor: nwse-resize;
+}
+
+.bv-corner-hot--bl {
+  bottom: 0;
+  left: 0;
+  cursor: nesw-resize;
+}
+
+.bv-corner-hot--peel {
+  box-shadow: inset 0 0 0 1px rgb(37 42 58 / 0.06);
+}
+
+.bv-nav {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+.bv-nav__btn {
+  border-radius: 999px;
+  border: 1px solid #d5dceb;
+  background: #fff;
+  color: #252a3a;
+  font-size: 0.875rem;
+  padding: 0.45rem 1rem;
+  cursor: pointer;
+}
+
+.bv-nav__btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.bv-nav__btn:focus-visible {
+  outline: 2px solid #5b68c8;
+  outline-offset: 2px;
+}
+
+.bv-shadow {
+  pointer-events: none;
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  bottom: -2%;
+  height: 12%;
+  border-radius: 100%;
+  background: rgb(37 42 58 / 0.22);
+  filter: blur(18px);
+  z-index: 0;
+}
+
+/* While the cover hinges, only cast the drop shadow under the right page. */
+.bv-book--cover-anim .bv-shadow {
+  left: 55%;
+  right: 8%;
+}
+
+.bv-book--cover-anim .bv-slot--left {
+  visibility: hidden;
+}
