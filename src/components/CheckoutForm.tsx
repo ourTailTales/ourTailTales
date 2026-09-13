@@ -46,13 +46,14 @@ export function CheckoutForm({
   const [shippingPrice, setShippingPrice] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [archivalConsent, setArchivalConsent] = useState(false);
 
   const stripePromise = useMemo<Promise<Stripe | null> | null>(
     () => (publishableKey ? loadStripe(publishableKey) : null),
     [publishableKey],
   );
 
-  const total = order.bookPrice + (shippingPrice ?? 0);
+  const total = order.bookPrice + order.videoMemoryPrice + (shippingPrice ?? 0);
 
   const fetchQuote = async (): Promise<void> => {
     setError(null);
@@ -107,6 +108,10 @@ export function CheckoutForm({
 
   const startPayment = async (): Promise<void> => {
     if (!level) return;
+    if (order.hasVideoMemories && !archivalConsent) {
+      setError("Please confirm the Video Memories archival notice to continue.");
+      return;
+    }
 
     const needsConfirm = Boolean(addressWarning || suggestedAddress);
     if (needsConfirm && !addressAccepted) {
@@ -129,6 +134,7 @@ export function CheckoutForm({
           shippingLevel: level,
           address: { ...address, state: address.state.toUpperCase() },
           acceptedAddressWarning: needsConfirm ? true : undefined,
+          archivalConsent: order.hasVideoMemories ? archivalConsent : undefined,
         }),
       });
 
@@ -371,6 +377,16 @@ export function CheckoutForm({
               ))}
             </ul>
 
+            {order.hasVideoMemories && (
+              <VideoMemoryDisclosure
+                packCount={order.videoMemoryPackCount}
+                videoCount={order.selectedVideoCount}
+                price={order.videoMemoryPrice}
+                consented={archivalConsent}
+                onConsent={setArchivalConsent}
+              />
+            )}
+
             <div className="mt-6 flex flex-wrap items-center gap-4">
               <button
                 type="button"
@@ -379,7 +395,8 @@ export function CheckoutForm({
                   busy ||
                   !level ||
                   (Boolean(addressWarning || suggestedAddress) &&
-                    !addressAccepted)
+                    !addressAccepted) ||
+                  (order.hasVideoMemories && !archivalConsent)
                 }
                 className={primaryButton}
               >
@@ -460,6 +477,12 @@ export function CheckoutForm({
           <Row label={`Plus 4 complimentary pages (${order.totalPages} total)`} />
           <div className="border-t border-line pt-3" />
           <Row label="Book" value={formatUsd(order.bookPrice)} />
+          {order.hasVideoMemories && (
+            <Row
+              label={`Video Memories × ${order.videoMemoryPackCount}`}
+              value={formatUsd(order.videoMemoryPrice)}
+            />
+          )}
           <Row
             label="Shipping"
             value={
@@ -589,6 +612,47 @@ function patch(
   next: Partial<ShippingAddress>,
 ): void {
   setAddress((current) => ({ ...current, ...next }));
+}
+
+function VideoMemoryDisclosure({
+  packCount,
+  videoCount,
+  price,
+  consented,
+  onConsent,
+}: {
+  packCount: number;
+  videoCount: number;
+  price: number;
+  consented: boolean;
+  onConsent: (value: boolean) => void;
+}) {
+  return (
+    <div className="mt-6 rounded-xl border border-periwinkle/30 bg-periwinkle-wash/40 p-4">
+      <h2 className="font-display text-lg text-ink">Permanent Video Memories</h2>
+      <p className="mt-2 text-sm leading-6 text-ink-soft">
+        You&rsquo;re including {videoCount} Video{" "}
+        {videoCount === 1 ? "Memory" : "Memories"} ({packCount}{" "}
+        {packCount === 1 ? "pack" : "packs"}, {formatUsd(price)}). Before you
+        pay, these videos stay private and you can still edit or remove them.
+        After payment they are encrypted and preserved permanently so anyone with
+        the printed QR code can watch them. They cannot be deleted from that
+        storage later.
+      </p>
+      <label className="mt-4 flex items-start gap-3 text-sm text-ink">
+        <input
+          type="checkbox"
+          checked={consented}
+          onChange={(event) => onConsent(event.target.checked)}
+          className="mt-1 accent-periwinkle"
+        />
+        <span>
+          I understand these Video Memories will be preserved permanently after
+          I pay, and that anyone with the printed QR code can watch them.
+        </span>
+      </label>
+    </div>
+  );
 }
 
 function isAddressComplete(address: ShippingAddress): boolean {

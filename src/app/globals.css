@@ -1,61 +1,88 @@
 @import "tailwindcss";
 
-/* Brand tokens — see docs/BRAND_GUIDELINES.md */
+/* Brand tokens — see docs/BRAND_GUIDELINES.md
+   Page chrome is dark with pastel type; book interiors remount ink via .bv-page-ink. */
 @theme {
   --color-periwinkle: #5b68c8;
-  --color-periwinkle-deep: #4a56b0;
-  --color-periwinkle-wash: #eef1fb;
+  --color-periwinkle-deep: #7b87d6;
+  --color-periwinkle-wash: #2a3150;
   --color-memory-blue: #c9d8fa;
   --color-lavender: #e2d7f5;
   --color-sage: #c9ded7;
-  --color-sage-deep: #3f6b5c;
+  --color-sage-deep: #c9ded7;
   --color-petal: #edb8aa;
-  --color-ink: #252a3a;
-  --color-ink-soft: #5a6070;
-  --color-ink-faint: #8b91a0;
-  --color-line: #d5dceb;
-  --color-cloud: #f7f8fc;
+  /* Pastel type on dark chrome */
+  --color-ink: #c9d8fa;
+  --color-ink-soft: #e2d7f5;
+  --color-ink-faint: #c9ded7;
+  --color-line: rgb(201 216 250 / 0.22);
+  /* Deep night base (not beige, not flat black) */
+  --color-cloud: #161924;
   --color-white: #ffffff;
+  /* Readable ink for printed-page UIs */
+  --color-page-ink: #252a3a;
+  --color-page-ink-soft: #5a6070;
+  --color-page-ink-faint: #8b91a0;
+  --color-page-line: #d5dceb;
 
-  --font-display: var(--font-display), ui-serif, Georgia, "Times New Roman", serif;
+  --font-display: var(--font-display), "Merienda", ui-serif, Georgia, "Times New Roman", serif;
   --font-cover: var(--font-cover), "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
   --font-sans: var(--font-body), ui-sans-serif, system-ui, sans-serif;
 
   --shadow-book:
-    0 1px 2px rgb(37 42 58 / 0.05), 0 12px 28px -8px rgb(37 42 58 / 0.16);
-  --shadow-lift: 0 1px 2px rgb(37 42 58 / 0.04), 0 6px 18px -8px rgb(37 42 58 / 0.12);
+    0 1px 2px rgb(0 0 0 / 0.2), 0 16px 36px -10px rgb(0 0 0 / 0.45);
+  --shadow-lift: 0 1px 2px rgb(0 0 0 / 0.15), 0 8px 22px -8px rgb(0 0 0 / 0.35);
 }
 
 html {
-  color-scheme: light;
+  color-scheme: dark;
+  background-color: var(--color-cloud);
+  /* Stop rubber-band pull past the top/bottom; keep normal page scroll. */
+  overscroll-behavior-y: none;
 }
 
 body {
-  background-color: var(--color-cloud);
+  background-color: transparent;
   color: var(--color-ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
 
 ::selection {
-  background-color: var(--color-memory-blue);
+  background-color: rgb(201 216 250 / 0.35);
+  color: var(--color-white);
 }
 
 @utility text-balance-tight {
   text-wrap: balance;
 }
 
-/* Soft pastel atmosphere — photography stays the focus. */
+/* Matte night field — flat base + quiet paper grain (no glossy glows). */
 @utility brand-atmosphere {
+  background-color: var(--color-cloud);
   background-image:
-    radial-gradient(circle at 18% 12%, rgb(201 216 250 / 0.45), transparent 42%),
-    radial-gradient(circle at 88% 6%, rgb(226 215 245 / 0.35), transparent 38%);
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0.78 0 0 0 0 0.84 0 0 0 0 0.98 0 0 0 0.045 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
+    radial-gradient(rgb(201 216 250 / 0.09) 1px, transparent 1.2px);
+  background-size: 160px 160px, 20px 20px;
+  background-repeat: repeat;
+  background-position: 0 0, 0 0;
+}
+
+/* Book leaves stay light with dark editorial type. */
+.bv-page-ink,
+.bv-soft-page,
+.bv-hard-face,
+.bv-turning__face-inner {
+  --color-ink: var(--color-page-ink);
+  --color-ink-soft: var(--color-page-ink-soft);
+  --color-ink-faint: var(--color-page-ink-faint);
+  --color-line: var(--color-page-line);
 }
 
 @keyframes ott-fade-up {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(10px);
   }
   to {
     opacity: 1;
@@ -64,7 +91,15 @@ body {
 }
 
 @utility animate-fade-up {
-  animation: ott-fade-up 0.4s ease-out both;
+  animation: ott-fade-up 0.55s ease-out both;
+}
+
+@utility animate-fade-up-delay {
+  animation: ott-fade-up 0.55s ease-out 0.08s both;
+}
+
+@utility animate-fade-up-delay-2 {
+  animation: ott-fade-up 0.55s ease-out 0.16s both;
 }
 
 @media (prefers-reduced-motion: reduce) {

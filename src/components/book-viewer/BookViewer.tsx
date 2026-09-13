@@ -23,23 +23,30 @@ import "./book-viewer.css";
 
 export function BookViewer({
   sheets,
+  coverOpen,
   onCoverOpened,
+  onRequestOpen,
   hideNav,
   footer,
   initialPage = 0,
   preferSingleFirstLeaf = true,
   maxPage,
+  requestAdvance = 0,
 }: {
   sheets: FlipSheet[];
+  coverOpen: boolean;
   onCoverOpened?: () => void;
+  onRequestOpen?: () => void;
   hideNav?: boolean;
   footer?: ReactNode;
   /** 0 = closed cover; 1 = first open leaf. */
   initialPage?: number;
-  /** Keep the first leaf’s left page blank (upload step). */
+  /** Keep open funnel pages as right-only (blank left). */
   preferSingleFirstLeaf?: boolean;
   /** Block soft forward turns past this page until the funnel unlocks more. */
   maxPage?: number;
+  /** Increment to turn forward one page (e.g. after upload summary). */
+  requestAdvance?: number;
 }) {
   const reducedMotion = usePrefersReducedMotion();
   const touchPrimary = useTouchPrimary();
@@ -58,11 +65,13 @@ export function BookViewer({
     initialPage,
     preferSingleFirstLeaf,
     maxPage,
+    requestAdvance,
+    coverOpen,
     layers: {
-      cover: coverRef,
       turningRoot: turningRootRef,
     },
     onCoverOpened,
+    onRequestOpen,
   });
 
   const nextRef = useRef(turn.nextPage);
@@ -77,14 +86,10 @@ export function BookViewer({
     if (!el) return;
 
     const update = () => {
-      // Scale against the stable right-page column so open/close never resizes it.
       const width = el.clientWidth;
       const heightBudget = Math.max(280, window.innerHeight - 180);
-      const next = Math.min(
-        1.25,
-        width / PAGE_WIDTH,
-        heightBudget / BOOK_HEIGHT,
-      );
+      const next =
+        Math.min(1.15, width / PAGE_WIDTH, heightBudget / BOOK_HEIGHT) * 0.82;
       setScale(Number.isFinite(next) && next > 0 ? next : 1);
     };
 
@@ -112,18 +117,13 @@ export function BookViewer({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const closedClip = turn.closed && !turn.coverAnimating;
+  const settledOpen = !turn.closed && !turn.coverAnimating;
 
   return (
     <div className="bv-scene">
       <div ref={viewportRef} className="bv-viewport">
-        {/*
-          Fixed right-page anchor: always centered, never moves.
-          Full book is right-aligned inside it so the cover/right page
-          stay put; the left page paints out to the left when open.
-        */}
         <div
-          className={`bv-anchor${closedClip ? " bv-anchor--closed" : " bv-anchor--open"}`}
+          className={`bv-anchor${settledOpen ? " bv-anchor--open" : " bv-anchor--closed"}`}
           style={{
             width: PAGE_WIDTH * scale,
             height: BOOK_HEIGHT * scale,
@@ -146,6 +146,7 @@ export function BookViewer({
               pageWidth={PAGE_WIDTH}
               pageHeight={PAGE_HEIGHT}
               closed={turn.closed}
+              coverOpen={coverOpen}
               singlePage={turn.singlePage}
               coverAnimating={turn.coverAnimating}
               allowForward={turn.canForward}
@@ -154,7 +155,8 @@ export function BookViewer({
               turning={turn.turning}
               hoverCorner={turn.hoverCorner}
               touchPrimary={touchPrimary}
-              onCoverActivate={turn.nextPage}
+              onCoverActivate={() => onRequestOpen?.()}
+              onCoverSettled={turn.settleCover}
               onBeginDrag={turn.beginDrag}
               onMoveDrag={turn.moveDrag}
               onEndDrag={turn.endDrag}

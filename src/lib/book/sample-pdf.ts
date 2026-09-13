@@ -1,6 +1,7 @@
 import { renderInteriorPdf } from "@/lib/book/interior-pdf";
 import type { BookMeta, BookPage, Chapter } from "@/types/book";
 import type { PhotoAsset } from "@/types/photo";
+import type { VideoMemoryPlacement } from "@/types/video-memory";
 
 const SAMPLE_PAGES = 5;
 
@@ -18,13 +19,19 @@ export async function renderSamplePdf(args: {
   chapters: Chapter[];
   meta: BookMeta;
   photos: Map<string, PhotoAsset>;
+  placements?: VideoMemoryPlacement[];
   onProgress?: (completed: number, total: number) => void;
 }): Promise<Blob> {
+  const samplePages = pickSamplePages(args.pages);
+  const sampleIds = new Set(samplePages.map((page) => page.id));
   const { bytes } = await renderInteriorPdf({
-    pages: pickSamplePages(args.pages),
+    pages: samplePages,
     chapters: args.chapters,
     meta: args.meta,
     photos: args.photos,
+    placements: (args.placements ?? []).filter((placement) =>
+      sampleIds.has(placement.pageId),
+    ),
     targetPpi: SAMPLE_PPI,
     jpegQuality: 0.72,
     watermark: SAMPLE_WATERMARK,

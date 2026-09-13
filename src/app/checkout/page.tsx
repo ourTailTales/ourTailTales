@@ -56,7 +56,11 @@ export default async function CheckoutPage({
           </Link>
           .
         </Notice>
-      ) : !order.hasPrintFiles ? (
+      ) : order.hasVideoMemories && !order.hasFrozenRevision ? (
+        <Notice title="Your book is still being prepared">
+          Head back to your book and try ordering again in a moment.
+        </Notice>
+      ) : !order.hasVideoMemories && !order.hasPrintFiles ? (
         <Notice title="Your print files are still uploading">
           Head back to your book and try ordering again in a moment.
         </Notice>

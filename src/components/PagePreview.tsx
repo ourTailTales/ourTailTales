@@ -2,8 +2,10 @@
 
 import { FIXED_SLOTS, LAYOUTS, PAGE_INCHES, TRIM_INCHES } from "@/lib/book/layouts";
 import { CLOSING_LINE, possessivePetName } from "@/lib/book/pagination";
+import { useOurTailTalesStore } from "@/store/useOurTailTalesStore";
 import type { BookMeta, BookPage, Chapter } from "@/types/book";
 import type { PhotoAsset } from "@/types/photo";
+import type { VideoAsset, VideoMemoryPlacement } from "@/types/video-memory";
 
 const TRIM_INSET_PERCENT = ((PAGE_INCHES - TRIM_INCHES) / 2 / PAGE_INCHES) * 100;
 
@@ -13,17 +15,35 @@ export function PagePreview({
   meta,
   photos,
   showTrimGuide = false,
+  placements,
+  videoAssets,
 }: {
   page: BookPage;
   chapter?: Chapter;
   meta: BookMeta;
   photos: Map<string, PhotoAsset>;
   showTrimGuide?: boolean;
+  placements?: VideoMemoryPlacement[];
+  videoAssets?: VideoAsset[];
 }) {
+  const storePlacements = useOurTailTalesStore((state) => state.placements);
+  const storeAssets = useOurTailTalesStore((state) => state.videoAssets);
+  const pagePlacements = (placements ?? storePlacements).filter(
+    (placement) => placement.pageId === page.id,
+  );
+  const assets = videoAssets ?? storeAssets;
+
   return (
     /* Container query units keep page typography proportional at any preview size. */
     <div className="@container relative aspect-square w-full overflow-hidden bg-white">
       {renderBody({ page, chapter, meta, photos })}
+      {pagePlacements.map((placement) => (
+        <VideoMemoryPlaceholder
+          key={placement.id}
+          placement={placement}
+          asset={assets.find((entry) => entry.id === placement.videoAssetId)}
+        />
+      ))}
 
       {showTrimGuide && (
         <div
@@ -227,6 +247,43 @@ function PhotoPage({
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function VideoMemoryPlaceholder({
+  placement,
+  asset,
+}: {
+  placement: VideoMemoryPlacement;
+  asset?: VideoAsset;
+}) {
+  return (
+    <div
+      className="pointer-events-none absolute flex flex-col justify-end overflow-hidden rounded-[2%] bg-memory-blue"
+      style={percentStyle({
+        x: placement.x,
+        y: placement.y,
+        w: placement.width,
+        h: placement.height,
+      })}
+    >
+      {asset?.previewUrl ? (
+        /* eslint-disable-next-line @next/next/no-img-element -- signed preview, not a remote CMS asset */
+        <img
+          src={asset.previewUrl}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover opacity-70"
+        />
+      ) : (
+        <div
+          aria-hidden
+          className="absolute inset-[12%] rounded-[4%] border border-ink/25 bg-white/70"
+        />
+      )}
+      <p className="relative px-[6%] py-[7%] text-center text-[7cqw] font-medium leading-tight text-ink">
+        Watch this memory
+      </p>
     </div>
   );
 }

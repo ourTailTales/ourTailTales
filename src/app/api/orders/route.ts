@@ -14,6 +14,7 @@ const requestSchema = z.object({
   petName: z.string().max(80).default(""),
   chapterCount: z.number().int().min(BASE_CHAPTERS).max(MAX_CHAPTERS),
   email: z.string().email().max(200).nullable().optional(),
+  draftId: z.string().uuid().optional(),
 });
 
 /**
@@ -32,7 +33,7 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
 
-    const { petName, chapterCount, email } = parsed.data;
+    const { petName, chapterCount, email, draftId } = parsed.data;
     const orderId = crypto.randomUUID();
 
     const { error } = await supabaseAdmin().from("orders").insert({
@@ -43,6 +44,7 @@ export async function POST(request: Request): Promise<Response> {
       story_pages: storyPages(chapterCount),
       total_pages: luluInteriorPages(chapterCount),
       book_price: bookPrice(chapterCount),
+      draft_id: draftId ?? null,
       status: "pending_payment",
     });
 

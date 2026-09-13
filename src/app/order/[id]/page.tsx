@@ -4,7 +4,12 @@ import type { Metadata } from "next";
 import { BrandMark } from "@/components/BrandMark";
 import { readOrder, type OrderView } from "@/lib/order/read";
 import { formatUsd } from "@/lib/pricing";
+import {
+  VIDEO_MEMORIES_PROCESSING_CUSTOMER,
+  VIDEO_MEMORIES_STUCK_CUSTOMER,
+} from "@/lib/video-memory/config";
 import type { OrderStatus } from "@/types/order";
+import type { FulfillmentStage } from "@/types/video-memory";
 
 export const metadata: Metadata = {
   title: "Your order — ourTailTales",
@@ -84,12 +89,27 @@ export default async function OrderPage({ params }: PageProps<"/order/[id]">) {
   );
 }
 
+const ARCHIVAL_STAGES = new Set<FulfillmentStage>([
+  "pending_archive",
+  "archiving",
+  "preparing_print",
+]);
+
 function OrderDetail({ order }: { order: OrderView }) {
   const currentIndex = ORDER.indexOf(order.status);
   const needsAttention =
     order.status === "needs_review" ||
     order.status === "rejected" ||
     order.status === "canceled";
+  const preparingMemories =
+    order.hasVideoMemories &&
+    order.status === "paid" &&
+    order.fulfillmentStage !== null &&
+    ARCHIVAL_STAGES.has(order.fulfillmentStage);
+  const stuckMemories =
+    needsAttention &&
+    (order.reviewReason === "video_memory_prepare_failed" ||
+      order.reviewReason === VIDEO_MEMORIES_STUCK_CUSTOMER);
 
   return (
     <>
@@ -117,15 +137,23 @@ function OrderDetail({ order }: { order: OrderView }) {
 
       {needsAttention && (
         <Callout tone="warn" title="We're looking into this order">
-          {order.reviewReason ??
-            order.luluStatusMessage ??
-            "Something needed a human to check it."}{" "}
+          {stuckMemories
+            ? VIDEO_MEMORIES_STUCK_CUSTOMER
+            : (order.reviewReason ??
+              order.luluStatusMessage ??
+              "Something needed a human to check it.")}{" "}
           We&rsquo;ll email you at {order.email ?? "your address"} — you don&rsquo;t
           need to do anything, and you won&rsquo;t be charged twice.
         </Callout>
       )}
 
-      {!needsAttention && order.status !== "pending_payment" && (
+      {preparingMemories && (
+        <Callout tone="warn" title="Preparing Video Memories">
+          {VIDEO_MEMORIES_PROCESSING_CUSTOMER}
+        </Callout>
+      )}
+
+      {!needsAttention && !preparingMemories && order.status !== "pending_payment" && (
         <ol className="mt-8 space-y-1">
           {TIMELINE.map((entry) => {
             const entryIndex = ORDER.indexOf(entry.status);
@@ -182,6 +210,12 @@ function OrderDetail({ order }: { order: OrderView }) {
 
       <dl className="mt-10 space-y-2.5 rounded-2xl border border-line bg-white p-6 text-sm shadow-lift">
         <Row label="Book" value={formatUsd(order.bookPrice)} />
+        {order.hasVideoMemories && (
+          <Row
+            label={`Video Memories × ${order.videoMemoryPackCount}`}
+            value={formatUsd(order.videoMemoryPrice)}
+          />
+        )}
         <Row
           label="Shipping"
           value={
@@ -193,7 +227,11 @@ function OrderDetail({ order }: { order: OrderView }) {
         <div className="border-t border-line pt-3" />
         <Row
           label="Total"
-          value={formatUsd(order.bookPrice + (order.shippingPrice ?? 0))}
+          value={formatUsd(
+            order.bookPrice +
+              order.videoMemoryPrice +
+              (order.shippingPrice ?? 0),
+          )}
           strong
         />
       </dl>

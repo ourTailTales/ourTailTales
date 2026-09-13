@@ -14,6 +14,7 @@ import * as assetStore from "@/lib/photo/assetStore";
 import { rasterizeForPlacement } from "@/lib/photo/pipeline";
 import type { BookMeta, BookPage, Chapter, Slot } from "@/types/book";
 import type { PhotoAsset } from "@/types/photo";
+import type { VideoMemoryPlacement } from "@/types/video-memory";
 
 const PT_PER_INCH = 72;
 const PAGE_PT = PAGE_INCHES * PT_PER_INCH; // 630pt for an 8.75in bleed page
@@ -53,6 +54,7 @@ export type InteriorRenderOptions = {
   watermark?: string;
   /** Render only the first N pages, used only for the free sample. */
   pageLimit?: number;
+  placements?: VideoMemoryPlacement[];
   onProgress?: (completed: number, total: number) => void;
 };
 
@@ -81,6 +83,7 @@ export async function renderInteriorPdf(
     jpegQuality = 0.9,
     watermark,
     pageLimit,
+    placements = [],
     onProgress,
   } = options;
 
@@ -123,6 +126,12 @@ export async function renderInteriorPdf(
       jpegQuality,
       lowResWarnings,
     });
+
+    drawVideoMemoryPlaceholders(
+      page,
+      fonts.sans,
+      placements.filter((placement) => placement.pageId === bookPage.id),
+    );
 
     if (watermark) drawWatermark(page, fonts.sans, watermark);
     onProgress?.(index + 1, selected.length);
@@ -399,6 +408,43 @@ async function drawSlotPhoto(
     context.page.drawRectangle({
       ...rect,
       color: BLANK_SLOT,
+    });
+  }
+}
+
+function drawVideoMemoryPlaceholders(
+  page: PDFPage,
+  font: PDFFont,
+  placements: VideoMemoryPlacement[],
+): void {
+  for (const placement of placements) {
+    const rect = slotRect({
+      x: placement.x,
+      y: placement.y,
+      w: placement.width,
+      h: placement.height,
+    });
+    page.drawRectangle({
+      ...rect,
+      color: brandRgb(brand.colors.memoryBlue),
+    });
+    page.drawRectangle({
+      x: rect.x + 4,
+      y: rect.y + 4,
+      width: rect.width - 8,
+      height: rect.height - 8,
+      borderColor: INK_SOFT,
+      borderWidth: 1,
+    });
+    const label = "Watch this memory";
+    const size = 7;
+    const width = font.widthOfTextAtSize(label, size);
+    page.drawText(label, {
+      x: rect.x + (rect.width - width) / 2,
+      y: rect.y + 8,
+      font,
+      size,
+      color: INK,
     });
   }
 }

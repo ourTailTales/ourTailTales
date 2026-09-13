@@ -3,6 +3,7 @@ import { renderInteriorPdf } from "@/lib/book/interior-pdf";
 import { luluInteriorPages } from "@/lib/pricing";
 import type { BookMeta, BookPage, Chapter } from "@/types/book";
 import type { PhotoAsset } from "@/types/photo";
+import type { VideoMemoryPlacement } from "@/types/video-memory";
 
 export type PreparedOrder = {
   orderId: string;
@@ -26,6 +27,9 @@ export async function prepareOrder(args: {
   chapterCount: number;
   photos: Map<string, PhotoAsset>;
   email: string | null;
+  draftId?: string | null;
+  draftSecret?: string | null;
+  placements?: VideoMemoryPlacement[];
   onStatus: (message: string) => void;
 }): Promise<PreparedOrder> {
   const totalPages = luluInteriorPages(args.chapterCount);
@@ -35,6 +39,7 @@ export async function prepareOrder(args: {
     petName: args.meta.petName,
     chapterCount: args.chapterCount,
     email: args.email,
+    draftId: args.draftId ?? undefined,
   });
 
   args.onStatus(`Laying out ${totalPages} print pages — this can take a minute…`);
@@ -43,6 +48,7 @@ export async function prepareOrder(args: {
     chapters: args.chapters,
     meta: args.meta,
     photos: args.photos,
+    placements: args.placements ?? [],
     targetPpi: 300,
     onProgress: (done, total) =>
       args.onStatus(`Rendering page ${done} of ${total} at print resolution…`),
@@ -83,6 +89,22 @@ export async function prepareOrder(args: {
     upload(uploads.cover.signedUrl, cover),
   ]);
 
+  if ((args.placements ?? []).length > 0 && args.draftSecret && args.draftId) {
+    args.onStatus("Saving your Video Memories…");
+    await postJson("/api/orders/freeze", {
+      orderId: order.orderId,
+      pages: args.pages.map((page) => ({
+        id: page.id,
+        pageNumber: page.pageNumber,
+        kind: page.kind,
+      })),
+      placements: args.placements,
+    }, {
+      "x-draft-id": args.draftId,
+      authorization: `Bearer ${args.draftSecret}`,
+    });
+  }
+
   return {
     orderId: order.orderId,
     totalPages,
@@ -103,10 +125,14 @@ async function upload(signedUrl: string, blob: Blob): Promise<void> {
   }
 }
 
-async function postJson<T>(url: string, body: unknown): Promise<T> {
+async function postJson<T>(
+  url: string,
+  body: unknown,
+  headers: Record<string, string> = {},
+): Promise<T> {
   const response = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...headers },
     body: JSON.stringify(body),
   });
 

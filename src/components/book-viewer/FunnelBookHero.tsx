@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState, type DragEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 
 import { BookViewer } from "@/components/book-viewer/BookViewer";
+import { useCoverProximity } from "@/components/book-viewer/useCoverProximity";
 import {
   BackCoverArt,
   CoverFrontArt,
@@ -29,10 +30,7 @@ type HeroPhase =
   | "configure"
   | "story";
 
-/**
- * Funnel adapter: builds FlipSheets from store state and mounts BookViewer.
- * Replaces InteractiveBookHero as the book shell.
- */
+/** Funnel adapter: builds FlipSheets from store state and mounts BookViewer. */
 export function FunnelBookHero({
   onFiles,
   onCancel,
@@ -75,9 +73,36 @@ export function FunnelBookHero({
   const lockedOpen = funnelState !== "idle" || photos.length > 0;
   const [dragOver, setDragOver] = useState(false);
   const [sceneReading, setSceneReading] = useState(false);
-  const [bookOpened, setBookOpened] = useState(lockedOpen);
+  const [clickOpen, setClickOpen] = useState(lockedOpen);
+  const [advanceTick, setAdvanceTick] = useState(0);
+  const bookRef = useRef<HTMLElement>(null);
+  const ignoreFarAwayRef = useRef(false);
 
-  const open = lockedOpen || bookOpened || dragOver;
+  const { inOpenBand, farAway } = useCoverProximity(bookRef, {
+    enabled: !lockedOpen,
+  });
+
+  useEffect(() => {
+    if (lockedOpen || !farAway || ignoreFarAwayRef.current) return;
+    setClickOpen(false);
+  }, [farAway, lockedOpen]);
+
+  useEffect(() => {
+    if (lockedOpen) return;
+    const clearIgnore = () => {
+      ignoreFarAwayRef.current = false;
+    };
+    window.addEventListener("scroll", clearIgnore, { passive: true });
+    return () => window.removeEventListener("scroll", clearIgnore);
+  }, [lockedOpen]);
+
+  const requestOpen = () => {
+    if (lockedOpen || clickOpen || inOpenBand || dragOver) return;
+    ignoreFarAwayRef.current = true;
+    setClickOpen(true);
+  };
+
+  const coverOpen = lockedOpen || clickOpen || inOpenBand || dragOver;
 
   const phase: HeroPhase = (() => {
     if (funnelState === "processing") return "processing";
@@ -91,10 +116,19 @@ export function FunnelBookHero({
     ) {
       return "story";
     }
-    return open ? "open" : "closed";
+    return coverOpen ? "open" : "closed";
   })();
 
   const acceptUploads = phase === "open" || phase === "closed";
+
+  // After upload finishes, linger on “Here’s what we found”, then flip to Meta.
+  useEffect(() => {
+    if (phase !== "album") return;
+    const timer = window.setTimeout(() => {
+      setAdvanceTick((tick) => tick + 1);
+    }, 1600);
+    return () => window.clearTimeout(timer);
+  }, [phase]);
 
   const sheets = useMemo(
     () =>
@@ -112,7 +146,7 @@ export function FunnelBookHero({
         dragOver,
         setDragOver,
         onFiles: (files) => {
-          setBookOpened(true);
+          setClickOpen(true);
           onFiles(files);
         },
         onCancel,
@@ -147,7 +181,7 @@ export function FunnelBookHero({
   const handleDragEnter = (event: DragEvent<HTMLElement>): void => {
     if (!acceptUploads) return;
     event.preventDefault();
-    setBookOpened(true);
+    setClickOpen(true);
     setDragOver(true);
   };
 
@@ -155,7 +189,7 @@ export function FunnelBookHero({
     if (!acceptUploads) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "copy";
-    setBookOpened(true);
+    setClickOpen(true);
     setDragOver(true);
   };
 
@@ -170,7 +204,7 @@ export function FunnelBookHero({
     event.preventDefault();
     event.stopPropagation();
     setDragOver(false);
-    setBookOpened(true);
+    setClickOpen(true);
     void (async () => {
       setSceneReading(true);
       try {
@@ -189,15 +223,31 @@ export function FunnelBookHero({
       funnelState === "editing" ||
       funnelState === "ai_generating");
 
+  const funnelRightOnly = phase !== "story";
+  const viewerKey =
+    phase === "closed" || phase === "open" ? "intake" : phase;
+
+  // Album: page 1 = Found, page 3 = Meta. Other funnel steps stay on page 1.
+  const maxPage =
+    phase === "story" ? undefined : phase === "album" ? 3 : 1;
+
   return (
     <section
-      className="relative"
+      id="hero-book"
+      ref={bookRef}
+      className="relative scroll-mt-10"
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <h1 className="sr-only">{meta.petName ? `${possessivePetName(meta.petName)} story` : "Their photo album becomes a book you can hold."}</h1>
+      {funnelState !== "idle" && (
+        <h1 className="sr-only">
+          {meta.petName
+            ? `${possessivePetName(meta.petName)} story`
+            : "Their photo album becomes a book you can hold."}
+        </h1>
+      )}
 
       {showStoryChrome && (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -260,14 +310,15 @@ export function FunnelBookHero({
       )}
 
       <BookViewer
+        key={viewerKey}
         sheets={sheets}
-        initialPage={lockedOpen || bookOpened ? 1 : 0}
-        preferSingleFirstLeaf={phase === "closed" || phase === "open"}
-        // Funnel steps stay on the current spread until the user finishes that step.
-        // Story pages may turn freely.
-        maxPage={phase === "story" ? undefined : 1}
-        onCoverOpened={() => setBookOpened(true)}
-        hideNav={phase === "closed" && !bookOpened}
+        coverOpen={coverOpen}
+        initialPage={coverOpen ? 1 : 0}
+        preferSingleFirstLeaf={funnelRightOnly}
+        maxPage={maxPage}
+        requestAdvance={advanceTick}
+        onRequestOpen={requestOpen}
+        hideNav={!coverOpen || (maxPage !== undefined && maxPage <= 1)}
       />
 
       {processingError && (
@@ -276,13 +327,26 @@ export function FunnelBookHero({
         </p>
       )}
 
-      {phase === "closed" && !bookOpened && (
+      {!coverOpen && (
         <p className="mt-4 text-center text-sm text-ink-faint">
-          Click the cover to open — or drop their album onto the book.
+          Click the cover to open, or drop their album onto the book.
         </p>
       )}
     </section>
   );
+}
+
+function blankLeaf(): ReactNode {
+  return <PageShell>{null}</PageShell>;
+}
+
+function rightLeaf(id: string, content: ReactNode): FlipSheet {
+  return {
+    id,
+    kind: "soft",
+    front: <PageShell>{content}</PageShell>,
+    back: blankLeaf(),
+  };
 }
 
 function buildFunnelSheets(args: {
@@ -328,22 +392,12 @@ function buildFunnelSheets(args: {
     sceneReading,
   } = args;
 
-  const { left, right } = resolveInterior(args);
-
   const sheets: FlipSheet[] = [
     {
       id: "cover",
       kind: "hard",
       front: <CoverFrontArt />,
-      // Blank endpaper — left peek stays empty in single-page view.
-      // For album/configure/processing spreads, left content lives on the cover back
-      // so page 1 reads as left|right.
-      back:
-        phase === "album" || phase === "configure" || phase === "processing" ? (
-          <PageShell>{left}</PageShell>
-        ) : (
-          <CoverInsideArt />
-        ),
+      back: <CoverInsideArt />,
     },
   ];
 
@@ -386,43 +440,72 @@ function buildFunnelSheets(args: {
         ),
       });
     }
-  } else if (phase === "album" || phase === "configure" || phase === "processing") {
-    // Page 1: left = cover.back (Found/…), right = this front (Meta/…).
-    sheets.push({
-      id: "funnel-right",
-      kind: "soft",
-      front: <PageShell>{right}</PageShell>,
-      back: (
-        <PageShell>
-          <p className="m-auto max-w-[24ch] text-center text-sm text-ink-soft">
-            Turn the page to continue their book.
-          </p>
-        </PageShell>
+  } else if (phase === "processing") {
+    sheets.push(
+      rightLeaf(
+        "processing",
+        <ProcessingPage progress={progress} onCancel={onCancel} />,
       ),
+    );
+  } else if (phase === "album") {
+    // Right-only sequence: Found → (flip) → Meta
+    sheets.push(rightLeaf("found", <FoundPage summary={summary} />));
+    sheets.push(
+      rightLeaf(
+        "meta",
+        <MetaPage
+          summary={summary}
+          meta={meta}
+          onMetaChange={setMeta}
+          onContinue={onMetaContinue}
+          onStartOver={onStartOver}
+        />,
+      ),
+    );
+  } else if (phase === "configure") {
+    const size = SizePages({
+      chapterCount,
+      maxChapters: summary.maxChapters,
+      placeablePhotos: summary.placeable,
+      onChange: setChapterCount,
+      onConfirm: onConfirmSize,
+      onBack: onBackToAlbum,
     });
+    sheets.push(
+      rightLeaf(
+        "size",
+        <div className="flex h-full min-h-0 flex-col gap-6 overflow-y-auto">
+          <div className="min-h-0 shrink-0">{size.right}</div>
+          <div className="min-h-0 border-t border-line pt-4">{size.left}</div>
+        </div>,
+      ),
+    );
   } else {
-    // Idle open: CTA + upload on the RIGHT page only; left stays empty.
-    sheets.push({
-      id: "funnel-right",
-      kind: "soft",
-      front: (
-        <PageShell>
-          <div className="flex h-full flex-col">
-            <div className="mb-4">
-              <p className="font-cover text-xl font-semibold leading-snug text-ink sm:text-2xl">
-                Drop in their album
-              </p>
-              <p className="mt-2 text-sm leading-5 text-ink-soft">
-                We&rsquo;ll find the chapters on your device — then shape a hardcover
-                you can hold.
-              </p>
-            </div>
-            <div className="min-h-0 flex-1">{right}</div>
+    sheets.push(
+      rightLeaf(
+        "upload",
+        <div className="flex h-full flex-col">
+          <div className="mb-4">
+            <p className="font-cover text-xl font-semibold leading-snug text-ink sm:text-2xl">
+              Drop in their album
+            </p>
+            <p className="mt-2 text-sm leading-5 text-ink-soft">
+              We&rsquo;ll find the chapters on your device — then shape a hardcover
+              you can hold.
+            </p>
           </div>
-        </PageShell>
+          <div className="min-h-0 flex-1">
+            <HeroUploadZone
+              onFiles={onFiles}
+              isOver={dragOver}
+              onDragState={setDragOver}
+              onInteract={() => undefined}
+              disabled={sceneReading}
+            />
+          </div>
+        </div>,
       ),
-      back: <PageShell>{null}</PageShell>,
-    });
+    );
   }
 
   sheets.push({
@@ -431,21 +514,6 @@ function buildFunnelSheets(args: {
     front: <BackCoverArt />,
     back: <div className="h-full w-full bg-memory-blue" />,
   });
-
-  void progress;
-  void summary;
-  void setMeta;
-  void setChapterCount;
-  void onMetaContinue;
-  void onConfirmSize;
-  void onBackToAlbum;
-  void onStartOver;
-  void dragOver;
-  void setDragOver;
-  void onFiles;
-  void onCancel;
-  void chapterCount;
-  void sceneReading;
 
   return sheets;
 }
@@ -458,136 +526,62 @@ function PageShell({ children }: { children: ReactNode }) {
   );
 }
 
-function resolveInterior(args: Parameters<typeof buildFunnelSheets>[0]): {
-  left: ReactNode;
-  right: ReactNode;
-} {
-  const {
-    phase,
-    progress,
-    summary,
-    meta,
-    setMeta,
-    setChapterCount,
-    onMetaContinue,
-    onConfirmSize,
-    onBackToAlbum,
-    onStartOver,
-    dragOver,
-    setDragOver,
-    onFiles,
-    onCancel,
-    chapterCount,
-    sceneReading,
-  } = args;
-
-  if (phase === "processing") {
-    return {
-      left: (
-        <div className="flex h-full flex-col justify-center p-1">
-          <p className="font-display text-xl leading-snug text-ink sm:text-2xl">
-            {processingHeadline(progress)}
-          </p>
-          <p className="mt-3 text-sm leading-5 text-ink-soft">
-            {progress.total > 0
-              ? `${progress.processed.toLocaleString()} of ${progress.total.toLocaleString()} read so far.`
-              : "A few at a time, so your browser stays responsive."}
-          </p>
-          <div
-            role="progressbar"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={
-              progress.total === 0
-                ? 0
-                : Math.min(100, Math.round((progress.processed / progress.total) * 100))
-            }
-            className="mt-5 h-1.5 overflow-hidden rounded-full bg-white/80"
-          >
-            <div
-              className="h-full rounded-full bg-periwinkle transition-[width] duration-200"
-              style={{
-                width: `${
-                  progress.total === 0
-                    ? 0
-                    : Math.min(100, Math.round((progress.processed / progress.total) * 100))
-                }%`,
-              }}
-            />
-          </div>
-        </div>
-      ),
-      right: (
-        <div className="flex h-full flex-col justify-between p-1">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-[0.16em] text-ink-faint">
-              On your device
-            </p>
-            <p className="mt-2 text-sm leading-5 text-ink-soft">
-              Originals stay local. We only read what we need to shape the chapters.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onCancel}
-            className="self-start rounded-xl border border-line px-3 py-1.5 text-xs font-medium text-ink-soft transition-colors hover:border-periwinkle hover:text-periwinkle-deep"
-          >
-            Cancel
-          </button>
-        </div>
-      ),
-    };
-  }
-
-  if (phase === "album") {
-    return {
-      left: <FoundPage summary={summary} />,
-      right: (
-        <MetaPage
-          summary={summary}
-          meta={meta}
-          onMetaChange={setMeta}
-          onContinue={onMetaContinue}
-          onStartOver={onStartOver}
-        />
-      ),
-    };
-  }
-
-  if (phase === "configure") {
-    const size = SizePages({
-      chapterCount,
-      maxChapters: summary.maxChapters,
-      placeablePhotos: summary.placeable,
-      onChange: setChapterCount,
-      onConfirm: onConfirmSize,
-      onBack: onBackToAlbum,
-    });
-    return { left: size.left, right: size.right };
-  }
-
-  return {
-    left: (
-      <div className="flex h-full flex-col justify-center p-1">
-        <p className="font-cover text-xl font-semibold leading-snug text-ink sm:text-2xl">
-          Drop in their album
+function ProcessingPage({
+  progress,
+  onCancel,
+}: {
+  progress: { processed: number; total: number; phase: string };
+  onCancel: () => void;
+}) {
+  return (
+    <div className="flex h-full flex-col justify-between p-1">
+      <div>
+        <p className="font-display text-xl leading-snug text-ink sm:text-2xl">
+          {processingHeadline(progress)}
         </p>
         <p className="mt-3 text-sm leading-5 text-ink-soft">
-          We&rsquo;ll find the chapters on your device — then shape a hardcover
-          you can hold.
+          {progress.total > 0
+            ? `${progress.processed.toLocaleString()} of ${progress.total.toLocaleString()} read so far.`
+            : "A few at a time, so your browser stays responsive."}
+        </p>
+        <div
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={
+            progress.total === 0
+              ? 0
+              : Math.min(100, Math.round((progress.processed / progress.total) * 100))
+          }
+          className="mt-5 h-1.5 overflow-hidden rounded-full bg-white/80"
+        >
+          <div
+            className="h-full rounded-full bg-periwinkle transition-[width] duration-200"
+            style={{
+              width: `${
+                progress.total === 0
+                  ? 0
+                  : Math.min(100, Math.round((progress.processed / progress.total) * 100))
+              }%`,
+            }}
+          />
+        </div>
+        <p className="mt-5 text-xs font-medium uppercase tracking-[0.16em] text-ink-faint">
+          On your device
+        </p>
+        <p className="mt-2 text-sm leading-5 text-ink-soft">
+          Originals stay local. We only read what we need to shape the chapters.
         </p>
       </div>
-    ),
-    right: (
-      <HeroUploadZone
-        onFiles={onFiles}
-        isOver={dragOver}
-        onDragState={setDragOver}
-        onInteract={() => undefined}
-        disabled={sceneReading}
-      />
-    ),
-  };
+      <button
+        type="button"
+        onClick={onCancel}
+        className="self-start rounded-xl border border-line px-3 py-1.5 text-xs font-medium text-ink-soft transition-colors hover:border-periwinkle hover:text-periwinkle-deep"
+      >
+        Cancel
+      </button>
+    </div>
+  );
 }
 
 function processingHeadline(progress: {

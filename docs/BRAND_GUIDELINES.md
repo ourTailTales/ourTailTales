@@ -139,7 +139,7 @@ CSS / Tailwind (`src/app/globals.css`) and TypeScript (`src/lib/brand.ts`):
 ## Typography
 
 Display / editorial:
-DM Serif Display
+Merienda
 
 Use for:
 - Hero headings
@@ -147,6 +147,7 @@ Use for:
 - Emotional statements
 - Book titles
 - Major section headings
+- Brand wordmark
 
 Product/UI/body:
 Inter
@@ -164,12 +165,12 @@ Use for:
 Recommended web hierarchy:
 
 H1:
-DM Serif Display
+Merienda
 48–64px desktop
 responsive down appropriately on mobile
 
 H2:
-DM Serif Display
+Merienda
 32–40px
 
 Body:

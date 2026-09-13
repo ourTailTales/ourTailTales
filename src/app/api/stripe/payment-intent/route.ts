@@ -9,6 +9,14 @@ import { bookPrice } from "@/lib/pricing";
 import { stripeClient, toMinorUnits } from "@/lib/stripe";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import type { ShippingAddress } from "@/types/order";
+import { videosEligibleForArchival } from "@/lib/archival/can-archive";
+import { estimatePermanentStorageCost } from "@/lib/archival/turbo";
+import {
+  STORAGE_UNAVAILABLE_MESSAGE,
+  VIDEO_MEMORY_MAX_STORAGE_COST_RATIO,
+} from "@/lib/video-memory/config";
+import { centsToUsd, videoMemoryQuote } from "@/lib/video-memory/pricing";
+import type { FrozenBookRevision } from "@/types/video-memory";
 
 /**
  * Locks the quote and creates the PaymentIntent.
@@ -40,6 +48,7 @@ const requestSchema = z.object({
   address: addressSchema,
   /** Required when Lulu returned an address warning or suggested correction. */
   acceptedAddressWarning: z.boolean().optional(),
+  archivalConsent: z.boolean().optional(),
 });
 
 export async function POST(request: Request): Promise<Response> {
@@ -52,14 +61,20 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
 
-    const { orderId, email, shippingLevel, address, acceptedAddressWarning } =
-      parsed.data;
+    const {
+      orderId,
+      email,
+      shippingLevel,
+      address,
+      acceptedAddressWarning,
+      archivalConsent,
+    } = parsed.data;
     const supabase = supabaseAdmin();
 
     const { data: order, error } = await supabase
       .from("orders")
       .select(
-        "id, chapter_count, total_pages, status, stripe_payment_intent_id, interior_path, cover_path, lulu_print_job_id",
+        "id, chapter_count, total_pages, status, stripe_payment_intent_id, interior_path, cover_path, frozen_interior_path, book_snapshot, lulu_print_job_id",
       )
       .eq("id", orderId)
       .maybeSingle();
@@ -74,7 +89,24 @@ export async function POST(request: Request): Promise<Response> {
         { status: 409 },
       );
     }
-    if (!order.interior_path || !order.cover_path) {
+    const revision = order.book_snapshot as FrozenBookRevision | null;
+    const placedVideos = revision ? videosEligibleForArchival(revision) : [];
+    const quote = videoMemoryQuote(placedVideos.length);
+
+    if (quote.includedUniqueVideoCount > 0) {
+      if (!order.frozen_interior_path || !order.cover_path || !revision) {
+        return Response.json(
+          { error: "Your book is still being prepared. Please try again." },
+          { status: 409 },
+        );
+      }
+      if (!archivalConsent) {
+        return Response.json(
+          { error: "Please confirm the Video Memories archival notice to continue." },
+          { status: 400 },
+        );
+      }
+    } else if (!order.interior_path || !order.cover_path) {
       return Response.json(
         { error: "Your print files are still uploading. Please try again." },
         { status: 409 },
@@ -112,7 +144,35 @@ export async function POST(request: Request): Promise<Response> {
       ) / 100;
 
     const book = bookPrice(order.chapter_count);
-    const amount = toMinorUnits(book + shippingPrice);
+    const videoMemoryPrice = centsToUsd(quote.totalCents);
+
+    let estimatedBytes = 0;
+    let estimatedStorageCost = 0;
+    if (placedVideos.length > 0) {
+      estimatedBytes = placedVideos.reduce(
+        (sum, video) => sum + video.processedBytes,
+        0,
+      );
+      try {
+        const estimate = await estimatePermanentStorageCost(estimatedBytes);
+        estimatedStorageCost = estimate.costUsd;
+      } catch {
+        return Response.json({ error: STORAGE_UNAVAILABLE_MESSAGE }, { status: 503 });
+      }
+      if (
+        videoMemoryPrice > 0 &&
+        estimatedStorageCost > videoMemoryPrice * VIDEO_MEMORY_MAX_STORAGE_COST_RATIO
+      ) {
+        console.error("[ourTailTales] storage cost safety guard", {
+          orderId,
+          estimatedStorageCost,
+          videoMemoryPrice,
+        });
+        return Response.json({ error: STORAGE_UNAVAILABLE_MESSAGE }, { status: 503 });
+      }
+    }
+
+    const amount = toMinorUnits(book + videoMemoryPrice + shippingPrice);
 
     const stripe = stripeClient();
     const paymentIntent = order.stripe_payment_intent_id
@@ -137,6 +197,18 @@ export async function POST(request: Request): Promise<Response> {
         email: email.toLowerCase().trim(),
         shipping_price: shippingPrice,
         stripe_payment_intent_id: paymentIntent.id,
+        selected_video_count: quote.includedUniqueVideoCount,
+        video_memory_pack_count: quote.packCount,
+        video_memory_pack_unit_price_cents: quote.unitPriceCents,
+        video_memory_total_cents: quote.totalCents,
+        estimated_permanent_bytes: estimatedBytes || null,
+        estimated_permanent_storage_cost: estimatedStorageCost || null,
+        estimated_video_memory_margin_cents:
+          quote.totalCents - Math.round(estimatedStorageCost * 100),
+        archival_consent_at:
+          quote.includedUniqueVideoCount > 0
+            ? new Date().toISOString()
+            : null,
       })
       .eq("id", orderId);
 
@@ -165,8 +237,9 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({
       clientSecret: paymentIntent.client_secret,
       bookPrice: book,
+      videoMemoryPrice,
       shippingPrice,
-      total: book + shippingPrice,
+      total: book + videoMemoryPrice + shippingPrice,
     });
   } catch (error) {
     return routeError(error, "Payment could not be set up.");

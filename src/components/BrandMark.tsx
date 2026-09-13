@@ -23,7 +23,7 @@ export function BrandMark({
   const { px, text } = SIZES[size];
 
   const mark = (
-    <span className="inline-flex items-center gap-2.5 text-ink">
+    <span className="inline-flex items-center gap-2.5 text-memory-blue">
       <Image
         src={brand.logo.src}
         alt={showWordmark ? "" : brand.name}

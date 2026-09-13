@@ -28,7 +28,6 @@ import type {
 } from "./types";
 
 type TurnLayers = {
-  cover: RefObject<HTMLDivElement | null>;
   turningRoot: RefObject<HTMLDivElement | null>;
 };
 
@@ -40,30 +39,38 @@ export function usePageTurn({
   initialPage = 0,
   preferSingleFirstLeaf = true,
   maxPage,
+  requestAdvance = 0,
+  coverOpen,
   layers,
   onCoverOpened,
+  onRequestOpen,
 }: {
   faces: FlipFace[];
   reducedMotion: boolean;
   pageWidth?: number;
   pageHeight?: number;
   initialPage?: number;
-  /** Keep page 1 as a centered right page with empty left peek (idle upload). */
+  /** Keep open funnel pages as right-only (blank left). */
   preferSingleFirstLeaf?: boolean;
   /**
    * Highest `currentPage` the reader may reach by turning forward.
-   * Cover open (0 → 1) is always allowed. Soft turns past this are blocked
-   * until the funnel unlocks the next step.
+   * Cover open is controlled separately via `coverOpen`.
    */
   maxPage?: number;
+  /** Increment to programmatically turn forward one soft page. */
+  requestAdvance?: number;
+  /** Controlled cover: CSS rotateY follows this; no drag / peek / replay. */
+  coverOpen: boolean;
   layers: TurnLayers;
   onCoverOpened?: () => void;
+  onRequestOpen?: () => void;
 }) {
   const [currentPage, setCurrentPage] = useState(() =>
-    initialPage > 0 ? initialPage : 0,
+    coverOpen || initialPage > 0 ? Math.max(initialPage, 1) : 0,
   );
   const [interaction, setInteraction] = useState<InteractionState>("idle");
   const [hoverCorner, setHoverCorner] = useState<Corner | null>(null);
+  const [coverAnimating, setCoverAnimating] = useState(false);
   const [turning, setTurning] = useState<{
     faceIndex: number;
     direction: TurnDirection;
@@ -75,9 +82,10 @@ export function usePageTurn({
   const interactionRef = useRef(interaction);
   const facesRef = useRef(faces);
   const maxPageRef = useRef(maxPage);
+  const coverOpenRef = useRef(coverOpen);
   const onCoverOpenedRef = useRef(onCoverOpened);
+  const onRequestOpenRef = useRef(onRequestOpen);
   const rafRef = useRef<number | null>(null);
-  const coverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const foldRef = useRef<FoldGeometry | null>(null);
   const dragRef = useRef<{
     pointerId: number;
@@ -88,6 +96,8 @@ export function usePageTurn({
     lastT: number;
     velocity: number;
   } | null>(null);
+
+  const turningLayerRef = layers.turningRoot;
 
   useEffect(() => {
     currentPageRef.current = currentPage;
@@ -102,38 +112,28 @@ export function usePageTurn({
     maxPageRef.current = maxPage;
   }, [maxPage]);
   useEffect(() => {
+    coverOpenRef.current = coverOpen;
+  }, [coverOpen]);
+  useEffect(() => {
     onCoverOpenedRef.current = onCoverOpened;
   }, [onCoverOpened]);
+  useEffect(() => {
+    onRequestOpenRef.current = onRequestOpen;
+  }, [onRequestOpen]);
 
-  const busy =
+  const turningBusy =
     interaction === "completingTurn" ||
     interaction === "cancellingTurn" ||
-    interaction === "openingCover" ||
-    interaction === "closingCover" ||
     interaction === "dragging";
-
-  const coverLayerRef = layers.cover;
-  const turningLayerRef = layers.turningRoot;
-
-  const applyCoverRotation = (deg: number, withTransition = false) => {
-    const el = coverLayerRef.current;
-    if (!el) return;
-    const duration = reducedMotion ? 160 : COVER_OPEN_MS;
-    el.style.transition = withTransition
-      ? `transform ${duration}ms cubic-bezier(0.33, 0, 0.2, 1)`
-      : "none";
-    el.style.transform = `rotateY(${deg}deg)`;
-  };
 
   const applyFoldToDom = (fold: FoldGeometry | null) => {
     foldRef.current = fold;
     const root = turningLayerRef.current;
-    if (!root || !fold) {
-      if (root) {
-        root.style.opacity = "0";
-        root.style.pointerEvents = "none";
-        root.style.transform = "none";
-      }
+    if (!root) return;
+    if (!fold) {
+      root.style.opacity = "0";
+      root.style.pointerEvents = "none";
+      root.style.transform = "none";
       return;
     }
     root.style.opacity = "1";
@@ -146,65 +146,58 @@ export function usePageTurn({
     root.style.setProperty("--fold-progress", String(fold.progress));
   };
 
-  /**
-   * Cover stays put and only hinges left (rotateY). The right-page anchor in
-   * BookViewer never moves — no book translate / frame expand.
-   */
-  const animateCover = (fromClosed: boolean, onDone: () => void) => {
-    const duration = reducedMotion ? 160 : COVER_OPEN_MS;
-    const el = coverLayerRef.current;
-
-    if (coverTimerRef.current) {
-      clearTimeout(coverTimerRef.current);
-      coverTimerRef.current = null;
-    }
-
-    setInteraction(fromClosed ? "openingCover" : "closingCover");
-
-    if (fromClosed) {
-      setCurrentPage(1);
-      applyCoverRotation(0, false);
-      if (el) void el.offsetWidth;
-      applyCoverRotation(-180, true);
-    } else {
-      applyCoverRotation(-180, false);
-      if (el) void el.offsetWidth;
-      applyCoverRotation(0, true);
-    }
-
-    coverTimerRef.current = setTimeout(() => {
-      coverTimerRef.current = null;
-      if (!fromClosed) {
-        setCurrentPage(0);
-      }
-      applyCoverRotation(fromClosed ? -180 : 0, false);
-      setInteraction("idle");
-      onDone();
-    }, duration);
+  const clearTurningAfterPaint = () => {
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = requestAnimationFrame(() => {
+        applyFoldToDom(null);
+        setTurning(null);
+        setInteraction("idle");
+      });
+    });
   };
 
-  useEffect(() => {
-    if (initialPage >= 1 && currentPageRef.current <= 0) {
-      setCurrentPage(initialPage);
-      applyCoverRotation(-180, false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount / initialPage sync only
-  }, [initialPage]);
-
-  useEffect(() => {
-    if (
-      interaction === "openingCover" ||
-      interaction === "closingCover" ||
-      interaction === "dragging" ||
-      interaction === "completingTurn" ||
-      interaction === "cancellingTurn"
-    ) {
+  const settleCover = useCallback(() => {
+    setCoverAnimating(false);
+    if (!coverOpenRef.current) {
+      setCurrentPage(0);
       return;
     }
-    applyCoverRotation(isClosed(currentPage) ? 0 : -180, false);
-    applyFoldToDom(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- DOM sync from page state
-  }, [currentPage, interaction, pageWidth]);
+    if (currentPageRef.current < 1) setCurrentPage(1);
+    onCoverOpenedRef.current?.();
+  }, []);
+
+  useEffect(() => {
+    const page = currentPageRef.current;
+    if (coverOpen) {
+      if (page >= 1) return;
+      setCurrentPage(1);
+      if (reducedMotion) {
+        setCoverAnimating(false);
+        onCoverOpenedRef.current?.();
+      } else {
+        setCoverAnimating(true);
+      }
+      return;
+    }
+
+    if (page <= 0) {
+      setCoverAnimating(false);
+      return;
+    }
+
+    if (reducedMotion) {
+      setCurrentPage(0);
+      setCoverAnimating(false);
+    } else {
+      setCoverAnimating(true);
+    }
+  }, [coverOpen, reducedMotion]);
+
+  useEffect(() => {
+    if (!coverAnimating) return;
+    const timer = window.setTimeout(settleCover, COVER_OPEN_MS + 80);
+    return () => window.clearTimeout(timer);
+  }, [coverAnimating, settleCover]);
 
   const animateSoftTurn = (
     direction: TurnDirection,
@@ -217,6 +210,7 @@ export function usePageTurn({
     const duration = reducedMotion ? 160 : SOFT_TURN_MS;
     const start = performance.now();
     const kind = facesRef.current[faceIndex]?.kind === "hard" ? "hard" : "soft";
+    const fromPage = currentPageRef.current;
 
     setTurning({ faceIndex, direction, corner, kind });
     setInteraction(complete ? "completingTurn" : "cancellingTurn");
@@ -243,39 +237,30 @@ export function usePageTurn({
 
       if (t < 1) {
         rafRef.current = requestAnimationFrame(tick);
+      } else if (complete) {
+        setCurrentPage(
+          direction === "forward"
+            ? nextPageIndex(fromPage)
+            : previousPageIndex(fromPage),
+        );
+        clearTurningAfterPaint();
       } else {
         applyFoldToDom(null);
         setTurning(null);
         setInteraction("idle");
-        if (complete) {
-          setCurrentPage((page) =>
-            direction === "forward"
-              ? nextPageIndex(page)
-              : previousPageIndex(page),
-          );
-        }
       }
     };
     rafRef.current = requestAnimationFrame(tick);
   };
 
   const nextPage = useCallback(() => {
-    if (
-      interactionRef.current === "completingTurn" ||
-      interactionRef.current === "cancellingTurn" ||
-      interactionRef.current === "openingCover" ||
-      interactionRef.current === "closingCover" ||
-      interactionRef.current === "dragging"
-    ) {
-      return;
-    }
+    if (turningBusy || coverAnimating) return;
     const page = currentPageRef.current;
-    if (!canGoForward(facesRef.current, page, maxPageRef.current)) return;
-
-    if (isClosed(page)) {
-      animateCover(true, () => onCoverOpenedRef.current?.());
+    if (isClosed(page) || !coverOpenRef.current) {
+      onRequestOpenRef.current?.();
       return;
     }
+    if (!canGoForward(facesRef.current, page, maxPageRef.current)) return;
 
     const faceIndex = page + 1;
     animateSoftTurn(
@@ -287,25 +272,25 @@ export function usePageTurn({
       true,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pageWidth, pageHeight, reducedMotion]);
+  }, [pageWidth, pageHeight, reducedMotion, coverAnimating, turningBusy]);
+
+  const requestAdvanceRef = useRef(requestAdvance);
+  useEffect(() => {
+    if (requestAdvance > requestAdvanceRef.current) {
+      requestAdvanceRef.current = requestAdvance;
+      nextPage();
+    } else {
+      requestAdvanceRef.current = requestAdvance;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestAdvance]);
 
   const previousPage = useCallback(() => {
-    if (
-      interactionRef.current === "completingTurn" ||
-      interactionRef.current === "cancellingTurn" ||
-      interactionRef.current === "openingCover" ||
-      interactionRef.current === "closingCover" ||
-      interactionRef.current === "dragging"
-    ) {
-      return;
-    }
+    if (turningBusy || coverAnimating) return;
     const page = currentPageRef.current;
+    // Cover close is scroll-driven only — never close from a page turn.
+    if (page <= 1) return;
     if (!canGoBackward(page)) return;
-
-    if (page <= 1) {
-      animateCover(false, () => setCurrentPage(0));
-      return;
-    }
 
     animateSoftTurn(
       "backward",
@@ -316,22 +301,7 @@ export function usePageTurn({
       true,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pageWidth, pageHeight, reducedMotion]);
-
-  const goToCover = useCallback(() => {
-    if (
-      interactionRef.current === "completingTurn" ||
-      interactionRef.current === "cancellingTurn" ||
-      interactionRef.current === "openingCover" ||
-      interactionRef.current === "closingCover" ||
-      interactionRef.current === "dragging"
-    ) {
-      return;
-    }
-    if (isClosed(currentPageRef.current)) return;
-    animateCover(false, () => setCurrentPage(0));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pageWidth, reducedMotion]);
+  }, [pageWidth, pageHeight, reducedMotion, coverAnimating, turningBusy]);
 
   const beginDrag = useCallback(
     (
@@ -340,20 +310,9 @@ export function usePageTurn({
       local: Point,
       target: Element,
     ) => {
-      if (
-        interactionRef.current === "completingTurn" ||
-        interactionRef.current === "cancellingTurn" ||
-        interactionRef.current === "openingCover" ||
-        interactionRef.current === "closingCover" ||
-        interactionRef.current === "dragging"
-      ) {
-        return;
-      }
+      if (turningBusy || coverAnimating) return;
       const page = currentPageRef.current;
-      if (isClosed(page)) {
-        nextPage();
-        return;
-      }
+      if (isClosed(page) || !coverOpenRef.current) return;
 
       const direction: TurnDirection =
         corner === "top-right" || corner === "bottom-right"
@@ -365,7 +324,7 @@ export function usePageTurn({
         !canGoForward(facesRef.current, page, maxPageRef.current)
       )
         return;
-      if (direction === "backward" && !canGoBackward(page)) return;
+      if (direction === "backward" && page <= 1) return;
 
       const faceIndex = direction === "forward" ? page + 1 : page;
       const kind =
@@ -400,7 +359,7 @@ export function usePageTurn({
       );
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [nextPage, pageHeight, pageWidth],
+    [pageHeight, pageWidth, coverAnimating, turningBusy],
   );
 
   const moveDrag = useCallback(
@@ -460,9 +419,7 @@ export function usePageTurn({
     if (
       interactionRef.current === "dragging" ||
       interactionRef.current === "completingTurn" ||
-      interactionRef.current === "cancellingTurn" ||
-      interactionRef.current === "openingCover" ||
-      interactionRef.current === "closingCover"
+      interactionRef.current === "cancellingTurn"
     ) {
       return;
     }
@@ -473,7 +430,6 @@ export function usePageTurn({
   useEffect(() => {
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      if (coverTimerRef.current) clearTimeout(coverTimerRef.current);
     };
   }, []);
 
@@ -482,20 +438,21 @@ export function usePageTurn({
     interaction,
     hoverCorner,
     turning,
-    busy,
+    busy: turningBusy || coverAnimating,
     foldRef,
     nextPage,
     previousPage,
-    goToCover,
     beginDrag,
     moveDrag,
     endDrag,
     setHover,
-    canForward: canGoForward(faces, currentPage, maxPage),
-    canBackward: canGoBackward(currentPage),
+    settleCover,
+    canForward: coverOpen
+      ? canGoForward(faces, currentPage, maxPage)
+      : true,
+    canBackward: currentPage > 1,
     closed: isClosed(currentPage),
     singlePage: isSinglePageView(currentPage, preferSingleFirstLeaf),
-    coverAnimating:
-      interaction === "openingCover" || interaction === "closingCover",
+    coverAnimating,
   };
 }

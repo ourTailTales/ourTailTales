@@ -29,7 +29,9 @@ export async function GET(request: Request): Promise<Response> {
     const supabase = supabaseAdmin();
     const { data: orders, error } = await supabase
       .from("orders")
-      .select("id, status, lulu_print_job_id, review_reason")
+      .select(
+        "id, status, lulu_print_job_id, review_reason, fulfillment_stage, selected_video_count",
+      )
       .in("status", [...OPEN_STATUSES])
       .order("created_at", { ascending: true })
       .limit(50);
@@ -62,6 +64,13 @@ export async function GET(request: Request): Promise<Response> {
               .is("lulu_print_job_id", null);
             updated += 1;
           } else if (order.status === "paid") {
+            const awaitingArchive =
+              Number(order.selected_video_count ?? 0) > 0 &&
+              ["pending_archive", "archiving", "preparing_print"].includes(
+                order.fulfillment_stage ?? "",
+              );
+            if (awaitingArchive) continue;
+
             // Paid but no Lulu job found — do not resubmit automatically.
             console.error(
               "[ourTailTales] Paid order missing Lulu job; needs review",

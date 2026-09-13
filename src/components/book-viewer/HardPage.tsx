@@ -7,31 +7,42 @@ export function HardPage({
   back,
   width,
   height,
+  open = false,
   style,
   className,
   coverRef,
-  onPointerDown,
+  onClick,
+  onTransitionEnd,
+  onKeyDown,
   role,
   "aria-label": ariaLabel,
+  tabIndex,
 }: {
   front: ReactNode;
   back?: ReactNode;
   width: number;
   height: number;
+  open?: boolean;
   style?: CSSProperties;
   className?: string;
   coverRef?: React.RefObject<HTMLDivElement | null>;
-  onPointerDown?: (event: React.PointerEvent) => void;
+  onClick?: (event: React.MouseEvent) => void;
+  onTransitionEnd?: (event: React.TransitionEvent) => void;
+  onKeyDown?: (event: React.KeyboardEvent) => void;
   role?: string;
   "aria-label"?: string;
+  tabIndex?: number;
 }) {
   return (
     <div
       ref={coverRef}
       role={role}
       aria-label={ariaLabel}
-      className={`bv-hard-page ${className ?? ""}`}
-      onPointerDown={onPointerDown}
+      tabIndex={tabIndex}
+      className={`bv-hard-page${open ? " bv-hard-page--open" : ""}${className ? ` ${className}` : ""}`}
+      onClick={onClick}
+      onTransitionEnd={onTransitionEnd}
+      onKeyDown={onKeyDown}
       style={{
         width,
         height,

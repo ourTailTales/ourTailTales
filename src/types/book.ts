@@ -81,9 +81,3 @@ export type BookMeta = {
   dedication: string;
   coverPhotoId: string | null;
 };
-
-export type Book = {
-  meta: BookMeta;
-  chapters: Chapter[];
-  pages: BookPage[];
-};

@@ -1,14 +1,14 @@
 import type { Metadata, Viewport } from "next";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
-import { Cormorant_Garamond, DM_Serif_Display, Inter } from "next/font/google";
+import { Cormorant_Garamond, Inter, Merienda } from "next/font/google";
 import { brand } from "@/lib/brand";
 import "./globals.css";
 
-const display = DM_Serif_Display({
+const display = Merienda({
   variable: "--font-display",
   subsets: ["latin"],
-  weight: "400",
+  weight: ["400", "700"],
 });
 
 /** Literary cover titles — distinct from UI display. */
@@ -41,17 +41,17 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: brand.colors.cloud,
-  colorScheme: "light",
+  themeColor: "#161924",
+  colorScheme: "dark",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${display.variable} ${cover.variable} ${body.variable} h-full antialiased`}
+      className={`${display.variable} ${cover.variable} ${body.variable} brand-atmosphere antialiased`}
     >
-      <body className="brand-atmosphere min-h-full flex flex-col bg-cloud text-ink">
+      <body className="min-h-dvh flex flex-col text-ink">
         {children}
         <Analytics />
         <SpeedInsights />

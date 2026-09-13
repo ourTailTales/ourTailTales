@@ -27,9 +27,7 @@ export type InteractionState =
   | "hoveringCorner"
   | "dragging"
   | "completingTurn"
-  | "cancellingTurn"
-  | "openingCover"
-  | "closingCover";
+  | "cancellingTurn";
 
 export type Point = { x: number; y: number };
 
@@ -44,10 +42,4 @@ export type FoldGeometry = {
   underShadow: string;
   corner: Corner;
   direction: TurnDirection;
-};
-
-export type BookViewerApi = {
-  nextPage: () => void;
-  previousPage: () => void;
-  goToCover: () => void;
 };

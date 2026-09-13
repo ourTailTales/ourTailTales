@@ -32,12 +32,19 @@ export function TurningPage({
       <div className="bv-turning__under-shadow" />
 
       <div className="bv-turning__front">
-        <Face content={frontFace?.content} />
+        <Face key={frontFace?.id ?? "front-empty"} content={frontFace?.content} />
+        {/* Same gutter as SoftPage so land shading matches mid-flip. */}
+        <div aria-hidden className={`bv-gutter bv-gutter--${side}`} />
         <div className="bv-turning__fold-shadow" />
       </div>
 
       <div className="bv-turning__back">
-        <Face content={backFace?.content} />
+        <Face key={backFace?.id ?? "back-empty"} content={backFace?.content} />
+        {/* Back is rotateY(180); opposite gutter keeps shade on the spine hinge. */}
+        <div
+          aria-hidden
+          className={`bv-gutter bv-gutter--${side === "right" ? "left" : "right"}`}
+        />
         <div className="bv-turning__back-shade" />
       </div>
     </div>

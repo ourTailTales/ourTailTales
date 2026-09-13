@@ -11,8 +11,7 @@ export type FunnelEvent =
   | "story_generated"
   | "sample_email_submitted"
   | "checkout_started"
-  | "payment_succeeded"
-  | "lulu_submitted";
+  | "payment_succeeded";
 
 type Props = Record<string, string | number | boolean>;
 

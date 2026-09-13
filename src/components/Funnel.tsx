@@ -6,14 +6,22 @@ import { useRouter } from "next/navigation";
 import { BrandMark } from "@/components/BrandMark";
 import { ChapterEditor } from "@/components/ChapterEditor";
 import { EmailSampleModal } from "@/components/EmailSampleModal";
+import { VideoMemoriesPanel } from "@/components/VideoMemoriesPanel";
 import { FunnelBookHero } from "@/components/book-viewer/FunnelBookHero";
 import { KeepTabBanner } from "@/components/KeepTabBanner";
+import { Footer } from "@/components/landing/Footer";
+import { HowItWorks } from "@/components/landing/HowItWorks";
+import { LandingCta } from "@/components/landing/LandingCta";
+import { LandingHero } from "@/components/landing/LandingHero";
+import { ProductMockups } from "@/components/landing/ProductMockups";
 import { track } from "@/lib/analytics";
 import { renderSamplePdf, sampleFileName } from "@/lib/book/sample-pdf";
 import { startIngestion, type Ingestion } from "@/lib/photo/process";
 import { bookSpec } from "@/lib/pricing";
 import { generateChapterStory } from "@/lib/story/client";
 import { prepareOrder } from "@/lib/order/prepare";
+import { fetchVideoLibrary } from "@/lib/video-memory/client";
+import { placedMemoriesReadyForCheckout } from "@/lib/video-memory/checkout-ready";
 import {
   photoMapOf,
   selectHasUnsavedWork,
@@ -26,6 +34,10 @@ const STORY_CONCURRENCY = 2;
 export function Funnel() {
   const router = useRouter();
   const store = useOurTailTalesStore();
+  const hydrateDraft = useOurTailTalesStore((state) => state.hydrateDraft);
+  const draftId = useOurTailTalesStore((state) => state.draftId);
+  const draftSecret = useOurTailTalesStore((state) => state.draftSecret);
+  const setVideoLibrary = useOurTailTalesStore((state) => state.setVideoLibrary);
   const hasWork = useOurTailTalesStore(selectHasUnsavedWork);
   const photos = useMemo(() => photoMapOf(store.photos), [store.photos]);
 
@@ -35,7 +47,17 @@ export function Funnel() {
 
   useEffect(() => {
     track("landing_view");
-  }, []);
+    hydrateDraft();
+  }, [hydrateDraft]);
+
+  useEffect(() => {
+    if (!draftId || !draftSecret) return;
+    void fetchVideoLibrary({ draftId, secret: draftSecret })
+      .then((library) => setVideoLibrary(library.assets, library.placements))
+      .catch(() => {
+        // Editor panel surfaces a customer message if the library cannot load.
+      });
+  }, [draftId, draftSecret, setVideoLibrary]);
 
   const handleFiles = useCallback(
     (files: File[]) => {
@@ -133,6 +155,7 @@ export function Funnel() {
       chapters: state.chapters,
       meta: state.meta,
       photos: photoMapOf(state.photos),
+      placements: state.placements,
     });
 
     downloadBlob(blob, sampleFileName(state.meta.petName));
@@ -144,6 +167,22 @@ export function Funnel() {
     const state = useOurTailTalesStore.getState();
 
     try {
+      if (
+        state.placements.length > 0 &&
+        (!state.draftId || !state.draftSecret)
+      ) {
+        throw new Error(
+          "Your Video Memories could not be saved. Please try again.",
+        );
+      }
+      if (
+        !placedMemoriesReadyForCheckout(state.placements, state.videoAssets)
+      ) {
+        throw new Error(
+          "Every placed Video Memory must be ready before checkout. Unused videos can keep preparing.",
+        );
+      }
+
       const { orderId } = await prepareOrder({
         meta: state.meta,
         chapters: state.chapters,
@@ -151,6 +190,9 @@ export function Funnel() {
         chapterCount: state.chapterCount,
         photos: photoMapOf(state.photos),
         email: state.leadEmail,
+        draftId: state.draftId,
+        draftSecret: state.draftSecret,
+        placements: state.placements,
         onStatus: (message) => state.setExporting(message),
       });
 
@@ -171,44 +213,63 @@ export function Funnel() {
   const showEditor =
     store.funnelState === "organizing" || store.funnelState === "editing";
 
+  const idle = store.funnelState === "idle";
+
+  const book = (
+    <FunnelBookHero
+      onFiles={handleFiles}
+      onCancel={() => {
+        ingestion.current?.cancel();
+        store.cancelProcessing();
+      }}
+      onStartOver={() => {
+        ingestion.current?.cancel();
+        store.reset();
+      }}
+      onMetaContinue={store.goToConfigure}
+      onConfirmSize={() => {
+        store.confirmBookSize();
+        track("book_size_confirmed", {
+          chapters: store.chapterCount,
+          price: spec.price,
+        });
+      }}
+      onBackToAlbum={() =>
+        useOurTailTalesStore.setState({ funnelState: "album_ready" })
+      }
+      onCreateStory={() => void handleCreateStory()}
+      onSample={() => setSampleOpen(true)}
+      onCheckout={() => void handleCheckout()}
+      notice={notice}
+    />
+  );
+
   return (
     <>
       <KeepTabBanner active={hasWork} />
 
-      <main className="mx-auto w-full max-w-[90rem] flex-1 px-5 pb-24 pt-10 sm:pt-16">
-        <Header />
+      <main className="w-full flex-1 pb-0">
+        <div className={`mx-auto w-full max-w-[90rem] px-5 pt-10 sm:pt-14${idle ? "" : " pb-24"}`}>
+          <Header />
+          {!idle && <div className="mt-8 sm:mt-10">{book}</div>}
+        </div>
 
-        <section className="mt-8 space-y-10 sm:mt-10">
-          <FunnelBookHero
-            onFiles={handleFiles}
-            onCancel={() => {
-              ingestion.current?.cancel();
-              store.cancelProcessing();
-            }}
-            onStartOver={() => {
-              ingestion.current?.cancel();
-              store.reset();
-            }}
-            onMetaContinue={store.goToConfigure}
-            onConfirmSize={() => {
-              store.confirmBookSize();
-              track("book_size_confirmed", {
-                chapters: store.chapterCount,
-                price: spec.price,
-              });
-            }}
-            onBackToAlbum={() =>
-              useOurTailTalesStore.setState({ funnelState: "album_ready" })
-            }
-            onCreateStory={() => void handleCreateStory()}
-            onSample={() => setSampleOpen(true)}
-            onCheckout={() => void handleCheckout()}
-            notice={notice}
-          />
+        {idle && (
+          <>
+            <div className="mt-8 sm:mt-10">
+              <LandingHero />
+            </div>
+            <section className="mx-auto max-w-[90rem] px-5 py-16 sm:py-20">
+              {book}
+            </section>
+            <HowItWorks />
+            <ProductMockups />
+            <LandingCta />
+          </>
+        )}
 
-          {store.funnelState === "idle" && <HowItWorks />}
-
-          {showEditor && (
+        {showEditor && (
+          <div className="mx-auto mt-10 w-full max-w-[90rem] px-5 pb-24">
             <ChapterEditor
               chapters={store.chapters}
               photos={photos}
@@ -219,9 +280,14 @@ export function Funnel() {
               onSetCover={store.setCoverPhoto}
               onRegenerate={(chapterId) => void runStories([chapterId])}
             />
-          )}
-        </section>
+            <div className="mt-6">
+              <VideoMemoriesPanel pages={store.pages} />
+            </div>
+          </div>
+        )}
       </main>
+
+      {idle && <Footer />}
 
       {sampleOpen && (
         <EmailSampleModal
@@ -238,39 +304,7 @@ function Header() {
   return (
     <header className="flex items-center justify-between gap-4">
       <BrandMark href="/" size="md" priority />
-      <p className="hidden text-xs font-medium tracking-wide text-ink-faint sm:block">
-        Their life, in chapters.
-      </p>
     </header>
-  );
-}
-
-function HowItWorks() {
-  const steps = [
-    {
-      title: "Drop in the album",
-      body: "Hundreds or thousands of photos. Everything is read on your device — nothing is uploaded to look through it.",
-    },
-    {
-      title: "We find the chapters",
-      body: "Dates and places become a timeline, duplicates step aside, and the best photos rise to the top.",
-    },
-    {
-      title: "Keep it forever",
-      body: "An 8.5 × 8.5 inch hardcover, printed and bound on demand, from $49.99.",
-    },
-  ];
-
-  return (
-    <div className="grid gap-6 border-t border-line pt-8 sm:grid-cols-3">
-      {steps.map((step, index) => (
-        <div key={step.title}>
-          <p className="font-display text-sm text-periwinkle">0{index + 1}</p>
-          <h2 className="mt-1.5 font-display text-lg text-ink">{step.title}</h2>
-          <p className="mt-1.5 text-sm leading-6 text-ink-soft">{step.body}</p>
-        </div>
-      ))}
-    </div>
   );
 }
 

@@ -11,7 +11,7 @@ export const LEFT_PAGE_PEEK = Math.round(PAGE_WIDTH * 0.18);
 
 export const SCENE_PERSPECTIVE = 2400;
 
-export const COVER_OPEN_MS = 900;
+export const COVER_OPEN_MS = 1720;
 export const SOFT_TURN_MS = 700;
 export const CORNER_ZONE = 72;
 export const HOVER_PEEL = 0.1;
@@ -42,16 +42,16 @@ export function singlePageFrameWidth(
 }
 
 /**
- * Turn.js-style: cover (page 0) is always a centered right page.
- * Optionally keep the first leaf after the cover in single-page mode too
- * (empty left peek + content on the right) — used for the idle upload step.
+ * Cover (page 0) is always a single right-page frame.
+ * When `preferSingleFirstLeaf` is set, every open funnel page keeps a blank
+ * left leaf — content lives on the right only.
  */
 export function isSinglePageView(
   currentPage: number,
   preferSingleFirstLeaf = true,
 ): boolean {
   if (currentPage <= 0) return true;
-  return preferSingleFirstLeaf && currentPage === 1;
+  return preferSingleFirstLeaf;
 }
 
 /** Flatten sheets into ordered faces: front then back per leaf. */

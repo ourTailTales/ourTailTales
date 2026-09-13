@@ -17,17 +17,6 @@ export type ShippingOption = {
   maxDeliveryDays?: number;
 };
 
-export type QuoteRequest = {
-  chapterCount: number;
-  address: ShippingAddress;
-};
-
-export type QuoteResponse = {
-  options: ShippingOption[];
-  addressWarning?: string;
-  suggestedAddress?: Partial<ShippingAddress>;
-};
-
 export type OrderStatus =
   | "pending_payment"
   | "paid"
@@ -38,16 +27,3 @@ export type OrderStatus =
   | "rejected"
   | "needs_review"
   | "canceled";
-
-export type OrderSummary = {
-  id: string;
-  status: OrderStatus;
-  petName: string;
-  chapterCount: number;
-  storyPages: number;
-  totalPages: number;
-  bookPrice: number;
-  shippingPrice: number;
-  luluPrintJobId: string | null;
-  createdAt: string;
-};

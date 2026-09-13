@@ -29,8 +29,17 @@
 }
 
 .bv-anchor--closed {
-  overflow: hidden;
+  overflow: visible;
   border-radius: 0 14px 14px 0;
+}
+
+.bv-anchor--closed .bv-shadow {
+  transform: scaleX(0.52);
+  opacity: 0.45;
+}
+
+.bv-anchor--closed .bv-slot--left {
+  visibility: hidden;
 }
 
 .bv-anchor--open {
@@ -53,6 +62,7 @@
 
 .bv-cover-hinge {
   transform-style: preserve-3d;
+  cursor: pointer;
 }
 
 .bv-slot {
@@ -82,6 +92,12 @@
   background: transparent;
   padding: 0;
   will-change: transform;
+  transition: transform 1720ms cubic-bezier(0.33, 0, 0.2, 1);
+}
+
+.bv-hard-page--open {
+  transform: rotateY(-180deg);
+  cursor: default;
 }
 
 .bv-hard-face {
@@ -92,6 +108,19 @@
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
   background: #c9d8fa;
+}
+
+.bv-hard-page::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 10px;
+  z-index: 3;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgb(37 42 58 / 0.14), transparent);
+  transform: translateZ(1px);
 }
 
 .bv-hard-face--back {
@@ -145,6 +174,7 @@
   bottom: 0;
   width: 18%;
   pointer-events: none;
+  transition: opacity 160ms ease-out;
 }
 
 .bv-gutter--left {
@@ -166,6 +196,18 @@
   transform: translateX(-50%);
   pointer-events: none;
   z-index: 35;
+  transition: opacity 160ms ease-out;
+}
+
+/* Interior gutter / spine shade wait until the cover has finished swinging. */
+.bv-book--cover-anim .bv-gutter,
+.bv-book--cover-anim .bv-spine {
+  opacity: 0;
+  transition: none;
+}
+
+.bv-book--cover-anim .bv-soft-page {
+  box-shadow: none;
 }
 
 .bv-spine__left,
@@ -303,9 +345,9 @@
 
 .bv-nav__btn {
   border-radius: 999px;
-  border: 1px solid #d5dceb;
-  background: #fff;
-  color: #252a3a;
+  border: 1px solid rgb(201 216 250 / 0.28);
+  background: rgb(22 25 36 / 0.85);
+  color: #c9d8fa;
   font-size: 0.875rem;
   padding: 0.45rem 1rem;
   cursor: pointer;
@@ -324,22 +366,25 @@
 .bv-shadow {
   pointer-events: none;
   position: absolute;
-  left: 10%;
-  right: 10%;
+  left: 8%;
+  right: 8%;
   bottom: -2%;
   height: 12%;
   border-radius: 100%;
-  background: rgb(37 42 58 / 0.22);
-  filter: blur(18px);
+  background: rgb(37 42 58 / 0.2);
+  filter: blur(16px);
   z-index: 0;
+  transform-origin: right center;
+  transform: scaleX(1);
+  opacity: 0.8;
+  transition:
+    transform 1720ms cubic-bezier(0.33, 0, 0.2, 1),
+    opacity 1720ms cubic-bezier(0.33, 0, 0.2, 1);
 }
 
-/* While the cover hinges, only cast the drop shadow under the right page. */
-.bv-book--cover-anim .bv-shadow {
-  left: 55%;
-  right: 8%;
-}
-
-.bv-book--cover-anim .bv-slot--left {
-  visibility: hidden;
+@media (prefers-reduced-motion: reduce) {
+  .bv-hard-page,
+  .bv-shadow {
+    transition: none;
+  }
 }

@@ -21,6 +21,7 @@ export function Book({
   pageWidth,
   pageHeight,
   closed,
+  coverOpen,
   singlePage,
   coverAnimating,
   allowForward = true,
@@ -30,6 +31,7 @@ export function Book({
   hoverCorner,
   touchPrimary,
   onCoverActivate,
+  onCoverSettled,
   onBeginDrag,
   onMoveDrag,
   onEndDrag,
@@ -40,6 +42,7 @@ export function Book({
   pageWidth: number;
   pageHeight: number;
   closed: boolean;
+  coverOpen: boolean;
   singlePage?: boolean;
   coverAnimating?: boolean;
   /** When false, right-corner peel / drag affordances are hidden. */
@@ -55,6 +58,7 @@ export function Book({
   hoverCorner: Corner | null;
   touchPrimary: boolean;
   onCoverActivate: () => void;
+  onCoverSettled: () => void;
   onBeginDrag: (
     pointerId: number,
     corner: Corner,
@@ -70,16 +74,6 @@ export function Book({
     ? (faces[0] ?? null)
     : (faces[currentPage + 1] ?? null);
 
-  // Page revealed under the flipping leaf (Turn.js stack).
-  const underRightFace =
-    turning?.direction === "forward"
-      ? (faces[turning.faceIndex + 2] ?? null)
-      : null;
-  const underLeftFace =
-    turning?.direction === "backward"
-      ? (faces[turning.faceIndex - 2] ?? null)
-      : null;
-
   const turningFront = turning ? (faces[turning.faceIndex] ?? null) : null;
   const turningBack = turning
     ? (faces[
@@ -89,6 +83,15 @@ export function Book({
       ] ?? null)
     : null;
   const turningSide = turning?.direction === "forward" ? "right" : "left";
+
+  const destinationRight =
+    turning?.direction === "forward"
+      ? (faces[turning.faceIndex + 2] ?? null)
+      : null;
+  const destinationLeft =
+    turning?.direction === "backward"
+      ? (faces[turning.faceIndex - 2] ?? null)
+      : null;
 
   const localPoint = useCallback(
     (event: ReactPointerEvent, side: "left" | "right"): Point => {
@@ -148,20 +151,23 @@ export function Book({
         } as const)
       : undefined;
 
-  // Single-page idle: blank left after the cover has finished opening.
-  // Hide it (and its gutter shadow) while the cover is hinging — nothing
-  // should paint on the left during open/close.
-  const showBlankLeft = Boolean(singlePage && !closed && !coverAnimating);
-  const hideLeft =
-    Boolean(turning) &&
-    turning?.direction === "backward" &&
-    turning.faceIndex === currentPage;
-  const hideRight =
-    Boolean(turning) &&
-    turning?.direction === "forward" &&
-    turning.faceIndex === currentPage + 1;
-
+  const showBlankLeft = Boolean(singlePage && !closed);
+  const hideRight = Boolean(turning && turning.direction === "forward");
+  const hideLeft = Boolean(turning && turning.direction === "backward");
   const coverMotion = Boolean(coverAnimating);
+  const coverInteractive = !coverOpen || coverMotion;
+
+  const visibleRightFace: FlipFace | null = closed
+    ? null
+    : hideRight
+      ? destinationRight
+      : rightFace;
+  const visibleLeftFace: FlipFace | null =
+    closed || showBlankLeft || coverMotion
+      ? null
+      : hideLeft
+        ? destinationLeft
+        : leftFace;
 
   return (
     <div
@@ -172,7 +178,6 @@ export function Book({
     >
       <div aria-hidden className="bv-shadow" />
 
-      {/* Hard cover hinged at the spine — outside clipped slots so it can swing open. */}
       {faces[0]?.kind === "hard" && (
         <div
           className="bv-cover-hinge"
@@ -182,26 +187,36 @@ export function Book({
             left: pageWidth,
             width: pageWidth,
             height: pageHeight,
-            // Stay above interior pages for the whole hinge so the cover doesn’t pop under.
-            zIndex: closed || coverAnimating ? 50 : 8,
-            pointerEvents: closed && !coverAnimating ? "auto" : "none",
+            zIndex: coverInteractive ? 50 : 8,
+            pointerEvents: coverInteractive ? "auto" : "none",
           }}
         >
           <HardPage
             coverRef={coverRef}
+            open={coverOpen}
             width={pageWidth}
             height={pageHeight}
             front={faces[0].content}
             back={faces[1]?.content}
-            role={closed ? "button" : undefined}
-            aria-label={closed ? "Open the book" : undefined}
-            onPointerDown={
-              closed
-                ? (event) => {
-                    if (event.button === 0) onCoverActivate();
-                  }
-                : undefined
-            }
+            role={coverInteractive ? "button" : undefined}
+            aria-label={coverInteractive ? "Open the book" : undefined}
+            tabIndex={closed ? 0 : undefined}
+            onClick={() => {
+              if (coverOpen) return;
+              onCoverActivate();
+            }}
+            onTransitionEnd={(event) => {
+              if (event.propertyName !== "transform") return;
+              if (event.target !== event.currentTarget) return;
+              onCoverSettled();
+            }}
+            onKeyDown={(event) => {
+              if (coverOpen) return;
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onCoverActivate();
+              }
+            }}
           />
         </div>
       )}
@@ -214,6 +229,7 @@ export function Book({
       >
         {!closed && showBlankLeft && (
           <SoftPage
+            key="blank-left"
             side="left"
             width={pageWidth}
             height={pageHeight}
@@ -222,33 +238,24 @@ export function Book({
             {null}
           </SoftPage>
         )}
-        {!closed && !coverMotion && underLeftFace && (
+        {visibleLeftFace && (
           <SoftPage
-            side="left"
-            width={pageWidth}
-            height={pageHeight}
-            style={{ zIndex: 10 }}
-          >
-            {underLeftFace.content}
-          </SoftPage>
-        )}
-        {!closed && leftFace && !showBlankLeft && !hideLeft && !coverMotion && (
-          <SoftPage
+            key={visibleLeftFace.id}
             side="left"
             width={pageWidth}
             height={pageHeight}
             style={{
-              zIndex: getPageZIndex(currentPage, currentPage, {
+              zIndex: hideLeft ? 10 : getPageZIndex(currentPage, currentPage, {
                 turning: Boolean(turning),
                 turningIndex: turning?.faceIndex,
               }),
-              ...peel("top-left"),
+              ...(!hideLeft ? peel("top-left") : undefined),
             }}
           >
-            {leftFace.content}
+            {visibleLeftFace.content}
           </SoftPage>
         )}
-        {!closed && !touchPrimary && !coverMotion && (
+        {!closed && !touchPrimary && !coverMotion && !hideLeft && currentPage > 1 && (
           <>
             <div
               className={`bv-corner-hot bv-corner-hot--tl ${hoverCorner === "top-left" ? "bv-corner-hot--peel" : ""}`}
@@ -268,34 +275,27 @@ export function Book({
         onPointerMove={handlePointerMove("right")}
         onPointerLeave={() => onHoverCorner(null)}
       >
-        {!closed && underRightFace && (
+        {visibleRightFace && (
           <SoftPage
-            side="right"
-            width={pageWidth}
-            height={pageHeight}
-            style={{ zIndex: 10 }}
-          >
-            {underRightFace.content}
-          </SoftPage>
-        )}
-        {!closed && rightFace && !hideRight && (
-          <SoftPage
+            key={visibleRightFace.id}
             side="right"
             width={pageWidth}
             height={pageHeight}
             style={{
-              zIndex: getPageZIndex(currentPage + 1, currentPage, {
-                turning: Boolean(turning),
-                turningIndex: turning?.faceIndex,
-              }),
-              ...peel("top-right"),
+              zIndex: hideRight
+                ? 10
+                : getPageZIndex(currentPage + 1, currentPage, {
+                    turning: Boolean(turning),
+                    turningIndex: turning?.faceIndex,
+                  }),
+              ...(!hideRight ? peel("top-right") : undefined),
             }}
           >
-            {rightFace.content}
+            {visibleRightFace.content}
           </SoftPage>
         )}
 
-        {!closed && !touchPrimary && allowForward && (
+        {!closed && !touchPrimary && allowForward && !hideRight && (
           <>
             <div
               className={`bv-corner-hot bv-corner-hot--tr ${hoverCorner === "top-right" ? "bv-corner-hot--peel" : ""}`}

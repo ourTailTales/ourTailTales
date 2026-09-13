@@ -45,7 +45,7 @@ export function CoverFrontArt() {
 
 export function CoverInsideArt({ children }: { children?: ReactNode }) {
   return (
-    <div className="relative h-full w-full bg-[#eef1f8]">
+    <div className="relative h-full w-full bg-[#fbfcff]">
       <div aria-hidden className="absolute inset-y-0 right-0 w-[5%] bg-ink/[0.05]" />
       {children ? (
         <div className="relative flex h-full flex-col overflow-auto p-6 sm:p-8">

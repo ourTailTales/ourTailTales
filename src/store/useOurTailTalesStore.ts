@@ -19,6 +19,8 @@ import type {
   ProcessingPhase,
   ProcessingProgressState,
 } from "@/types/photo";
+import type { VideoAsset, VideoMemoryPlacement } from "@/types/video-memory";
+import { loadStoredDraft } from "@/lib/video-memory/client";
 
 export type FunnelState =
   | "idle"
@@ -41,6 +43,11 @@ type State = {
   pages: BookPage[];
   leadEmail: string | null;
   exportMessage: string | null;
+  draftId: string | null;
+  draftSecret: string | null;
+  videoAssets: VideoAsset[];
+  placements: VideoMemoryPlacement[];
+  videoNotice: string | null;
 };
 
 type Actions = {
@@ -82,11 +89,17 @@ type Actions = {
     toIndex: number,
   ) => void;
   setCoverPhoto: (photoId: string) => void;
-  restoreDuplicates: () => void;
 
   setLeadEmail: (email: string) => void;
   setExporting: (message: string | null) => void;
   goToEditing: () => void;
+  setDraft: (draftId: string, draftSecret: string) => void;
+  setVideoLibrary: (
+    assets: VideoAsset[],
+    placements: VideoMemoryPlacement[],
+  ) => void;
+  setVideoNotice: (message: string | null) => void;
+  hydrateDraft: () => void;
   reset: () => void;
 };
 
@@ -118,6 +131,11 @@ const initialState: State = {
   pages: [],
   leadEmail: null,
   exportMessage: null,
+  draftId: null,
+  draftSecret: null,
+  videoAssets: [],
+  placements: [],
+  videoNotice: null,
 };
 
 export const useOurTailTalesStore = create<OurTailTalesStore>((set) => ({
@@ -187,7 +205,12 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set) => ({
 
   cancelProcessing: () => {
     assetStore.releaseAll();
-    set({ ...initialState });
+    const stored = loadStoredDraft();
+    set({
+      ...initialState,
+      draftId: stored?.draftId ?? null,
+      draftSecret: stored?.secret ?? null,
+    });
   },
 
   setMeta: (patch) => set((state) => ({ meta: { ...state.meta, ...patch } })),
@@ -311,14 +334,6 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set) => ({
       };
     }),
 
-  restoreDuplicates: () =>
-    set((state) => ({
-      photos: state.photos.map((photo) => ({
-        ...photo,
-        isDuplicate: false,
-      })),
-    })),
-
   setLeadEmail: (email) => set({ leadEmail: email }),
 
   setExporting: (message) =>
@@ -329,9 +344,27 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set) => ({
 
   goToEditing: () => set({ funnelState: "editing" }),
 
+  setDraft: (draftId, draftSecret) => set({ draftId, draftSecret }),
+
+  setVideoLibrary: (videoAssets, placements) =>
+    set({ videoAssets, placements }),
+
+  setVideoNotice: (videoNotice) => set({ videoNotice }),
+
+  hydrateDraft: () => {
+    const stored = loadStoredDraft();
+    if (!stored) return;
+    set({ draftId: stored.draftId, draftSecret: stored.secret });
+  },
+
   reset: () => {
     assetStore.releaseAll();
-    set({ ...initialState });
+    const stored = loadStoredDraft();
+    set({
+      ...initialState,
+      draftId: stored?.draftId ?? null,
+      draftSecret: stored?.secret ?? null,
+    });
   },
 }));
 
