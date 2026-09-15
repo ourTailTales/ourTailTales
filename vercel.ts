@@ -6,10 +6,10 @@ export const config: VercelConfig = {
     // Delete temporary print PDFs older than a week.
     { path: "/api/cron/cleanup-assets", schedule: "0 4 * * *" },
     // Catch missed Lulu PRINT_JOB_STATUS_CHANGED webhooks.
-    { path: "/api/cron/reconcile-lulu", schedule: "*/30 * * * *" },
+    { path: "/api/cron/reconcile-lulu", schedule: "0 7 * * *" },
     // Transcode uploaded Video Memories as durable jobs.
-    { path: "/api/cron/process-videos", schedule: "*/2 * * * *" },
+    { path: "/api/cron/process-videos", schedule: "0 5 * * *" },
     // Encrypt, archive, stamp QR, then send video orders to Lulu.
-    { path: "/api/cron/fulfill-orders", schedule: "* * * * *" },
+    { path: "/api/cron/fulfill-orders", schedule: "0 6 * * *" },
   ],
 };
