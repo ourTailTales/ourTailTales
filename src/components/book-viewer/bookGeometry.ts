@@ -12,9 +12,13 @@ export const LEFT_PAGE_PEEK = Math.round(PAGE_WIDTH * 0.18);
 export const SCENE_PERSPECTIVE = 2400;
 
 export const COVER_OPEN_MS = 1720;
+/** Landing hero cover spring — slow start, fast swing, diminishing bounces. */
+export const HERO_COVER_SPRING_MS = 2800;
+export const HERO_COVER_CLOSE_MS = 1200;
 export const SOFT_TURN_MS = 700;
 export const CORNER_ZONE = 72;
-export const HOVER_PEEL = 0.1;
+/** Right-page click-to-turn band left open by the upload overlay. */
+export const EDGE_PEEL_ZONE = 0.28;
 
 /**
  * Single-page view (cover / first leaf): shift so the right page sits in the
@@ -296,6 +300,7 @@ export function calculateFold({
   const transformOrigin = right ? "left center" : "right center";
 
   const shade = Math.sin(progress * Math.PI);
+  const band = clamp(progress * 100, 0, 100);
   const frontShadow = right
     ? `linear-gradient(90deg,
         rgba(37,42,58,${0.18 * shade}) 0%,
@@ -313,6 +318,19 @@ export function calculateFold({
   const underShadow = right
     ? `linear-gradient(270deg, rgba(37,42,58,${0.32 * shade}) 0%, rgba(37,42,58,${0.1 * shade}) 40%, transparent 75%)`
     : `linear-gradient(90deg, rgba(37,42,58,${0.32 * shade}) 0%, rgba(37,42,58,${0.1 * shade}) 40%, transparent 75%)`;
+  const highlight = right
+    ? `linear-gradient(270deg,
+        transparent ${Math.max(0, band - 22)}%,
+        rgba(255,255,255,${0.38 * shade}) ${band}%,
+        transparent ${Math.min(100, band + 16)}%)`
+    : `linear-gradient(90deg,
+        transparent ${Math.max(0, band - 22)}%,
+        rgba(255,255,255,${0.38 * shade}) ${band}%,
+        transparent ${Math.min(100, band + 16)}%)`;
+  const drift = 10 + progress * 28;
+  const contactShadow = right
+    ? `${-drift}px 18px 32px rgba(20, 16, 10, ${0.16 + 0.22 * shade})`
+    : `${drift}px 18px 32px rgba(20, 16, 10, ${0.16 + 0.22 * shade})`;
 
   return {
     progress,
@@ -321,6 +339,9 @@ export function calculateFold({
     frontShadow,
     backShadow,
     underShadow,
+    highlight,
+    contactShadow,
+    clipPath: "none",
     corner,
     direction,
   };
@@ -328,4 +349,15 @@ export function calculateFold({
 
 export function easeInOutCubic(t: number): number {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+/** Arrow keys must not steal focus from chapter title / story fields. */
+export function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  const tag = target.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+  return Boolean(
+    target.closest("input, textarea, select, [contenteditable='true']"),
+  );
 }

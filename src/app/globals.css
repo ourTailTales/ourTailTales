@@ -17,13 +17,18 @@
   --color-ink-faint: #c9ded7;
   --color-line: rgb(201 216 250 / 0.22);
   /* Deep night base (not beige, not flat black) */
-  --color-cloud: #161924;
+  --color-cloud: #1f2433;
+  /* Official Cloud — used for the landing band below the night hero */
+  --color-paper: #f7f8fc;
   --color-white: #ffffff;
   /* Readable ink for printed-page UIs */
   --color-page-ink: #252a3a;
   --color-page-ink-soft: #5a6070;
   --color-page-ink-faint: #8b91a0;
   --color-page-line: #d5dceb;
+  /* Book editor pastel field (banner bottom fade matches the carousel) */
+  --color-editor-field: #e4ecf8;
+  --color-carousel-field: #e2d7f5;
 
   --font-display: var(--font-display), "Merienda", ui-serif, Georgia, "Times New Roman", serif;
   --font-cover: var(--font-cover), "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
@@ -37,6 +42,7 @@
 html {
   color-scheme: dark;
   background-color: var(--color-cloud);
+  scroll-behavior: smooth;
   /* Stop rubber-band pull past the top/bottom; keep normal page scroll. */
   overscroll-behavior-y: none;
 }
@@ -66,6 +72,17 @@ body {
   background-size: 160px 160px, 20px 20px;
   background-repeat: repeat;
   background-position: 0 0, 0 0;
+}
+
+/* Light Cloud band under the night hero — remount editorial ink. */
+@utility landing-rest {
+  color-scheme: light;
+  color: var(--color-page-ink);
+  background-color: var(--color-paper);
+  --color-ink: var(--color-page-ink);
+  --color-ink-soft: var(--color-page-ink-soft);
+  --color-ink-faint: var(--color-page-ink-faint);
+  --color-line: var(--color-page-line);
 }
 
 /* Book leaves stay light with dark editorial type. */
@@ -102,6 +119,10 @@ body {
   animation: ott-fade-up 0.55s ease-out 0.16s both;
 }
 
+@utility animate-fade-up-delay-3 {
+  animation: ott-fade-up 0.55s ease-out 0.24s both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -109,4 +130,32 @@ body {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* Landing carousel — solid pastel, no grain or dots. */
+.carousel-field {
+  color-scheme: light;
+  color: var(--color-page-ink);
+  background-color: var(--color-carousel-field);
+  --color-ink: var(--color-page-ink);
+  --color-ink-soft: var(--color-page-ink-soft);
+  --color-ink-faint: var(--color-page-ink-faint);
+  --color-line: var(--color-page-line);
+}
+
+/* Light book-editor field — pastel Memory Blue wash + grain + dots. */
+.book-editor-field {
+  color-scheme: light;
+  color: var(--color-page-ink);
+  background-color: var(--color-editor-field);
+  --color-ink: var(--color-page-ink);
+  --color-ink-soft: var(--color-page-ink-soft);
+  --color-ink-faint: var(--color-page-ink-faint);
+  --color-line: var(--color-page-line);
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0.35 0 0 0 0 0.4 0 0 0 0 0.55 0 0 0 0.07 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
+    radial-gradient(rgb(91 104 200 / 0.16) 1.1px, transparent 1.35px);
+  background-size: 160px 160px, 18px 18px;
+  background-repeat: repeat;
+  background-position: 0 0, 0 0;
 }

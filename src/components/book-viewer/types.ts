@@ -40,6 +40,9 @@ export type FoldGeometry = {
   frontShadow: string;
   backShadow: string;
   underShadow: string;
+  highlight: string;
+  contactShadow: string;
+  clipPath: string;
   corner: Corner;
   direction: TurnDirection;
 };

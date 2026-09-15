@@ -2,6 +2,11 @@ import { z } from "zod";
 
 import { routeError } from "@/lib/env";
 import {
+  captureServerEvent,
+  captureServerException,
+  postHogDistinctId,
+} from "@/lib/posthog-server";
+import {
   BASE_CHAPTERS,
   MAX_CHAPTERS,
   bookPrice,
@@ -50,12 +55,23 @@ export async function POST(request: Request): Promise<Response> {
 
     if (error) throw new Error(error.message);
 
+    await captureServerEvent(postHogDistinctId(request, orderId), "order_created", {
+      chapters: chapterCount,
+      total_pages: luluInteriorPages(chapterCount),
+      book_price: bookPrice(chapterCount),
+      has_draft: Boolean(draftId),
+    });
+
     return Response.json({
       orderId,
       totalPages: luluInteriorPages(chapterCount),
       bookPrice: bookPrice(chapterCount),
     });
   } catch (error) {
+    await captureServerException(
+      error,
+      postHogDistinctId(request, "server_order_request"),
+    );
     return routeError(error, "Your order could not be started.");
   }
 }

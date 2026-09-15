@@ -1,5 +1,6 @@
 "use client";
 
+import { PageTurnLink } from "@/components/hero/HeroUploadZone";
 import type { BookMeta } from "@/types/book";
 import {
   BASE_CHAPTERS,
@@ -13,63 +14,22 @@ import type { AlbumSummary } from "@/store/useOurTailTalesStore";
 const inputClass =
   "w-full rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink outline-none transition-colors placeholder:text-ink-faint focus:border-periwinkle focus:ring-2 focus:ring-periwinkle/20";
 
-export function FoundPage({ summary }: { summary: AlbumSummary }) {
-  return (
-    <div className="flex h-full flex-col justify-center overflow-y-auto">
-      <h2 className="font-display text-xl leading-snug text-ink sm:text-2xl">
-        Here&rsquo;s what we found
-      </h2>
-
-      <dl className="mt-4 grid grid-cols-2 gap-3">
-        <Stat label="Photos read" value={summary.total.toLocaleString()} />
-        <Stat label="Ready to place" value={summary.placeable.toLocaleString()} />
-        <Stat
-          label="Years covered"
-          value={formatRange(summary.firstAt, summary.lastAt)}
-        />
-        <Stat
-          label="With location"
-          value={
-            summary.withGps > 0 ? summary.withGps.toLocaleString() : "None"
-          }
-        />
-      </dl>
-
-      <ul className="mt-4 space-y-1.5 text-xs leading-5 text-ink-soft">
-        {summary.duplicates > 0 && (
-          <li>
-            {summary.duplicates.toLocaleString()} near-duplicate
-            {summary.duplicates === 1 ? "" : "s"} set aside — best versions kept.
-          </li>
-        )}
-        {summary.weak > 0 && (
-          <li>
-            {summary.weak.toLocaleString()} too small or dark to print well.
-          </li>
-        )}
-        {summary.approximateDates && (
-          <li>Some dates are approximate.</li>
-        )}
-        {summary.withGps === 0 && (
-          <li>No location data — chapters from dates alone.</li>
-        )}
-      </ul>
-    </div>
-  );
-}
-
 export function MetaPage({
   summary,
   meta,
   onMetaChange,
   onContinue,
   onStartOver,
+  onPrev,
+  showNav = true,
 }: {
   summary: AlbumSummary;
   meta: BookMeta;
   onMetaChange: (patch: Partial<BookMeta>) => void;
   onContinue: () => void;
   onStartOver: () => void;
+  onPrev?: () => void;
+  showNav?: boolean;
 }) {
   const canContinue = meta.petName.trim().length > 0 && summary.placeable > 0;
 
@@ -145,22 +105,24 @@ export function MetaPage({
         </label>
       </div>
 
-      <div className="mt-auto flex flex-wrap items-center gap-3 pt-4">
-        <button
-          type="button"
-          onClick={onContinue}
-          disabled={!canContinue}
-          className="rounded-xl bg-periwinkle px-5 py-2.5 text-sm font-semibold text-white shadow-lift transition-colors hover:bg-periwinkle-deep disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          Continue
-        </button>
-        <button
-          type="button"
-          onClick={onStartOver}
-          className="text-xs text-ink-soft underline decoration-line underline-offset-4 hover:text-periwinkle-deep"
-        >
-          Different album
-        </button>
+      <div className="mt-auto flex items-center justify-between gap-3 pt-4">
+        {showNav ? <PageTurnLink direction="prev" onClick={onPrev} /> : <span />}
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          <button
+            type="button"
+            onClick={onStartOver}
+            className="text-xs text-ink-soft underline decoration-line underline-offset-4 hover:text-periwinkle-deep"
+          >
+            Different album
+          </button>
+          {showNav ? (
+            <PageTurnLink
+              direction="next"
+              enabled={canContinue}
+              onClick={onContinue}
+            />
+          ) : null}
+        </div>
       </div>
     </div>
   );
@@ -173,13 +135,17 @@ export function SizePages({
   onChange,
   onConfirm,
   onBack,
+  onPrev,
+  showNav = true,
 }: {
   chapterCount: number;
   maxChapters: number;
   placeablePhotos: number;
   onChange: (count: number) => void;
   onConfirm: () => void;
-  onBack: () => void;
+  onBack?: () => void;
+  onPrev?: () => void;
+  showNav?: boolean;
 }) {
   const capped = maxChapters < MAX_CHAPTERS;
   const toc = buildTableOfContents(chapterCount);
@@ -280,25 +246,62 @@ export function SizePages({
           )}
         </p>
 
-        <div className="mt-auto flex flex-wrap items-center gap-3 pt-4">
-          <button
-            type="button"
-            onClick={onConfirm}
-            className="rounded-xl bg-periwinkle px-5 py-2.5 text-sm font-semibold text-white shadow-lift transition-colors hover:bg-periwinkle-deep"
-          >
-            Continue with these chapters
-          </button>
-          <button
-            type="button"
-            onClick={onBack}
-            className="text-xs text-ink-soft underline decoration-line underline-offset-4 hover:text-periwinkle-deep"
-          >
-            Back
-          </button>
-        </div>
+        {showNav ? (
+          <div className="mt-auto flex items-center justify-between gap-3 pt-4">
+            <PageTurnLink direction="prev" onClick={onPrev ?? onBack} />
+            <button
+              type="button"
+              onClick={onConfirm}
+              className="rounded-xl bg-periwinkle px-5 py-2.5 text-sm font-semibold text-white shadow-lift transition-colors hover:bg-periwinkle-deep"
+            >
+              Continue with these chapters
+            </button>
+          </div>
+        ) : (
+          <div className="mt-auto pt-4">
+            <button
+              type="button"
+              onClick={onConfirm}
+              className="rounded-xl bg-periwinkle px-5 py-2.5 text-sm font-semibold text-white shadow-lift transition-colors hover:bg-periwinkle-deep"
+            >
+              Continue with these chapters
+            </button>
+          </div>
+        )}
       </div>
     ),
   };
+}
+
+export function SizePanel({
+  chapterCount,
+  maxChapters,
+  placeablePhotos,
+  onChange,
+  onConfirm,
+  showNav = false,
+}: {
+  chapterCount: number;
+  maxChapters: number;
+  placeablePhotos: number;
+  onChange: (count: number) => void;
+  onConfirm: () => void;
+  showNav?: boolean;
+}) {
+  const size = SizePages({
+    chapterCount,
+    maxChapters,
+    placeablePhotos,
+    onChange,
+    onConfirm,
+    showNav,
+  });
+  return (
+    <div className="grid gap-8 lg:grid-cols-2">
+      <div>{size.right}</div>
+      <div>{size.left}</div>
+    </div>
+  );
 }
 
 type TocEntry = {
@@ -333,22 +336,6 @@ function buildTableOfContents(chapterCount: number): TocEntry[] {
   );
 
   return entries;
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <dt className="text-[10px] uppercase tracking-wide text-ink-faint">{label}</dt>
-      <dd className="mt-0.5 font-display text-lg text-ink">{value}</dd>
-    </div>
-  );
-}
-
-function formatRange(firstAt: number | null, lastAt: number | null): string {
-  if (firstAt === null) return "Unknown";
-  const start = new Date(firstAt).getFullYear();
-  const end = lastAt !== null ? new Date(lastAt).getFullYear() : start;
-  return start === end ? `${start}` : `${start}–${end}`;
 }
 
 function digitsOnly(value: string): string {

@@ -5,10 +5,11 @@ import { loadStripe, type Stripe } from "@stripe/stripe-js";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
-import { track } from "@/lib/analytics";
+import { captureClientException, track } from "@/lib/analytics";
 import { brand } from "@/lib/brand";
 import { formatUsd } from "@/lib/pricing";
 import type { OrderView } from "@/lib/order/read";
+import { postHogHeaders } from "@/lib/posthog-client";
 import type { ShippingAddress, ShippingOption } from "@/types/order";
 
 type Step = "address" | "shipping" | "payment";
@@ -71,7 +72,7 @@ export function CheckoutForm({
     try {
       const response = await fetch("/api/lulu/quote", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...postHogHeaders() },
         body: JSON.stringify({
           orderId: order.id,
           email: email.trim(),
@@ -96,6 +97,7 @@ export function CheckoutForm({
       setShippingPrice(data.options?.[0]?.price ?? null);
       setStep("shipping");
     } catch (quoteError) {
+      captureClientException(quoteError);
       setError(
         quoteError instanceof Error
           ? quoteError.message
@@ -127,7 +129,7 @@ export function CheckoutForm({
     try {
       const response = await fetch("/api/stripe/payment-intent", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...postHogHeaders() },
         body: JSON.stringify({
           orderId: order.id,
           email: email.trim(),
@@ -152,6 +154,7 @@ export function CheckoutForm({
       setClientSecret(data.clientSecret);
       setStep("payment");
     } catch (paymentError) {
+      captureClientException(paymentError);
       setError(
         paymentError instanceof Error
           ? paymentError.message
@@ -522,6 +525,7 @@ function PaymentStep({ orderId, total }: { orderId: string; total: number }) {
     });
 
     if (confirmError) {
+      captureClientException(confirmError);
       setBusy(false);
       setError(confirmError.message ?? "That payment could not be completed.");
       return;

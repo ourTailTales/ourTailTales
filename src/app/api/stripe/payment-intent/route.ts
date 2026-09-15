@@ -2,6 +2,11 @@ import { z } from "zod";
 
 import { routeError } from "@/lib/env";
 import {
+  captureServerEvent,
+  captureServerException,
+  postHogDistinctId,
+} from "@/lib/posthog-server";
+import {
   calculatePrintJobCost,
   isOfferedShippingLevel,
 } from "@/lib/lulu/client";
@@ -70,6 +75,14 @@ export async function POST(request: Request): Promise<Response> {
       archivalConsent,
     } = parsed.data;
     const supabase = supabaseAdmin();
+    const distinctId = postHogDistinctId(request, orderId);
+    const sessionId = request.headers.get("x-posthog-session-id");
+    const analyticsMetadata = {
+      orderId,
+      shippingLevel,
+      posthogDistinctId: distinctId,
+      ...(sessionId ? { posthogSessionId: sessionId } : {}),
+    };
 
     const { data: order, error } = await supabase
       .from("orders")
@@ -179,7 +192,7 @@ export async function POST(request: Request): Promise<Response> {
       ? await stripe.paymentIntents.update(order.stripe_payment_intent_id, {
           amount,
           receipt_email: email,
-          metadata: { orderId, shippingLevel },
+          metadata: analyticsMetadata,
         })
       : await stripe.paymentIntents.create({
           amount,
@@ -188,7 +201,7 @@ export async function POST(request: Request): Promise<Response> {
           automatic_payment_methods: { enabled: true },
           receipt_email: email,
           description: `ourTailTales hardcover — ${order.chapter_count} chapters`,
-          metadata: { orderId, shippingLevel },
+          metadata: analyticsMetadata,
         });
 
     const { error: orderUpdateError } = await supabase
@@ -234,6 +247,15 @@ export async function POST(request: Request): Promise<Response> {
 
     if (shippingError) throw new Error(shippingError.message);
 
+    await captureServerEvent(distinctId, "payment_intent_created", {
+      total: book + videoMemoryPrice + shippingPrice,
+      book_price: book,
+      shipping_price: shippingPrice,
+      video_memory_price: videoMemoryPrice,
+      video_memory_count: quote.includedUniqueVideoCount,
+      shipping_level: shippingLevel,
+    });
+
     return Response.json({
       clientSecret: paymentIntent.client_secret,
       bookPrice: book,
@@ -242,6 +264,10 @@ export async function POST(request: Request): Promise<Response> {
       total: book + videoMemoryPrice + shippingPrice,
     });
   } catch (error) {
+    await captureServerException(
+      error,
+      postHogDistinctId(request, "server_payment_request"),
+    );
     return routeError(error, "Payment could not be set up.");
   }
 }

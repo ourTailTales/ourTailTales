@@ -1,0 +1,99 @@
+/* Display nook: recessed wall, shelf plank, fascia. Cool indigo — not beige wood. */
+
+.book-nook {
+  position: relative;
+  isolation: isolate;
+}
+
+.book-nook__wall {
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgb(18 21 32 / 0.55) 0%, rgb(28 33 48 / 0.28) 42%, rgb(32 38 56 / 0.55) 100%),
+    linear-gradient(90deg, rgb(0 0 0 / 0.28) 0%, transparent 12%, transparent 88%, rgb(0 0 0 / 0.28) 100%);
+  box-shadow:
+    inset 0 28px 48px rgb(0 0 0 / 0.22),
+    inset 0 -8px 20px rgb(0 0 0 / 0.18);
+}
+
+.book-nook__glow {
+  pointer-events: none;
+  position: absolute;
+  left: 50%;
+  top: 18%;
+  z-index: 0;
+  width: min(72%, 40rem);
+  height: 70%;
+  transform: translateX(-50%);
+  background: radial-gradient(
+    ellipse at 50% 40%,
+    rgb(201 216 250 / 0.28) 0%,
+    rgb(91 104 200 / 0.12) 42%,
+    transparent 72%
+  );
+}
+
+.book-nook__alcove {
+  position: relative;
+  z-index: 1;
+  margin-inline: auto;
+  max-width: 90rem;
+  padding: 1.5rem 1.25rem 0;
+}
+
+@media (min-width: 640px) {
+  .book-nook__alcove {
+    padding: 2.25rem 1.25rem 0;
+  }
+}
+
+.book-nook__alcove .bv-scene {
+  padding-top: 0.5rem;
+  padding-bottom: 0.35rem;
+}
+
+.book-nook__shelf {
+  position: relative;
+  z-index: 2;
+}
+
+.book-nook__plank {
+  position: relative;
+  height: 1.15rem;
+  background:
+    linear-gradient(
+      180deg,
+      rgb(226 215 245 / 0.42) 0%,
+      rgb(201 216 250 / 0.28) 28%,
+      rgb(61 70 102 / 0.95) 72%,
+      rgb(38 44 64 / 1) 100%
+    );
+  box-shadow:
+    0 1px 0 rgb(201 216 250 / 0.35),
+    0 14px 28px rgb(0 0 0 / 0.38);
+}
+
+.book-nook__plank::after {
+  content: "";
+  position: absolute;
+  inset: auto 8% -0.55rem;
+  height: 0.7rem;
+  border-radius: 100%;
+  background: rgb(0 0 0 / 0.35);
+  filter: blur(10px);
+}
+
+.book-nook__fascia {
+  background:
+    linear-gradient(180deg, rgb(38 44 64 / 1) 0%, rgb(30 35 50 / 1) 100%);
+  border-top: 1px solid rgb(201 216 250 / 0.08);
+  box-shadow: inset 0 12px 24px rgb(0 0 0 / 0.18);
+}
+
+.book-nook--compact .book-nook__plank {
+  height: 0.85rem;
+}
+
+.book-nook--compact .book-nook__alcove {
+  padding-top: 1rem;
+}

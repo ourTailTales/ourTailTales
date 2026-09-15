@@ -2,11 +2,12 @@
 
 import {
   useCallback,
+  useRef,
   type PointerEvent as ReactPointerEvent,
   type RefObject,
 } from "react";
 
-import { HOVER_PEEL, getPageZIndex, hitTestCorner } from "./bookGeometry";
+import { getPageZIndex, hitTestCorner } from "./bookGeometry";
 import { HardPage } from "./HardPage";
 import { SoftPage } from "./SoftPage";
 import { Spine } from "./Spine";
@@ -14,6 +15,16 @@ import { TurningPage } from "./TurningPage";
 import type { Corner, FlipFace } from "./types";
 
 type Point = { x: number; y: number };
+
+function isInteractiveTarget(target: EventTarget | null): boolean {
+  return target instanceof Element
+    ? Boolean(
+        target.closest(
+          "button, a, input, textarea, select, label, [role='button'], [data-bv-interactive]",
+        ),
+      )
+    : false;
+}
 
 export function Book({
   faces,
@@ -36,6 +47,11 @@ export function Book({
   onMoveDrag,
   onEndDrag,
   onHoverCorner,
+  clickToTurn = false,
+  coverBoardLeft = false,
+  onActivateSide,
+  onBookHoverChange,
+  lockCover = false,
 }: {
   faces: FlipFace[];
   currentPage: number;
@@ -68,6 +84,14 @@ export function Book({
   onMoveDrag: (pointerId: number, local: Point) => void;
   onEndDrag: (pointerId: number) => void;
   onHoverCorner: (corner: Corner | null) => void;
+  /** Preview: tap/click a page body to turn. Funnel leaves this off. */
+  clickToTurn?: boolean;
+  /** Skip the flat blank left leaf — the hard cover back is the left board. */
+  coverBoardLeft?: boolean;
+  onActivateSide?: (side: "left" | "right") => void;
+  onBookHoverChange?: (hovering: boolean) => void;
+  /** Closed companion: cover is display-only. */
+  lockCover?: boolean;
 }) {
   const leftFace = closed ? null : (faces[currentPage] ?? null);
   const rightFace = closed
@@ -138,24 +162,26 @@ export function Book({
       }
     };
 
-  const peel = (match: Corner) =>
-    !touchPrimary && hoverCorner === match
-      ? ({
-          transform:
-            match.includes("right")
-              ? `perspective(800px) rotateY(${-HOVER_PEEL * 40}deg)`
-              : `perspective(800px) rotateY(${HOVER_PEEL * 40}deg)`,
-          transformOrigin: match.includes("right")
-            ? "left center"
-            : "right center",
-        } as const)
-      : undefined;
+  const pressRef = useRef<{
+    pointerId: number;
+    side: "left" | "right";
+    x: number;
+    y: number;
+  } | null>(null);
 
-  const showBlankLeft = Boolean(singlePage && !closed);
+  const handleBookHoverIn = () => onBookHoverChange?.(true);
+  const handleBookHoverOut = (event: ReactPointerEvent<HTMLElement>) => {
+    const next = event.relatedTarget;
+    const book = event.currentTarget.closest(".bv-book");
+    if (next instanceof Node && book?.contains(next)) return;
+    onBookHoverChange?.(false);
+  };
+
+  const showBlankLeft = Boolean(singlePage && !closed && !coverBoardLeft);
   const hideRight = Boolean(turning && turning.direction === "forward");
   const hideLeft = Boolean(turning && turning.direction === "backward");
   const coverMotion = Boolean(coverAnimating);
-  const coverInteractive = !coverOpen || coverMotion;
+  const coverInteractive = !lockCover && (!coverOpen || coverMotion);
 
   const visibleRightFace: FlipFace | null = closed
     ? null
@@ -171,8 +197,10 @@ export function Book({
 
   return (
     <div
-      className={`bv-book${coverMotion ? " bv-book--cover-anim" : ""}`}
+      className={`bv-book${coverMotion ? " bv-book--cover-anim" : ""}${coverBoardLeft ? " bv-book--cover-board-left" : ""}${clickToTurn ? " bv-book--preview" : ""}${turning ? " bv-book--turning" : ""}`}
       style={{ width: pageWidth * 2, height: pageHeight }}
+      onPointerEnter={handleBookHoverIn}
+      onPointerLeave={handleBookHoverOut}
       onPointerUp={(event) => onEndDrag(event.pointerId)}
       onPointerCancel={(event) => onEndDrag(event.pointerId)}
     >
@@ -187,9 +215,11 @@ export function Book({
             left: pageWidth,
             width: pageWidth,
             height: pageHeight,
-            zIndex: coverInteractive ? 50 : 8,
+            zIndex: turning ? 1 : coverInteractive ? 50 : 8,
             pointerEvents: coverInteractive ? "auto" : "none",
           }}
+          onPointerEnter={handleBookHoverIn}
+          onPointerLeave={handleBookHoverOut}
         >
           <HardPage
             coverRef={coverRef}
@@ -197,7 +227,7 @@ export function Book({
             width={pageWidth}
             height={pageHeight}
             front={faces[0].content}
-            back={faces[1]?.content}
+            back={undefined}
             role={coverInteractive ? "button" : undefined}
             aria-label={coverInteractive ? "Open the book" : undefined}
             tabIndex={closed ? 0 : undefined}
@@ -207,6 +237,11 @@ export function Book({
             }}
             onTransitionEnd={(event) => {
               if (event.propertyName !== "transform") return;
+              if (event.target !== event.currentTarget) return;
+              onCoverSettled();
+            }}
+            onAnimationEnd={(event) => {
+              if (event.animationName !== "bv-cover-spring-open") return;
               if (event.target !== event.currentTarget) return;
               onCoverSettled();
             }}
@@ -224,10 +259,36 @@ export function Book({
       <div
         className="bv-slot bv-slot--left"
         style={{ width: pageWidth }}
+        onPointerDown={(event) => {
+          if (!clickToTurn || closed || coverMotion) return;
+          pressRef.current = {
+            pointerId: event.pointerId,
+            side: "left",
+            x: event.clientX,
+            y: event.clientY,
+          };
+        }}
+        onPointerUp={(event) => {
+          const press = pressRef.current;
+          pressRef.current = null;
+          if (!clickToTurn || !press || press.pointerId !== event.pointerId) return;
+          if (press.side !== "left") return;
+          if (isInteractiveTarget(event.target)) return;
+          const distance = Math.hypot(
+            event.clientX - press.x,
+            event.clientY - press.y,
+          );
+          if (distance > 14) return;
+          onActivateSide?.("left");
+        }}
+        onPointerEnter={handleBookHoverIn}
         onPointerMove={handlePointerMove("left")}
-        onPointerLeave={() => onHoverCorner(null)}
+        onPointerLeave={(event) => {
+          onHoverCorner(null);
+          handleBookHoverOut(event);
+        }}
       >
-        {!closed && showBlankLeft && (
+        {!closed && showBlankLeft && !coverMotion && (
           <SoftPage
             key="blank-left"
             side="left"
@@ -245,17 +306,18 @@ export function Book({
             width={pageWidth}
             height={pageHeight}
             style={{
-              zIndex: hideLeft ? 10 : getPageZIndex(currentPage, currentPage, {
-                turning: Boolean(turning),
-                turningIndex: turning?.faceIndex,
-              }),
-              ...(!hideLeft ? peel("top-left") : undefined),
+              zIndex: hideLeft
+                ? 30
+                : getPageZIndex(currentPage, currentPage, {
+                    turning: Boolean(turning),
+                    turningIndex: turning?.faceIndex,
+                  }),
             }}
           >
             {visibleLeftFace.content}
           </SoftPage>
         )}
-        {!closed && !touchPrimary && !coverMotion && !hideLeft && currentPage > 1 && (
+        {!closed && !coverMotion && !hideLeft && (currentPage > 1 || clickToTurn) && (
           <>
             <div
               className={`bv-corner-hot bv-corner-hot--tl ${hoverCorner === "top-left" ? "bv-corner-hot--peel" : ""}`}
@@ -272,8 +334,34 @@ export function Book({
       <div
         className="bv-slot bv-slot--right"
         style={{ width: pageWidth }}
+        onPointerDown={(event) => {
+          if (!clickToTurn || closed || coverMotion) return;
+          pressRef.current = {
+            pointerId: event.pointerId,
+            side: "right",
+            x: event.clientX,
+            y: event.clientY,
+          };
+        }}
+        onPointerUp={(event) => {
+          const press = pressRef.current;
+          pressRef.current = null;
+          if (!clickToTurn || !press || press.pointerId !== event.pointerId) return;
+          if (press.side !== "right") return;
+          if (isInteractiveTarget(event.target)) return;
+          const distance = Math.hypot(
+            event.clientX - press.x,
+            event.clientY - press.y,
+          );
+          if (distance > 14) return;
+          onActivateSide?.("right");
+        }}
+        onPointerEnter={handleBookHoverIn}
         onPointerMove={handlePointerMove("right")}
-        onPointerLeave={() => onHoverCorner(null)}
+        onPointerLeave={(event) => {
+          onHoverCorner(null);
+          handleBookHoverOut(event);
+        }}
       >
         {visibleRightFace && (
           <SoftPage
@@ -283,19 +371,18 @@ export function Book({
             height={pageHeight}
             style={{
               zIndex: hideRight
-                ? 10
+                ? 30
                 : getPageZIndex(currentPage + 1, currentPage, {
                     turning: Boolean(turning),
                     turningIndex: turning?.faceIndex,
                   }),
-              ...(!hideRight ? peel("top-right") : undefined),
             }}
           >
             {visibleRightFace.content}
           </SoftPage>
         )}
 
-        {!closed && !touchPrimary && allowForward && !hideRight && (
+        {!closed && allowForward && !hideRight && (
           <>
             <div
               className={`bv-corner-hot bv-corner-hot--tr ${hoverCorner === "top-right" ? "bv-corner-hot--peel" : ""}`}
@@ -309,7 +396,12 @@ export function Book({
         )}
       </div>
 
-      <Spine openProgress={closed || coverMotion ? 0 : 1} />
+      <Spine
+        openProgress={coverBoardLeft ? 1 : closed || coverMotion ? 0 : 1}
+        gapFill={coverBoardLeft}
+        hingeLeft={pageWidth}
+        height={pageHeight}
+      />
 
       <TurningPage
         rootRef={turningRootRef}

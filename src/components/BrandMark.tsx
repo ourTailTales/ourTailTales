@@ -14,16 +14,20 @@ export function BrandMark({
   size = "md",
   showWordmark = true,
   priority = false,
+  className,
 }: {
   href?: string | null;
   size?: keyof typeof SIZES;
   showWordmark?: boolean;
   priority?: boolean;
+  className?: string;
 }) {
   const { px, text } = SIZES[size];
 
   const mark = (
-    <span className="inline-flex items-center gap-2.5 text-memory-blue">
+    <span
+      className={`inline-flex items-center gap-2.5 ${className ?? "text-memory-blue"}`}
+    >
       <Image
         src={brand.logo.src}
         alt={showWordmark ? "" : brand.name}

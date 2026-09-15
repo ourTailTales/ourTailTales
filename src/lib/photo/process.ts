@@ -183,9 +183,31 @@ function post(worker: Worker, message: WorkerRequest): void {
 }
 
 const IMAGE_PATTERN = /\.(jpe?g|png|webp|gif|bmp|tiff?|heic|heif|avif)$/i;
+const VIDEO_PATTERN = /\.(mp4|m4v|mov|webm|avi|mkv|3gp)$/i;
 
 export function isLikelyImage(file: File): boolean {
   return file.type.startsWith("image/") || IMAGE_PATTERN.test(file.name);
+}
+
+export function isLikelyVideo(file: File): boolean {
+  return file.type.startsWith("video/") || VIDEO_PATTERN.test(file.name);
+}
+
+export function isLikelyMedia(file: File): boolean {
+  return isLikelyImage(file) || isLikelyVideo(file);
+}
+
+export function partitionMedia(files: File[]): {
+  images: File[];
+  videos: File[];
+} {
+  const images: File[] = [];
+  const videos: File[] = [];
+  for (const file of files) {
+    if (isLikelyImage(file)) images.push(file);
+    else if (isLikelyVideo(file)) videos.push(file);
+  }
+  return { images, videos };
 }
 
 /**
@@ -200,14 +222,14 @@ export async function filesFromDataTransfer(
     .map((item) => item.webkitGetAsEntry?.() ?? null);
 
   if (entries.every((entry) => entry === null)) {
-    return Array.from(transfer.files).filter(isLikelyImage);
+    return Array.from(transfer.files).filter(isLikelyMedia);
   }
 
   const collected: File[] = [];
   for (const entry of entries) {
     if (entry) await walkEntry(entry, collected);
   }
-  return collected.filter(isLikelyImage);
+  return collected.filter(isLikelyMedia);
 }
 
 async function walkEntry(

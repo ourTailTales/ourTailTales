@@ -1,5 +1,6 @@
 import { renderCoverPdf } from "@/lib/book/cover-pdf";
 import { renderInteriorPdf } from "@/lib/book/interior-pdf";
+import { postHogHeaders } from "@/lib/posthog-client";
 import { luluInteriorPages } from "@/lib/pricing";
 import type { BookMeta, BookPage, Chapter } from "@/types/book";
 import type { PhotoAsset } from "@/types/photo";
@@ -132,7 +133,11 @@ async function postJson<T>(
 ): Promise<T> {
   const response = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...headers },
+    headers: {
+      "Content-Type": "application/json",
+      ...postHogHeaders(),
+      ...headers,
+    },
     body: JSON.stringify(body),
   });
 

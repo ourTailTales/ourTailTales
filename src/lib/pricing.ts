@@ -5,7 +5,7 @@
  * chosen chapter count only.
  */
 
-export const BASE_CHAPTERS = 2;
+export const BASE_CHAPTERS = 10;
 export const BASE_PRICE = 49.99;
 export const PRICE_PER_EXTRA_CHAPTER = 10;
 export const STORY_PAGES_PER_CHAPTER = 10;
@@ -13,20 +13,34 @@ export const STORY_PAGES_PER_CHAPTER = 10;
 /** Title, dedication, closing, imprint. Included at no extra charge. */
 export const FIXED_INTERIOR_PAGES = 4;
 
-/** Raise after physical-sample testing. 12 => 120 story / 124 Lulu pages. */
-export const MAX_CHAPTERS = 12;
+/** Cap after physical-sample testing. 50 => 500 story / 504 Lulu pages. */
+export const MAX_CHAPTERS = 50;
 
-export const PHOTOS_PER_CHAPTER_TARGET = { min: 20, max: 30 } as const;
+/**
+ * Comfortable density per chapter. A full book at this density lands around
+ * 250 photos for 10 chapters, up to about 1,250 at the max length.
+ */
+export const PHOTOS_PER_CHAPTER_TARGET = { min: 20, max: 25 } as const;
+
+/** Photos that fill a max-length book at the target density. */
+export const PHOTOS_FOR_MAX_BOOK = MAX_CHAPTERS * PHOTOS_PER_CHAPTER_TARGET.max;
 
 /**
  * Floor before a chapter reads as empty or repetitive. Chapters may be
- * sparser than the 20-30 target, but not thinner than this: one hero image for
+ * sparser than the 20–25 target, but not thinner than this: one hero image for
  * the opener plus at least one photo for each of the 9 photo pages, so no page
  * is padded with a repeated image.
  */
 export const MIN_PHOTOS_PER_CHAPTER = 10;
 
-export const RECOMMENDED_CHAPTERS = 4;
+/**
+ * Smallest sellable album: 10 chapters at the target density.
+ * Photos and videos both count toward this gate.
+ */
+export const MIN_PHOTOS_FOR_BOOK =
+  BASE_CHAPTERS * PHOTOS_PER_CHAPTER_TARGET.min;
+
+export const RECOMMENDED_CHAPTERS = 10;
 
 export function bookPrice(chapterCount: number): number {
   const extra = Math.max(0, chapterCount - BASE_CHAPTERS);
@@ -66,7 +80,7 @@ export function bookSpec(chapterCount: number): BookSpec {
 
 /**
  * Highest chapter count this album can fill without inventing empty or
- * repetitive chapters. The base 2-chapter book is always offered, since it is
+ * repetitive chapters. The base 10-chapter book is always offered, since it is
  * the minimum sellable product.
  */
 export function maxSupportedChapters(usablePhotoCount: number): number {
@@ -75,7 +89,7 @@ export function maxSupportedChapters(usablePhotoCount: number): number {
 }
 
 /**
- * Default slider position: 4 chapters when the album supports it.
+ * Default slider position: 10 chapters when the album supports it.
  *
  * `MIN_PHOTOS_PER_CHAPTER` is the hard floor that keeps pages from being
  * padded; this is the softer density below which a chapter reads as thin, so a
@@ -88,7 +102,11 @@ export function recommendedChapters(usablePhotoCount: number): number {
   const comfortable = Math.floor(
     usablePhotoCount / COMFORTABLE_PHOTOS_PER_CHAPTER,
   );
-  return clamp(Math.min(RECOMMENDED_CHAPTERS, comfortable), BASE_CHAPTERS, supported);
+  return clamp(
+    Math.min(RECOMMENDED_CHAPTERS, comfortable),
+    BASE_CHAPTERS,
+    supported,
+  );
 }
 
 export function formatUsd(amount: number): string {

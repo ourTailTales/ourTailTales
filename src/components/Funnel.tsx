@@ -1,26 +1,33 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { BrandMark } from "@/components/BrandMark";
-import { ChapterEditor } from "@/components/ChapterEditor";
 import { EmailSampleModal } from "@/components/EmailSampleModal";
-import { VideoMemoriesPanel } from "@/components/VideoMemoriesPanel";
-import { FunnelBookHero } from "@/components/book-viewer/FunnelBookHero";
+import { BookPreviewDialog } from "@/components/book-viewer/BookPreviewDialog";
+import { BookEditor } from "@/components/editor/BookEditor";
 import { KeepTabBanner } from "@/components/KeepTabBanner";
+import { Faq } from "@/components/landing/Faq";
 import { Footer } from "@/components/landing/Footer";
-import { HowItWorks } from "@/components/landing/HowItWorks";
 import { LandingCta } from "@/components/landing/LandingCta";
 import { LandingHero } from "@/components/landing/LandingHero";
-import { ProductMockups } from "@/components/landing/ProductMockups";
-import { track } from "@/lib/analytics";
+import { ProductListing } from "@/components/landing/ProductListing";
+import { captureClientException, identifyLead, track } from "@/lib/analytics";
 import { renderSamplePdf, sampleFileName } from "@/lib/book/sample-pdf";
-import { startIngestion, type Ingestion } from "@/lib/photo/process";
-import { bookSpec } from "@/lib/pricing";
+import {
+  partitionMedia,
+  startIngestion,
+  type Ingestion,
+} from "@/lib/photo/process";
+import { makeVideoPreview } from "@/lib/photo/videoPreview";
 import { generateChapterStory } from "@/lib/story/client";
 import { prepareOrder } from "@/lib/order/prepare";
-import { fetchVideoLibrary } from "@/lib/video-memory/client";
+import {
+  fetchVideoLibrary,
+  readVideoDurationMs,
+  uploadVideoMemory,
+} from "@/lib/video-memory/client";
 import { placedMemoriesReadyForCheckout } from "@/lib/video-memory/checkout-ready";
 import {
   photoMapOf,
@@ -39,10 +46,10 @@ export function Funnel() {
   const draftSecret = useOurTailTalesStore((state) => state.draftSecret);
   const setVideoLibrary = useOurTailTalesStore((state) => state.setVideoLibrary);
   const hasWork = useOurTailTalesStore(selectHasUnsavedWork);
-  const photos = useMemo(() => photoMapOf(store.photos), [store.photos]);
 
   const ingestion = useRef<Ingestion | null>(null);
   const [sampleOpen, setSampleOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
@@ -61,19 +68,70 @@ export function Funnel() {
 
   const handleFiles = useCallback(
     (files: File[]) => {
-      store.startProcessing(files.length);
-      track("album_selected", { count: files.length });
+      const { images, videos } = partitionMedia(files);
+      if (images.length === 0 && videos.length === 0) return;
 
-      ingestion.current = startIngestion(files, {
-        onBatch: (batch) => store.addProcessedPhotos(batch),
-        onFailures: (count) => store.noteFailures(count),
-        onDone: () => {
-          store.setProgressPhase("deduplicating");
-          store.finishProcessing();
-          track("processing_complete", { count: files.length });
-        },
-        onError: (message) => store.failProcessing(message),
-      });
+      track("album_selected", { count: images.length + videos.length });
+
+      if (images.length > 0) {
+        store.startProcessing(images.length);
+        ingestion.current = startIngestion(images, {
+          onBatch: (batch) => store.addProcessedPhotos(batch),
+          onFailures: (count) => store.noteFailures(count),
+          onDone: () => {
+            store.setProgressPhase("deduplicating");
+            store.finishProcessing();
+            track("processing_complete", { count: images.length });
+          },
+          onError: (message) => store.failProcessing(message),
+        });
+      }
+
+      if (videos.length > 0) {
+        void (async () => {
+          const added: {
+            id: string;
+            posterUrl: string;
+            previewUrl: string;
+            fileName: string;
+          }[] = [];
+          for (const file of videos) {
+            const id = crypto.randomUUID();
+            try {
+              const preview = await makeVideoPreview(id, file);
+              added.push({ id, fileName: file.name, ...preview });
+            } catch {
+              // Skip a video we cannot preview; still try to store it if we can.
+            }
+          }
+          if (added.length > 0) store.addAlbumVideos(added);
+
+          const draft =
+            store.draftId && store.draftSecret
+              ? { draftId: store.draftId, secret: store.draftSecret }
+              : null;
+          if (!draft) return;
+          for (const file of videos) {
+            try {
+              const durationMs = await readVideoDurationMs(file).catch(
+                () => undefined,
+              );
+              await uploadVideoMemory(draft, file, {
+                durationMs,
+                title: file.name.replace(/\.[^.]+$/, ""),
+              });
+            } catch {
+              // Preview already sits in the album; the editor can retry upload.
+            }
+          }
+          try {
+            const library = await fetchVideoLibrary(draft);
+            store.setVideoLibrary(library.assets, library.placements);
+          } catch {
+            /* editor surfaces a message if the library cannot refresh */
+          }
+        })();
+      }
     },
     [store],
   );
@@ -136,6 +194,7 @@ export function Funnel() {
   const handleSample = useCallback(async (email: string) => {
     const state = useOurTailTalesStore.getState();
     state.setLeadEmail(email);
+    identifyLead(email);
 
     await fetch("/api/leads", {
       method: "POST",
@@ -199,6 +258,7 @@ export function Funnel() {
       track("checkout_started", { chapters: state.chapterCount });
       router.push(`/checkout?order=${orderId}`);
     } catch (error) {
+      captureClientException(error);
       useOurTailTalesStore.getState().setExporting(null);
       useOurTailTalesStore.getState().goToEditing();
       setNotice(
@@ -209,85 +269,33 @@ export function Funnel() {
     }
   }, [router]);
 
-  const spec = useMemo(() => bookSpec(store.chapterCount), [store.chapterCount]);
-  const showEditor =
-    store.funnelState === "organizing" || store.funnelState === "editing";
-
-  const idle = store.funnelState === "idle";
-
-  const book = (
-    <FunnelBookHero
-      onFiles={handleFiles}
-      onCancel={() => {
-        ingestion.current?.cancel();
-        store.cancelProcessing();
-      }}
-      onStartOver={() => {
-        ingestion.current?.cancel();
-        store.reset();
-      }}
-      onMetaContinue={store.goToConfigure}
-      onConfirmSize={() => {
-        store.confirmBookSize();
-        track("book_size_confirmed", {
-          chapters: store.chapterCount,
-          price: spec.price,
-        });
-      }}
-      onBackToAlbum={() =>
-        useOurTailTalesStore.setState({ funnelState: "album_ready" })
-      }
-      onCreateStory={() => void handleCreateStory()}
-      onSample={() => setSampleOpen(true)}
-      onCheckout={() => void handleCheckout()}
-      notice={notice}
-    />
-  );
-
   return (
     <>
       <KeepTabBanner active={hasWork} />
 
       <main className="w-full flex-1 pb-0">
-        <div className={`mx-auto w-full max-w-[90rem] px-5 pt-10 sm:pt-14${idle ? "" : " pb-24"}`}>
-          <Header />
-          {!idle && <div className="mt-8 sm:mt-10">{book}</div>}
+        <LandingHero header={<Header />} />
+        <ProductListing />
+        <BookEditor
+          onFiles={handleFiles}
+          onStartOver={() => {
+            ingestion.current?.cancel();
+            store.reset();
+          }}
+          onCreateStory={() => void handleCreateStory()}
+          onSample={() => setSampleOpen(true)}
+          onPreview={() => setPreviewOpen(true)}
+          onCheckout={() => void handleCheckout()}
+          onRegenerate={(chapterId) => void runStories([chapterId])}
+          notice={notice}
+        />
+
+        <div className="landing-rest">
+          <LandingCta />
+          <Faq />
+          <Footer />
         </div>
-
-        {idle && (
-          <>
-            <div className="mt-8 sm:mt-10">
-              <LandingHero />
-            </div>
-            <section className="mx-auto max-w-[90rem] px-5 py-16 sm:py-20">
-              {book}
-            </section>
-            <HowItWorks />
-            <ProductMockups />
-            <LandingCta />
-          </>
-        )}
-
-        {showEditor && (
-          <div className="mx-auto mt-10 w-full max-w-[90rem] px-5 pb-24">
-            <ChapterEditor
-              chapters={store.chapters}
-              photos={photos}
-              coverPhotoId={store.meta.coverPhotoId}
-              onTextChange={store.updateChapterText}
-              onSwap={store.swapChapterPhoto}
-              onReorder={store.reorderChapterPhoto}
-              onSetCover={store.setCoverPhoto}
-              onRegenerate={(chapterId) => void runStories([chapterId])}
-            />
-            <div className="mt-6">
-              <VideoMemoriesPanel pages={store.pages} />
-            </div>
-          </div>
-        )}
       </main>
-
-      {idle && <Footer />}
 
       {sampleOpen && (
         <EmailSampleModal
@@ -295,6 +303,10 @@ export function Funnel() {
           onSubmit={handleSample}
           initialEmail={store.leadEmail}
         />
+      )}
+
+      {previewOpen && (
+        <BookPreviewDialog onClose={() => setPreviewOpen(false)} />
       )}
     </>
   );

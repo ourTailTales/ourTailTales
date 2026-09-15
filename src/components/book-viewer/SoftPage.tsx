@@ -29,5 +29,5 @@ export function SoftPage({
 }
 
 function Blank() {
-  return <div className="h-full w-full bg-[#fbfcff]" />;
+  return <div className="h-full w-full bg-transparent" />;
 }

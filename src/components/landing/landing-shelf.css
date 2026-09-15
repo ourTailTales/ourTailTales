@@ -1,0 +1,78 @@
+/* shelf-2 bookcase: 2000² PNG. Bays measured from the asset. */
+
+.landing-shelf {
+  overflow-x: clip;
+}
+
+.landing-shelf__case {
+  width: min(100%, 96rem);
+}
+
+.landing-shelf__stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+}
+
+.landing-shelf__contact {
+  pointer-events: none;
+  position: absolute;
+  top: 3.6%;
+  left: 28%;
+  width: 44%;
+  height: 3.2%;
+  border-radius: 100%;
+  background: rgb(40 28 12 / 0.42);
+  filter: blur(10px);
+  z-index: 2;
+}
+
+.landing-shelf-bays {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  grid-template-rows: 5.5% 6.5% 15.5% 5.6% 21.2% 9% 19.6% auto;
+  padding-inline: 18%;
+  pointer-events: none;
+}
+
+.landing-shelf-bays > h2 {
+  grid-row: 2;
+  align-self: start;
+  margin: 0;
+  padding-top: 0.35rem;
+  pointer-events: auto;
+}
+
+.landing-shelf-bays > ol {
+  display: contents;
+}
+
+.landing-shelf-bays > ol > li {
+  pointer-events: auto;
+  align-self: end;
+  margin-bottom: 0.2%;
+}
+
+.landing-shelf-bays > ol > li:nth-child(1) {
+  grid-row: 3;
+}
+
+.landing-shelf-bays > ol > li:nth-child(2) {
+  grid-row: 5;
+}
+
+.landing-shelf-bays > ol > li:nth-child(3) {
+  grid-row: 7;
+}
+
+@media (max-width: 639px) {
+  .landing-shelf-bays {
+    padding-inline: 17%;
+  }
+
+  .landing-shelf-bays > h2 {
+    padding-top: 0.15rem;
+  }
+}

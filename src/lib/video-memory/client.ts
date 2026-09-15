@@ -1,3 +1,4 @@
+import { postHogHeaders } from "@/lib/posthog-client";
 import type { VideoAsset, VideoMemoryPlacement } from "@/types/video-memory";
 
 const DRAFT_STORAGE_KEY = "ourtailtales.draft";
@@ -21,6 +22,7 @@ export function draftHeaders(
   secret: string,
 ): Record<string, string> {
   return {
+    ...postHogHeaders(),
     "x-draft-id": draftId,
     authorization: `Bearer ${secret}`,
   };

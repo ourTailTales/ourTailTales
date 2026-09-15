@@ -2,6 +2,10 @@ import type Stripe from "stripe";
 
 import { requireEnv, routeError } from "@/lib/env";
 import { markNeedsReview, submitPaidOrderToLulu } from "@/lib/order/submit-print";
+import {
+  captureServerEvent,
+  captureServerException,
+} from "@/lib/posthog-server";
 import { stripeClient } from "@/lib/stripe";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { videosEligibleForArchival } from "@/lib/archival/can-archive";
@@ -41,14 +45,23 @@ export async function POST(request: Request): Promise<Response> {
     if (event.type === "payment_intent.succeeded") {
       await fulfill(event.data.object);
     } else if (event.type === "payment_intent.payment_failed") {
-      console.warn(
-        "[ourTailTales] Payment failed for order",
-        event.data.object.metadata?.orderId,
+      const paymentIntent = event.data.object;
+      const orderId = paymentIntent.metadata?.orderId;
+      console.warn("[ourTailTales] Payment failed for order", orderId);
+      await captureServerEvent(
+        paymentIntent.metadata?.posthogDistinctId || orderId || "stripe_webhook",
+        "payment_failed",
+        {
+          amount: paymentIntent.amount / 100,
+          currency: paymentIntent.currency,
+          has_order: Boolean(orderId),
+        },
       );
     }
 
     return Response.json({ received: true });
   } catch (error) {
+    await captureServerException(error, "stripe_webhook");
     return routeError(error, "Webhook handling failed.");
   }
 }
@@ -77,6 +90,16 @@ async function fulfill(paymentIntent: Stripe.PaymentIntent): Promise<void> {
 
   if (claimError) throw new Error(claimError.message);
   if (!claimed) return;
+
+  await captureServerEvent(
+    paymentIntent.metadata?.posthogDistinctId || orderId,
+    "payment_completed",
+    {
+      amount: paymentIntent.amount / 100,
+      currency: paymentIntent.currency,
+      video_memory_count: Number(claimed.selected_video_count ?? 0),
+    },
+  );
 
   const revision = claimed.book_snapshot as FrozenBookRevision | null;
   const videos = revision ? videosEligibleForArchival(revision) : [];

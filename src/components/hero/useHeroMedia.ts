@@ -17,6 +17,21 @@ export function usePrefersReducedMotion(): boolean {
   return reduced;
 }
 
+/** Client-only media query. Starts false to keep SSR and the first paint aligned. */
+export function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(false);
+
+  useEffect(() => {
+    const media = window.matchMedia(query);
+    const update = () => setMatches(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, [query]);
+
+  return matches;
+}
+
 /** Coarse pointer / no-hover ≈ touch-first interaction. */
 export function useTouchPrimary(): boolean {
   const [touch, setTouch] = useState(false);

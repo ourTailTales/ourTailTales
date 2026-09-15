@@ -7,7 +7,9 @@ export const brand = {
   domain: "ourtailtales.com",
   line: "Their life, in chapters.",
   /** Landing / cover title — the cover is the hero. */
-  title: "Their photo album becomes a book you can hold.",
+  title: "Hold their Life Story",
+  subtitle:
+    "Upload their photos and videos. We organize their memories into a personalized storybook you can hold forever.",
   logo: {
     /** Web-optimized mark for headers and UI. Source master: `logo.png`. */
     src: "/branding/logo-512.png",

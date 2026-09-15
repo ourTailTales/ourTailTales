@@ -15,6 +15,7 @@ export function ChapterEditor({
   onReorder,
   onSetCover,
   onRegenerate,
+  onPreview,
 }: {
   chapters: Chapter[];
   photos: Map<string, PhotoAsset>;
@@ -27,6 +28,7 @@ export function ChapterEditor({
   onReorder: (chapterId: string, photoId: string, toIndex: number) => void;
   onSetCover: (photoId: string) => void;
   onRegenerate: (chapterId: string) => void;
+  onPreview?: () => void;
 }) {
   const [activeId, setActiveId] = useState(chapters[0]?.id ?? "");
   const [swapTarget, setSwapTarget] = useState<string | null>(null);
@@ -41,6 +43,17 @@ export function ChapterEditor({
 
   return (
     <section className="space-y-5">
+      {onPreview && (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={onPreview}
+            className="rounded-xl border border-line px-4 py-2 text-sm font-medium text-ink-soft transition-colors hover:border-periwinkle hover:text-periwinkle-deep"
+          >
+            Preview your book
+          </button>
+        </div>
+      )}
       <nav className="flex flex-wrap gap-2" aria-label="Chapters">
         {chapters.map((entry) => (
           <button

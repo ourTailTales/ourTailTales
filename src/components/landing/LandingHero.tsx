@@ -1,57 +1,51 @@
 import Image from "next/image";
+import type { ReactNode } from "react";
 
 import { brand } from "@/lib/brand";
 
-const proof = [
-  "Photos stay on your device",
-  "Hardcover from $49.99",
-  "Reprint if it isn’t right",
-];
-
-export function LandingHero() {
+export function LandingHero({ header }: { header?: ReactNode }) {
   return (
-    <section className="relative w-full overflow-hidden">
-      <div className="relative grid lg:grid-cols-[minmax(0,38rem)_minmax(0,1fr)] xl:grid-cols-[minmax(0,42rem)_minmax(0,1fr)] lg:items-stretch">
-        <div className="flex flex-col justify-center px-5 py-12 sm:px-8 sm:py-16 lg:justify-self-end lg:py-20 lg:pl-8 lg:pr-14">
-          <p className="animate-fade-up text-sm font-medium tracking-wide text-periwinkle">
-            <span className="border-b-2 border-petal pb-0.5">{brand.line}</span>
-          </p>
-          <h1 className="animate-fade-up-delay mt-4 font-display text-4xl font-bold leading-[1.1] text-ink sm:text-5xl lg:text-6xl lg:leading-[1.06]">
+    <section className="relative isolate flex min-h-[min(94vh,50rem)] w-full flex-col overflow-hidden sm:min-h-[min(98vh,54rem)]">
+      <Image
+        src="/marketing/banner-2.png"
+        alt=""
+        fill
+        priority
+        sizes="100vw"
+        className="object-cover object-[center_42%]"
+      />
+      <div
+        aria-hidden
+        className="absolute inset-0 bg-[linear-gradient(115deg,rgb(31_36_51/0.98)_0%,rgb(31_36_51/0.9)_24%,rgb(31_36_51/0.72)_44%,rgb(31_36_51/0.38)_66%,rgb(31_36_51/0.12)_82%,transparent_100%),linear-gradient(180deg,rgb(31_36_51/0.52)_0%,rgb(31_36_51/0.16)_38%,transparent_62%),linear-gradient(200deg,rgb(91_104_200/0.18)_0%,transparent_42%)]"
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-[calc(42%-20px)] bg-[linear-gradient(180deg,transparent_0%,rgb(226_215_245/0.2)_28%,rgb(226_215_245/0.55)_58%,rgb(226_215_245/0.85)_82%,var(--color-carousel-field)_100%)]"
+      />
+
+      <div className="relative z-10 mx-auto flex w-full max-w-[90rem] flex-1 flex-col px-5 pt-10 sm:px-8 sm:pt-14 lg:pl-8 lg:pr-14">
+        <div className="w-fit">{header}</div>
+        <div className="mt-10 max-w-md sm:mt-12 lg:mt-16 lg:max-w-4xl">
+          <h1 className="animate-fade-up font-display text-[5rem] font-bold leading-[1.12] text-ink sm:text-[9rem] lg:text-[9rem] lg:leading-[1.06]">
             {brand.title}
           </h1>
-          <p className="animate-fade-up-delay mt-5 max-w-md text-lg leading-7 text-ink-soft">
-            Drop in the album. We find the chapters on your device — you keep the
-            hardcover.
+          <p className="animate-fade-up-delay mt-4 max-w-xl font-cover text-lg font-medium italic leading-8 text-ink-soft sm:text-xl sm:leading-9">
+            {brand.subtitle}
           </p>
-          <div className="animate-fade-up-delay-2 mt-8 flex flex-wrap items-center gap-x-5 gap-y-3">
-            <a
-              href="#hero-book"
-              className="inline-flex rounded-xl bg-periwinkle px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-periwinkle-deep"
+          <a
+            href="#hero-book"
+            className="animate-fade-up-delay-2 group mt-8 inline-flex items-center gap-2 rounded-xl bg-periwinkle px-6 py-3 text-sm font-semibold text-white shadow-lift transition-[background-color,transform] duration-300 hover:bg-periwinkle-deep hover:translate-y-px sm:mt-10 sm:text-base"
+          >
+            Create their story
+            <span
+              aria-hidden
+              className="inline-block transition-transform duration-300 group-hover:translate-x-1"
             >
-              Drop in their album
-            </a>
-            <a
-              href="#how-it-works"
-              className="text-sm font-semibold text-lavender underline decoration-petal decoration-2 underline-offset-4 transition-colors hover:text-memory-blue"
-            >
-              See how it works
-            </a>
-          </div>
-          <p className="animate-fade-up-delay-2 mt-6 max-w-lg text-sm leading-6 text-ink-soft">
-            {proof.join(" · ")}
-          </p>
+              →
+            </span>
+          </a>
         </div>
-
-        <figure className="relative h-[18rem] sm:h-[24rem] lg:h-auto lg:min-h-[36rem]">
-          <Image
-            src="/marketing/hardcover-in-hands.png"
-            alt="Hands holding a square hardcover book with a golden retriever on the cover"
-            fill
-            priority
-            sizes="(min-width: 1024px) 58vw, 100vw"
-            className="animate-fade-up object-cover"
-          />
-        </figure>
+        <div className="mt-auto" />
       </div>
     </section>
   );

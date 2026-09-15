@@ -1,14 +1,32 @@
+import Link from "next/link";
+
 import { BrandMark } from "@/components/BrandMark";
 import { brand } from "@/lib/brand";
+
+const legalLinkClass =
+  "underline decoration-page-line underline-offset-4 transition-colors hover:text-periwinkle";
 
 export function Footer() {
   return (
     <footer>
-      <div className="mx-auto flex max-w-[90rem] flex-col gap-3 px-5 py-8 sm:flex-row sm:items-center sm:justify-between">
-        <BrandMark href="/" size="sm" />
-        <p className="text-xs leading-5 text-ink-soft">
-          Photos stay on your device until you order. {brand.domain}
-        </p>
+      <div className="mx-auto flex max-w-[90rem] flex-col gap-4 px-5 py-8 sm:flex-row sm:items-center sm:justify-between">
+        <BrandMark href="/" size="sm" className="text-page-ink" />
+        <div className="flex flex-col gap-2 sm:items-end">
+          <p className="text-xs leading-5 text-ink-soft">
+            Photos stay on your device until you order. {brand.domain}
+          </p>
+          <nav
+            aria-label="Legal"
+            className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-soft"
+          >
+            <Link href="/privacy" className={legalLinkClass}>
+              Privacy Policy
+            </Link>
+            <Link href="/terms" className={legalLinkClass}>
+              Terms of Service
+            </Link>
+          </nav>
+        </div>
       </div>
     </footer>
   );

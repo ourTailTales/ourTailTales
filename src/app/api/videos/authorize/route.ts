@@ -3,6 +3,11 @@ import { z } from "zod";
 import { resolveDraft } from "@/lib/drafts/resolve";
 import { routeError } from "@/lib/env";
 import {
+  captureServerEvent,
+  captureServerException,
+  postHogDistinctId,
+} from "@/lib/posthog-server";
+import {
   DURATION_TOO_LONG_MESSAGE,
   VIDEO_MEMORY_MAX_DURATION_MS,
   sourceTooLargeMessage,
@@ -80,12 +85,26 @@ export async function POST(request: Request): Promise<Response> {
     });
     if (insertError) throw new Error(insertError.message);
 
+    await captureServerEvent(
+      postHogDistinctId(request, draft.id),
+      "video_upload_authorized",
+      {
+        bytes: parsed.data.bytes,
+        has_duration: parsed.data.durationMs !== undefined,
+        content_type: parsed.data.contentType || "unknown",
+      },
+    );
+
     return Response.json({
       assetId,
       path: originalPath,
       signedUrl: signed.signedUrl,
     });
   } catch (error) {
+    await captureServerException(
+      error,
+      postHogDistinctId(request, "server_video_upload"),
+    );
     return routeError(error, "That video could not be prepared for upload.");
   }
 }

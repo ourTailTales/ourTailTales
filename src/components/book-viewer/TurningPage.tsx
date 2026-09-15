@@ -29,13 +29,16 @@ export function TurningPage({
       style={{ width, height }}
       aria-hidden
     >
+      <div className="bv-turning__contact" />
       <div className="bv-turning__under-shadow" />
+      <div aria-hidden className="bv-turning__thickness" />
 
       <div className="bv-turning__front">
         <Face key={frontFace?.id ?? "front-empty"} content={frontFace?.content} />
         {/* Same gutter as SoftPage so land shading matches mid-flip. */}
         <div aria-hidden className={`bv-gutter bv-gutter--${side}`} />
         <div className="bv-turning__fold-shadow" />
+        <div className="bv-turning__highlight" />
       </div>
 
       <div className="bv-turning__back">
@@ -54,7 +57,7 @@ export function TurningPage({
 function Face({ content }: { content: ReactNode | null | undefined }) {
   return (
     <div className="bv-turning__face-inner">
-      {content ?? <div className="h-full w-full bg-[#f7f9fd]" />}
+      {content ?? <div className="h-full w-full bg-transparent" />}
     </div>
   );
 }

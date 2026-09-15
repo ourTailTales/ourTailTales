@@ -7,6 +7,10 @@ import { groupDuplicates, selectablePhotos } from "@/lib/photo/dedupe";
 import { paginateBook } from "@/lib/book/pagination";
 import * as assetStore from "@/lib/photo/assetStore";
 import {
+  releaseAllVideoPosters,
+  releaseVideoPoster,
+} from "@/lib/photo/videoPreview";
+import {
   maxSupportedChapters,
   recommendedChapters,
   BASE_CHAPTERS,
@@ -48,6 +52,14 @@ type State = {
   videoAssets: VideoAsset[];
   placements: VideoMemoryPlacement[];
   videoNotice: string | null;
+  albumVideos: AlbumVideoPreview[];
+};
+
+export type AlbumVideoPreview = {
+  id: string;
+  posterUrl: string;
+  previewUrl: string;
+  fileName: string;
 };
 
 type Actions = {
@@ -99,6 +111,9 @@ type Actions = {
     placements: VideoMemoryPlacement[],
   ) => void;
   setVideoNotice: (message: string | null) => void;
+  addAlbumVideos: (videos: AlbumVideoPreview[]) => void;
+  removeAlbumPhoto: (id: string) => void;
+  removeAlbumVideo: (id: string) => void;
   hydrateDraft: () => void;
   reset: () => void;
 };
@@ -136,17 +151,21 @@ const initialState: State = {
   videoAssets: [],
   placements: [],
   videoNotice: null,
+  albumVideos: [],
 };
 
 export const useOurTailTalesStore = create<OurTailTalesStore>((set) => ({
   ...initialState,
 
   startProcessing: (total) =>
-    set({
-      funnelState: "processing",
+    set((state) => ({
+      funnelState:
+        state.photos.length > 0 && state.funnelState !== "idle"
+          ? state.funnelState
+          : "processing",
       progress: { processed: 0, total, phase: "reading", failed: 0 },
       processingError: null,
-    }),
+    })),
 
   setProgressPhase: (phase) =>
     set((state) => ({ progress: { ...state.progress, phase } })),
@@ -205,6 +224,7 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set) => ({
 
   cancelProcessing: () => {
     assetStore.releaseAll();
+    releaseAllVideoPosters();
     const stored = loadStoredDraft();
     set({
       ...initialState,
@@ -351,6 +371,41 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set) => ({
 
   setVideoNotice: (videoNotice) => set({ videoNotice }),
 
+  addAlbumVideos: (videos) =>
+    set((state) => ({ albumVideos: [...state.albumVideos, ...videos] })),
+
+  removeAlbumPhoto: (id) =>
+    set((state) => {
+      assetStore.releaseAsset(id);
+      const photos = state.photos.filter((photo) => photo.id !== id);
+      const empty = photos.length === 0 && state.albumVideos.length === 0;
+      return {
+        photos,
+        meta:
+          state.meta.coverPhotoId === id
+            ? { ...state.meta, coverPhotoId: null }
+            : state.meta,
+        funnelState:
+          empty && state.funnelState === "album_ready"
+            ? "idle"
+            : state.funnelState,
+      };
+    }),
+
+  removeAlbumVideo: (id) =>
+    set((state) => {
+      releaseVideoPoster(id);
+      const albumVideos = state.albumVideos.filter((video) => video.id !== id);
+      const empty = state.photos.length === 0 && albumVideos.length === 0;
+      return {
+        albumVideos,
+        funnelState:
+          empty && state.funnelState === "album_ready"
+            ? "idle"
+            : state.funnelState,
+      };
+    }),
+
   hydrateDraft: () => {
     const stored = loadStoredDraft();
     if (!stored) return;
@@ -359,6 +414,7 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set) => ({
 
   reset: () => {
     assetStore.releaseAll();
+    releaseAllVideoPosters();
     const stored = loadStoredDraft();
     set({
       ...initialState,
