@@ -5,9 +5,10 @@
  * chosen chapter count only.
  */
 
-export const BASE_CHAPTERS = 10;
+/** The base book contains five ten-page story chapters (50 story pages). */
+export const BASE_CHAPTERS = 5;
 export const BASE_PRICE = 49.99;
-export const PRICE_PER_EXTRA_CHAPTER = 10;
+export const PRICE_PER_EXTRA_CHAPTER = 4.99;
 export const STORY_PAGES_PER_CHAPTER = 10;
 
 /** Title, dedication, closing, imprint. Included at no extra charge. */
@@ -17,30 +18,26 @@ export const FIXED_INTERIOR_PAGES = 4;
 export const MAX_CHAPTERS = 50;
 
 /**
- * Comfortable density per chapter. A full book at this density lands around
- * 250 photos for 10 chapters, up to about 1,250 at the max length.
+ * Customer-selectable density: five to thirty photos per chapter.
  */
-export const PHOTOS_PER_CHAPTER_TARGET = { min: 20, max: 25 } as const;
+export const PHOTOS_PER_CHAPTER_TARGET = { min: 5, max: 30 } as const;
 
 /** Photos that fill a max-length book at the target density. */
 export const PHOTOS_FOR_MAX_BOOK = MAX_CHAPTERS * PHOTOS_PER_CHAPTER_TARGET.max;
 
 /**
- * Floor before a chapter reads as empty or repetitive. Chapters may be
- * sparser than the 20–25 target, but not thinner than this: one hero image for
- * the opener plus at least one photo for each of the 9 photo pages, so no page
- * is padded with a repeated image.
+ * Hard lower bound for forming an additional chapter.
  */
-export const MIN_PHOTOS_PER_CHAPTER = 10;
+export const MIN_PHOTOS_PER_CHAPTER = PHOTOS_PER_CHAPTER_TARGET.min;
 
 /**
- * Smallest sellable album: 10 chapters at the target density.
+ * Smallest sellable album: five chapters with five photos per chapter.
  * Photos and videos both count toward this gate.
  */
 export const MIN_PHOTOS_FOR_BOOK =
   BASE_CHAPTERS * PHOTOS_PER_CHAPTER_TARGET.min;
 
-export const RECOMMENDED_CHAPTERS = 10;
+export const RECOMMENDED_CHAPTERS = BASE_CHAPTERS;
 
 export function bookPrice(chapterCount: number): number {
   const extra = Math.max(0, chapterCount - BASE_CHAPTERS);
@@ -80,7 +77,7 @@ export function bookSpec(chapterCount: number): BookSpec {
 
 /**
  * Highest chapter count this album can fill without inventing empty or
- * repetitive chapters. The base 10-chapter book is always offered, since it is
+ * repetitive chapters. The base five-chapter book is always offered, since it is
  * the minimum sellable product.
  */
 export function maxSupportedChapters(usablePhotoCount: number): number {
@@ -89,7 +86,7 @@ export function maxSupportedChapters(usablePhotoCount: number): number {
 }
 
 /**
- * Default slider position: 10 chapters when the album supports it.
+ * Default slider position: five chapters when the album supports it.
  *
  * `MIN_PHOTOS_PER_CHAPTER` is the hard floor that keeps pages from being
  * padded; this is the softer density below which a chapter reads as thin, so a

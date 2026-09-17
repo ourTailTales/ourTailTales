@@ -14,7 +14,7 @@ describe("packMeterView", () => {
       used: 6,
       capacity: 10,
       usedLabel: "6 of 10 used",
-      priceLabel: "$19.99",
+      priceLabel: "$9.99",
     });
   });
 
@@ -25,7 +25,7 @@ describe("packMeterView", () => {
       used: 14,
       capacity: 20,
       usedLabel: "14 of 20 used",
-      priceLabel: "$39.98",
+      priceLabel: "$19.98",
     });
   });
 });
@@ -33,7 +33,7 @@ describe("packMeterView", () => {
 describe("packBoundaryCopy", () => {
   it("asks to add 10 more at the first pack boundary", () => {
     const copy = packBoundaryCopy(10);
-    expect(copy.confirm).toBe("Add 10 More — $19.99");
+    expect(copy.confirm).toBe("Add 10 More — $9.99");
     expect(copy.body).toContain("up to 20 Video Memories");
   });
 });

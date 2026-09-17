@@ -2,13 +2,18 @@ import { z } from "zod";
 
 import { routeError } from "@/lib/env";
 import { fetchCoverDimensions } from "@/lib/lulu/client";
-import { FIXED_INTERIOR_PAGES, MAX_CHAPTERS, luluInteriorPages } from "@/lib/pricing";
+import {
+  BASE_CHAPTERS,
+  FIXED_INTERIOR_PAGES,
+  MAX_CHAPTERS,
+  luluInteriorPages,
+} from "@/lib/pricing";
 
 const requestSchema = z.object({
   pageCount: z
     .number()
     .int()
-    .min(luluInteriorPages(2))
+    .min(luluInteriorPages(BASE_CHAPTERS))
     .max(luluInteriorPages(MAX_CHAPTERS)),
 });
 

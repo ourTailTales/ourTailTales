@@ -3,15 +3,18 @@ import {
   hammingHex,
   selectablePhotos,
 } from "@/lib/photo/dedupe";
-import { MIN_PHOTOS_PER_CHAPTER } from "@/lib/pricing";
+import {
+  MIN_PHOTOS_PER_CHAPTER,
+  PHOTOS_PER_CHAPTER_TARGET,
+} from "@/lib/pricing";
 import type { Chapter } from "@/types/book";
 import type { PhotoAsset } from "@/types/photo";
 
 const TIME_WEIGHT = 0.65;
 const DISTANCE_WEIGHT = 0.35;
 
-/** Selected photos per chapter: 1 hero + 2-3 on each of 9 photo pages. */
-const SELECTION_TARGET = 26;
+/** Never select more than the configured 30-photo chapter maximum. */
+const SELECTION_TARGET = PHOTOS_PER_CHAPTER_TARGET.max;
 
 /** dHash distance under which a photo adds nothing new to the chapter. */
 const REDUNDANT_BITS = 12;

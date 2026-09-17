@@ -1,10 +1,17 @@
 import {
   BASE_PRICE,
+  BASE_CHAPTERS,
   MAX_CHAPTERS,
   MIN_PHOTOS_FOR_BOOK,
+  PHOTOS_PER_CHAPTER_TARGET,
   PRICE_PER_EXTRA_CHAPTER,
+  STORY_PAGES_PER_CHAPTER,
   formatUsd,
 } from "@/lib/pricing";
+import {
+  VIDEO_MEMORIES_PER_PACK,
+  VIDEO_MEMORY_PACK_PRICE_CENTS,
+} from "@/lib/video-memory/config";
 
 const faqs = [
   {
@@ -15,12 +22,12 @@ const faqs = [
   {
     question: "How many photos do I need?",
     answer:
-      `At least ${MIN_PHOTOS_FOR_BOOK} usable photos or videos for the hardcover. More of their album fills the chapters without stretching the same images.`,
+      `At least ${MIN_PHOTOS_FOR_BOOK} usable photos or videos for the hardcover. Each chapter uses ${PHOTOS_PER_CHAPTER_TARGET.min}–${PHOTOS_PER_CHAPTER_TARGET.max} photos, so a larger album can support more chapters without repeating images.`,
   },
   {
     question: "What does the book cost?",
     answer:
-      `Hardcovers start at ${formatUsd(BASE_PRICE)} for 10 chapters. Extra chapters are ${formatUsd(PRICE_PER_EXTRA_CHAPTER)} each, up to ${MAX_CHAPTERS}. Optional Video Memories are available as an add-on. Paperback is coming soon.`,
+      `Hardcovers start at ${formatUsd(BASE_PRICE)} for ${BASE_CHAPTERS} chapters (${BASE_CHAPTERS * STORY_PAGES_PER_CHAPTER} story pages). Each additional ${STORY_PAGES_PER_CHAPTER}-page chapter is ${formatUsd(PRICE_PER_EXTRA_CHAPTER)}, up to ${MAX_CHAPTERS} chapters. Optional Video Memories are available in packs of ${VIDEO_MEMORIES_PER_PACK} QR-linked videos for ${formatUsd(VIDEO_MEMORY_PACK_PRICE_CENTS / 100)}. Paperback is coming soon.`,
   },
   {
     question: "Can I edit the story?",

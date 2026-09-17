@@ -1,4 +1,8 @@
 import { formatUsd } from "@/lib/pricing";
+import {
+  VIDEO_MEMORIES_PER_PACK,
+  VIDEO_MEMORY_PACK_PRICE_CENTS,
+} from "@/lib/video-memory/config";
 import { centsToUsd, videoMemoryQuote } from "@/lib/video-memory/pricing";
 
 export type PackMeterView =
@@ -26,7 +30,7 @@ export function packMeterView(includedUniqueCount: number): PackMeterView {
 }
 
 export const ZERO_STATE_HEADING = "Video Memories";
-export const ZERO_STATE_OFFER = "Add up to 10 Video Memories for $19.99";
+export const ZERO_STATE_OFFER = `Add up to ${VIDEO_MEMORIES_PER_PACK} Video Memories for ${formatUsd(centsToUsd(VIDEO_MEMORY_PACK_PRICE_CENTS))}`;
 export const ZERO_STATE_BODY =
   "Include videos you can watch from your printed book.";
 
@@ -35,10 +39,11 @@ export function packBoundaryCopy(currentCapacity: number): {
   body: string;
   confirm: string;
 } {
-  const nextCapacity = currentCapacity + 10;
+  const nextCapacity = currentCapacity + VIDEO_MEMORIES_PER_PACK;
+  const packPrice = formatUsd(centsToUsd(VIDEO_MEMORY_PACK_PRICE_CENTS));
   return {
     title: "Add another Video Memories pack?",
-    body: `You’ve used all ${currentCapacity} Video Memories in your current pack. Add 10 more Video Memories for $19.99. You’ll have room for up to ${nextCapacity} Video Memories.`,
-    confirm: "Add 10 More — $19.99",
+    body: `You’ve used all ${currentCapacity} Video Memories in your current pack. Add ${VIDEO_MEMORIES_PER_PACK} more Video Memories for ${packPrice}. You’ll have room for up to ${nextCapacity} Video Memories.`,
+    confirm: `Add ${VIDEO_MEMORIES_PER_PACK} More — ${packPrice}`,
   };
 }
