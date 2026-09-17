@@ -26,14 +26,14 @@ export function LandingHero({ header }: { header?: ReactNode }) {
       <div className="relative z-10 mx-auto flex w-full max-w-[90rem] flex-1 flex-col px-5 pt-10 sm:px-8 sm:pt-14 lg:pl-8 lg:pr-14">
         <div className="w-fit">{header}</div>
         <div className="mt-10 max-w-md sm:mt-12 lg:mt-16 lg:max-w-4xl">
-          <h1 className="animate-fade-up font-display text-[5rem] font-bold leading-[1.12] text-ink sm:text-[9rem] lg:text-[9rem] lg:leading-[1.06]">
+          <h1 className="animate-fade-up font-display text-[4rem] font-bold leading-[1.12] text-ink sm:text-[8rem] lg:text-[8rem] lg:leading-[1.06]">
             {brand.title}
           </h1>
-          <p className="animate-fade-up-delay mt-4 max-w-xl font-cover text-lg font-medium italic leading-8 text-ink-soft sm:text-xl sm:leading-9">
+          <p className="animate-fade-up-delay mt-4 max-w-xl font-cover text-2xl font-medium italic leading-8 text-ink-soft sm:text-3xl sm:leading-9">
             {brand.subtitle}
           </p>
           <a
-            href="#hero-book"
+            href="#create-free-book"
             className="animate-fade-up-delay-2 group mt-8 inline-flex items-center gap-2 rounded-xl bg-periwinkle px-6 py-3 text-sm font-semibold text-white shadow-lift transition-[background-color,transform] duration-300 hover:bg-periwinkle-deep hover:translate-y-px sm:mt-10 sm:text-base"
           >
             Create their story

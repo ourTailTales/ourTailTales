@@ -28,7 +28,9 @@ export function buildStoryPrompt(chapter: StoryRequest): string {
     .filter(Boolean);
 
   const lines = [
-    `Pet name: ${chapter.petName || "unnamed"}`,
+    chapter.petName
+      ? `Pet name: ${chapter.petName}`
+      : "The pet's name has not been collected yet. Never invent or assign one.",
     chapter.lifespan ? `Owner-provided lifespan: ${chapter.lifespan}` : null,
     chapter.dateLabel ? `Chapter date range: ${chapter.dateLabel}` : null,
     `Photographs in this period: ${chapter.photoCount}`,

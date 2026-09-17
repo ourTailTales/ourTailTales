@@ -7,6 +7,7 @@ const SAMPLE_PAGES = 5;
 
 /** Screen-quality only: the free sample is not a print-ready file. */
 const SAMPLE_PPI = 110;
+const FREE_PREVIEW_PPI = 96;
 
 export const SAMPLE_WATERMARK = "OURTAILTALES PREVIEW";
 
@@ -34,6 +35,29 @@ export async function renderSamplePdf(args: {
     ),
     targetPpi: SAMPLE_PPI,
     jpegQuality: 0.72,
+    watermark: SAMPLE_WATERMARK,
+    onProgress: args.onProgress,
+  });
+
+  return new Blob([bytes as unknown as BlobPart], { type: "application/pdf" });
+}
+
+/** Full-book, screen-resolution preview. It is deliberately not print ready. */
+export async function renderFreePreviewPdf(args: {
+  pages: BookPage[];
+  chapters: Chapter[];
+  meta: BookMeta;
+  photos: Map<string, PhotoAsset>;
+  onProgress?: (completed: number, total: number) => void;
+}): Promise<Blob> {
+  const { bytes } = await renderInteriorPdf({
+    pages: args.pages,
+    chapters: args.chapters,
+    meta: args.meta,
+    photos: args.photos,
+    placements: [],
+    targetPpi: FREE_PREVIEW_PPI,
+    jpegQuality: 0.7,
     watermark: SAMPLE_WATERMARK,
     onProgress: args.onProgress,
   });

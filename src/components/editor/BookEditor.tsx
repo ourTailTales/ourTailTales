@@ -2,7 +2,6 @@
 
 import {
   useCallback,
-  useEffect,
   useMemo,
   useState,
   type DragEvent,
@@ -39,6 +38,7 @@ export function BookEditor({
   onCheckout,
   onRegenerate,
   notice,
+  enableVideoMemories = true,
 }: {
   onFiles: (files: File[]) => void;
   onStartOver: () => void;
@@ -48,6 +48,7 @@ export function BookEditor({
   onCheckout: () => void;
   onRegenerate: (chapterId: string) => void;
   notice?: string | null;
+  enableVideoMemories?: boolean;
 }) {
   const funnelState = useOurTailTalesStore((state) => state.funnelState);
   const photos = useOurTailTalesStore((state) => state.photos);
@@ -79,12 +80,10 @@ export function BookEditor({
   const [dropping, setDropping] = useState(false);
   const [swipe, setSwipe] = useState<{ x: number; y: number } | null>(null);
 
-  useEffect(() => {
-    const mapped = stepFromFunnelState(funnelState);
-    setStep((current) => Math.min(current, Math.max(farthest, mapped)));
-  }, [funnelState, farthest]);
-
-  const visibleStep = step;
+  const visibleStep = Math.min(
+    step,
+    Math.max(farthest, stepFromFunnelState(funnelState)),
+  );
   const showBook = visibleStep > 0;
   const processing = funnelState === "processing" || dropping;
   const readyCount =
@@ -210,7 +209,7 @@ export function BookEditor({
   };
 
   return (
-    <>
+    <div className="book-editor-shell book-editor-field">
       <BookEditorIntro
         activeIndex={visibleStep}
         farthestIndex={farthest}
@@ -218,7 +217,7 @@ export function BookEditor({
       />
       <section
         id="hero-book"
-        className={`book-editor-field relative w-full ${
+        className={`relative w-full ${
           dragOver ? "ring-4 ring-inset ring-periwinkle/70" : ""
         }`}
         onDragEnter={handleDragEnter}
@@ -303,6 +302,7 @@ export function BookEditor({
                     onCreateStory={onCreateStory}
                     onPreview={onPreview}
                     onRegenerate={onRegenerate}
+                    enableVideoMemories={enableVideoMemories}
                   />
                 )}
                 {visibleStep === 4 && (
@@ -339,6 +339,6 @@ export function BookEditor({
           />
         ) : null}
       </section>
-    </>
+    </div>
   );
 }

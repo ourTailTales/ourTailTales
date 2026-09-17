@@ -7,7 +7,16 @@ import posthog from "posthog-js";
 
 export type FunnelEvent =
   | "landing_view"
+  | "create_page_viewed"
   | "album_selected"
+  | "album_processing_started"
+  | "album_processing_completed"
+  | "free_book_generation_started"
+  | "free_book_generation_completed"
+  | "free_book_generation_failed"
+  | "free_book_saved"
+  | "free_book_opened"
+  | "auth_gate_viewed"
   | "processing_complete"
   | "book_size_confirmed"
   | "story_generated"

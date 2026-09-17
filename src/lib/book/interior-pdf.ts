@@ -182,7 +182,7 @@ async function drawPage(context: DrawContext): Promise<void> {
 async function drawTitlePage(context: DrawContext): Promise<void> {
   const { page, meta, fonts } = context;
 
-  drawCentered(page, meta.petName || "Their name", {
+  drawCentered(page, meta.petName || "Their Story", {
     font: fonts.display,
     size: 46,
     color: INK,

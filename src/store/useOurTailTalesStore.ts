@@ -25,6 +25,7 @@ import type {
 } from "@/types/photo";
 import type { VideoAsset, VideoMemoryPlacement } from "@/types/video-memory";
 import { loadStoredDraft } from "@/lib/video-memory/client";
+import { clearLocalDraft, restoreLocalDraft } from "@/lib/drafts/local";
 
 export type FunnelState =
   | "idle"
@@ -53,6 +54,7 @@ type State = {
   placements: VideoMemoryPlacement[];
   videoNotice: string | null;
   albumVideos: AlbumVideoPreview[];
+  freePreviewReady: boolean;
 };
 
 export type AlbumVideoPreview = {
@@ -64,6 +66,7 @@ export type AlbumVideoPreview = {
 
 type Actions = {
   startProcessing: (total: number) => void;
+  advanceProcessing: (count?: number) => void;
   setProgressPhase: (phase: ProcessingPhase) => void;
   addProcessedPhotos: (batch: ProcessedPhoto[]) => void;
   noteFailures: (count: number) => void;
@@ -115,6 +118,8 @@ type Actions = {
   removeAlbumPhoto: (id: string) => void;
   removeAlbumVideo: (id: string) => void;
   hydrateDraft: () => void;
+  restoreLocalBook: () => Promise<boolean>;
+  setFreePreviewReady: (ready: boolean) => void;
   reset: () => void;
 };
 
@@ -126,6 +131,28 @@ const emptyProgress: ProcessingProgressState = {
   phase: "reading",
   failed: 0,
 };
+
+export function beginBatchProgress(total: number): ProcessingProgressState {
+  return {
+    processed: 0,
+    total: Math.max(0, total),
+    phase: "reading",
+    failed: 0,
+  };
+}
+
+export function advanceBatchProgress(
+  progress: ProcessingProgressState,
+  count = 1,
+  failed = 0,
+): ProcessingProgressState {
+  const completed = Math.max(0, count);
+  return {
+    ...progress,
+    processed: Math.min(progress.total, progress.processed + completed),
+    failed: progress.failed + Math.max(0, failed),
+  };
+}
 
 const emptyMeta: BookMeta = {
   petName: "",
@@ -152,19 +179,22 @@ const initialState: State = {
   placements: [],
   videoNotice: null,
   albumVideos: [],
+  freePreviewReady: false,
 };
 
 export const useOurTailTalesStore = create<OurTailTalesStore>((set) => ({
   ...initialState,
 
   startProcessing: (total) =>
-    set((state) => ({
-      funnelState:
-        state.photos.length > 0 && state.funnelState !== "idle"
-          ? state.funnelState
-          : "processing",
-      progress: { processed: 0, total, phase: "reading", failed: 0 },
+    set(() => ({
+      funnelState: "processing",
+      progress: beginBatchProgress(total),
       processingError: null,
+    })),
+
+  advanceProcessing: (count = 1) =>
+    set((state) => ({
+      progress: advanceBatchProgress(state.progress, count),
     })),
 
   setProgressPhase: (phase) =>
@@ -196,15 +226,14 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set) => ({
       return {
         photos: [...state.photos, ...added],
         progress: {
-          ...state.progress,
-          processed: state.progress.processed + batch.length,
+          ...advanceBatchProgress(state.progress, batch.length),
         },
       };
     }),
 
   noteFailures: (count) =>
     set((state) => ({
-      progress: { ...state.progress, failed: state.progress.failed + count },
+      progress: advanceBatchProgress(state.progress, count, count),
     })),
 
   finishProcessing: () =>
@@ -412,9 +441,31 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set) => ({
     set({ draftId: stored.draftId, draftSecret: stored.secret });
   },
 
+  restoreLocalBook: async () => {
+    const restored = await restoreLocalDraft().catch(() => null);
+    if (!restored) return false;
+    set({
+      funnelState: restored.funnelState,
+      photos: restored.photos,
+      progress: restored.progress,
+      processingError: null,
+      meta: restored.meta,
+      chapterCount: restored.chapterCount,
+      chapters: restored.chapters,
+      pages: restored.pages,
+      leadEmail: restored.leadEmail,
+      albumVideos: restored.albumVideos,
+      freePreviewReady: Boolean(restored.previewPdf),
+    });
+    return true;
+  },
+
+  setFreePreviewReady: (freePreviewReady) => set({ freePreviewReady }),
+
   reset: () => {
     assetStore.releaseAll();
     releaseAllVideoPosters();
+    void clearLocalDraft();
     const stored = loadStoredDraft();
     set({
       ...initialState,

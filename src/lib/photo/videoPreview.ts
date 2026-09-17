@@ -1,5 +1,7 @@
 const posters = new Map<string, string>();
 const previews = new Map<string, string>();
+const posterBlobs = new Map<string, Blob>();
+const videoFiles = new Map<string, File>();
 
 export function getVideoPosterUrl(id: string): string | undefined {
   return posters.get(id);
@@ -19,6 +21,8 @@ function revoke(map: Map<string, string>, id: string): void {
 export function releaseVideoPoster(id: string): void {
   revoke(posters, id);
   revoke(previews, id);
+  posterBlobs.delete(id);
+  videoFiles.delete(id);
 }
 
 export function releaseAllVideoPosters(): void {
@@ -26,6 +30,8 @@ export function releaseAllVideoPosters(): void {
   for (const url of previews.values()) URL.revokeObjectURL(url);
   posters.clear();
   previews.clear();
+  posterBlobs.clear();
+  videoFiles.clear();
 }
 
 export type VideoPreview = {
@@ -41,6 +47,7 @@ export async function makeVideoPreview(
   releaseVideoPoster(id);
   const previewUrl = URL.createObjectURL(file);
   previews.set(id, previewUrl);
+  videoFiles.set(id, file);
 
   const video = document.createElement("video");
   video.muted = true;
@@ -78,5 +85,29 @@ export async function makeVideoPreview(
   });
   const posterUrl = URL.createObjectURL(blob);
   posters.set(id, posterUrl);
+  posterBlobs.set(id, blob);
   return { posterUrl, previewUrl };
+}
+
+export function getStoredVideoPreview(
+  id: string,
+): { file: File; posterBlob: Blob } | null {
+  const file = videoFiles.get(id);
+  const posterBlob = posterBlobs.get(id);
+  return file && posterBlob ? { file, posterBlob } : null;
+}
+
+export function restoreVideoPreview(
+  id: string,
+  file: File,
+  posterBlob: Blob,
+): VideoPreview {
+  releaseVideoPoster(id);
+  const previewUrl = URL.createObjectURL(file);
+  const posterUrl = URL.createObjectURL(posterBlob);
+  previews.set(id, previewUrl);
+  posters.set(id, posterUrl);
+  videoFiles.set(id, file);
+  posterBlobs.set(id, posterBlob);
+  return { previewUrl, posterUrl };
 }

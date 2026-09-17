@@ -129,6 +129,7 @@ function AlbumCell({ cell }: { cell: AlbumTile }) {
       {cell.kind === "video" && cell.previewUrl ? (
         <AlbumVideo src={cell.previewUrl} poster={cell.thumbUrl} />
       ) : (
+        // eslint-disable-next-line @next/next/no-img-element -- local browser object URL
         <img src={cell.thumbUrl} alt="" className="h-full w-full object-cover" />
       )}
       <span

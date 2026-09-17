@@ -132,11 +132,17 @@ body {
   }
 }
 
-/* Landing carousel — solid pastel, no grain or dots. */
-.carousel-field {
+/* One continuous field for binding selection and free-book upload. */
+.book-creation-field {
   color-scheme: light;
   color: var(--color-page-ink);
   background-color: var(--color-carousel-field);
+  background-image: linear-gradient(
+    to bottom,
+    var(--color-carousel-field) 0,
+    var(--color-carousel-field) calc(100% - 10rem),
+    var(--color-paper) 100%
+  );
   --color-ink: var(--color-page-ink);
   --color-ink-soft: var(--color-page-ink-soft);
   --color-ink-faint: var(--color-page-ink-faint);
@@ -158,4 +164,15 @@ body {
   background-size: 160px 160px, 18px 18px;
   background-repeat: repeat;
   background-position: 0 0, 0 0;
+}
+
+/* Recess the editor between the product showcase and the rest of the page. */
+.book-editor-shell {
+  border-top: 1px solid rgb(70 82 126 / 0.42);
+  border-bottom: 1px solid rgb(70 82 126 / 0.42);
+  box-shadow:
+    inset 0 12px 18px -16px rgb(25 32 58 / 0.48),
+    inset 0 -12px 18px -16px rgb(25 32 58 / 0.48),
+    0 -1px 0 rgb(255 255 255 / 0.4),
+    0 1px 0 rgb(255 255 255 / 0.4);
 }

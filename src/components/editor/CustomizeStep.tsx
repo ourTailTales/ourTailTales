@@ -12,10 +12,12 @@ export function CustomizeStep({
   onCreateStory,
   onPreview,
   onRegenerate,
+  enableVideoMemories = true,
 }: {
   onCreateStory: () => void;
   onPreview: () => void;
   onRegenerate: (chapterId: string) => void;
+  enableVideoMemories?: boolean;
 }) {
   const funnelState = useOurTailTalesStore((state) => state.funnelState);
   const meta = useOurTailTalesStore((state) => state.meta);
@@ -86,7 +88,7 @@ export function CustomizeStep({
         onPreview={pages.length > 0 ? onPreview : undefined}
       />
 
-      <VideoMemoriesPanel pages={pages} />
+      {enableVideoMemories ? <VideoMemoriesPanel pages={pages} /> : null}
     </div>
   );
 }

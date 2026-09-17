@@ -3,31 +3,38 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { BrandMark } from "@/components/BrandMark";
 import { EmailSampleModal } from "@/components/EmailSampleModal";
 import { BookPreviewDialog } from "@/components/book-viewer/BookPreviewDialog";
+import {
+  BookAuthGate,
+  type ProtectedBookAction,
+} from "@/components/auth/BookAuthGate";
+import { BookGenerationStage } from "@/components/create/BookGenerationStage";
+import { BookReadyStage } from "@/components/create/BookReadyStage";
+import { QuickUploadStage } from "@/components/create/QuickUploadStage";
 import { BookEditor } from "@/components/editor/BookEditor";
 import { KeepTabBanner } from "@/components/KeepTabBanner";
-import { Faq } from "@/components/landing/Faq";
-import { Footer } from "@/components/landing/Footer";
-import { LandingCta } from "@/components/landing/LandingCta";
-import { LandingHero } from "@/components/landing/LandingHero";
-import { ProductListing } from "@/components/landing/ProductListing";
+import { SiteHeader } from "@/components/SiteHeader";
 import { captureClientException, identifyLead, track } from "@/lib/analytics";
-import { renderSamplePdf, sampleFileName } from "@/lib/book/sample-pdf";
+import {
+  renderFreePreviewPdf,
+  renderSamplePdf,
+  sampleFileName,
+} from "@/lib/book/sample-pdf";
 import {
   partitionMedia,
   startIngestion,
   type Ingestion,
 } from "@/lib/photo/process";
 import { makeVideoPreview } from "@/lib/photo/videoPreview";
+import { persistLocalDraft } from "@/lib/drafts/local";
+import { saveBookProject } from "@/lib/books/cloud";
+import {
+  authConfigured,
+  createAuthBrowserClient,
+} from "@/lib/supabase/auth-browser";
 import { generateChapterStory } from "@/lib/story/client";
 import { prepareOrder } from "@/lib/order/prepare";
-import {
-  fetchVideoLibrary,
-  readVideoDurationMs,
-  uploadVideoMemory,
-} from "@/lib/video-memory/client";
 import { placedMemoriesReadyForCheckout } from "@/lib/video-memory/checkout-ready";
 import {
   photoMapOf,
@@ -38,33 +45,81 @@ import {
 /** Chapters written at once. Keeps the AI endpoint from being hammered. */
 const STORY_CONCURRENCY = 2;
 
-export function Funnel() {
+export function Funnel({ embedded = false }: { embedded?: boolean }) {
   const router = useRouter();
   const store = useOurTailTalesStore();
-  const hydrateDraft = useOurTailTalesStore((state) => state.hydrateDraft);
-  const draftId = useOurTailTalesStore((state) => state.draftId);
-  const draftSecret = useOurTailTalesStore((state) => state.draftSecret);
-  const setVideoLibrary = useOurTailTalesStore((state) => state.setVideoLibrary);
   const hasWork = useOurTailTalesStore(selectHasUnsavedWork);
+  const funnelState = useOurTailTalesStore((state) => state.funnelState);
 
   const ingestion = useRef<Ingestion | null>(null);
   const [sampleOpen, setSampleOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [localReady, setLocalReady] = useState(false);
+  const [previewPreparing, setPreviewPreparing] = useState(false);
+  const [authAction, setAuthAction] = useState<ProtectedBookAction | null>(null);
+  const [cloudSaving, setCloudSaving] = useState(false);
 
   useEffect(() => {
-    track("landing_view");
-    hydrateDraft();
-  }, [hydrateDraft]);
+    track("create_page_viewed");
+    void useOurTailTalesStore
+      .getState()
+      .restoreLocalBook()
+      .finally(() => setLocalReady(true));
+  }, []);
+
+  const saveAndPerformAction = useCallback(
+    async (action: ProtectedBookAction) => {
+      setCloudSaving(true);
+      setNotice(null);
+      try {
+        const bookId = await saveBookProject(useOurTailTalesStore.getState());
+        track("free_book_saved", { action });
+        router.push(`/book/${bookId}${action === "pdf" ? "?view=pdf" : ""}`);
+      } catch (error) {
+        captureClientException(error);
+        setNotice(
+          error instanceof Error
+            ? error.message
+            : "Your book could not be saved. Please try again.",
+        );
+      } finally {
+        setCloudSaving(false);
+      }
+    },
+    [router],
+  );
 
   useEffect(() => {
-    if (!draftId || !draftSecret) return;
-    void fetchVideoLibrary({ draftId, secret: draftSecret })
-      .then((library) => setVideoLibrary(library.assets, library.placements))
-      .catch(() => {
-        // Editor panel surfaces a customer message if the library cannot load.
+    if (!localReady || !store.freePreviewReady || !authConfigured()) return;
+    const pending = sessionStorage.getItem(
+      "ourtailtales.pendingBookAction",
+    ) as ProtectedBookAction | null;
+    if (pending !== "preview" && pending !== "pdf") return;
+    void createAuthBrowserClient()
+      .auth.getUser()
+      .then(({ data }) => {
+        if (!data.user) return;
+        sessionStorage.removeItem("ourtailtales.pendingBookAction");
+        void saveAndPerformAction(pending);
       });
-  }, [draftId, draftSecret, setVideoLibrary]);
+  }, [localReady, saveAndPerformAction, store.freePreviewReady]);
+
+  const requestProtectedAction = useCallback(
+    async (action: ProtectedBookAction) => {
+      if (authConfigured()) {
+        const { data } = await createAuthBrowserClient().auth.getUser();
+        if (data.user) {
+          await saveAndPerformAction(action);
+          return;
+        }
+      }
+      sessionStorage.setItem("ourtailtales.pendingBookAction", action);
+      track("auth_gate_viewed", { action });
+      setAuthAction(action);
+    },
+    [saveAndPerformAction],
+  );
 
   const handleFiles = useCallback(
     (files: File[]) => {
@@ -72,66 +127,54 @@ export function Funnel() {
       if (images.length === 0 && videos.length === 0) return;
 
       track("album_selected", { count: images.length + videos.length });
+      store.startProcessing(images.length + videos.length);
+      track("album_processing_started", {
+        count: images.length + videos.length,
+      });
 
-      if (images.length > 0) {
-        store.startProcessing(images.length);
+      const photosDone = new Promise<void>((resolve) => {
+        if (images.length === 0) {
+          resolve();
+          return;
+        }
         ingestion.current = startIngestion(images, {
           onBatch: (batch) => store.addProcessedPhotos(batch),
           onFailures: (count) => store.noteFailures(count),
-          onDone: () => {
-            store.setProgressPhase("deduplicating");
-            store.finishProcessing();
-            track("processing_complete", { count: images.length });
+          onDone: resolve,
+          onError: (message) => {
+            store.failProcessing(message);
+            resolve();
           },
-          onError: (message) => store.failProcessing(message),
         });
-      }
+      });
 
-      if (videos.length > 0) {
-        void (async () => {
-          const added: {
-            id: string;
-            posterUrl: string;
-            previewUrl: string;
-            fileName: string;
-          }[] = [];
-          for (const file of videos) {
-            const id = crypto.randomUUID();
-            try {
-              const preview = await makeVideoPreview(id, file);
-              added.push({ id, fileName: file.name, ...preview });
-            } catch {
-              // Skip a video we cannot preview; still try to store it if we can.
-            }
-          }
-          if (added.length > 0) store.addAlbumVideos(added);
-
-          const draft =
-            store.draftId && store.draftSecret
-              ? { draftId: store.draftId, secret: store.draftSecret }
-              : null;
-          if (!draft) return;
-          for (const file of videos) {
-            try {
-              const durationMs = await readVideoDurationMs(file).catch(
-                () => undefined,
-              );
-              await uploadVideoMemory(draft, file, {
-                durationMs,
-                title: file.name.replace(/\.[^.]+$/, ""),
-              });
-            } catch {
-              // Preview already sits in the album; the editor can retry upload.
-            }
-          }
+      const videosDone = (async () => {
+        for (const file of videos) {
+          const id = crypto.randomUUID();
           try {
-            const library = await fetchVideoLibrary(draft);
-            store.setVideoLibrary(library.assets, library.placements);
+            const preview = await makeVideoPreview(id, file);
+            store.addAlbumVideos([
+              { id, fileName: file.name, ...preview },
+            ]);
+            store.advanceProcessing();
           } catch {
-            /* editor surfaces a message if the library cannot refresh */
+            store.noteFailures(1);
           }
-        })();
-      }
+        }
+      })();
+
+      void Promise.all([photosDone, videosDone]).then(() => {
+        store.setProgressPhase("deduplicating");
+        store.finishProcessing();
+        void persistLocalDraft(useOurTailTalesStore.getState()).catch(() => {
+          setNotice(
+            "This browser could not save the album for later. Keep this tab open while creating your book.",
+          );
+        });
+        track("album_processing_completed", {
+          count: images.length + videos.length,
+        });
+      });
     },
     [store],
   );
@@ -190,6 +233,42 @@ export function Funnel() {
       chapters: useOurTailTalesStore.getState().chapters.length,
     });
   }, [runStories]);
+
+  const handleCreateFreeBook = useCallback(async () => {
+    const state = useOurTailTalesStore.getState();
+    track("free_book_generation_started", {
+      photos: state.photos.length,
+      chapters: state.chapterCount,
+    });
+    state.confirmBookSize();
+    await handleCreateStory();
+    const completed = useOurTailTalesStore.getState();
+    setPreviewPreparing(true);
+    let previewPdf: Blob | undefined;
+    try {
+      previewPdf = await renderFreePreviewPdf({
+        pages: completed.pages,
+        chapters: completed.chapters,
+        meta: completed.meta,
+        photos: photoMapOf(completed.photos),
+      });
+      completed.setFreePreviewReady(true);
+    } catch (error) {
+      captureClientException(error);
+      setNotice("Your story is ready, but the PDF preview needs another try.");
+    } finally {
+      setPreviewPreparing(false);
+    }
+    await persistLocalDraft(useOurTailTalesStore.getState(), previewPdf).catch(() => {
+      setNotice(
+        "This browser could not save the finished draft for later. Keep this tab open to view it.",
+      );
+    });
+    track("free_book_generation_completed", {
+      chapters: completed.chapters.length,
+      pages: completed.pages.length,
+    });
+  }, [handleCreateStory]);
 
   const handleSample = useCallback(async (email: string) => {
     const state = useOurTailTalesStore.getState();
@@ -269,33 +348,70 @@ export function Funnel() {
     }
   }, [router]);
 
+  const stage = !localReady ? (
+    <div className="quick-create-stage flex min-h-[calc(100dvh-5rem)] items-center justify-center">
+      <span
+        className="size-10 animate-spin rounded-full border-[3px] border-periwinkle/25 border-t-periwinkle"
+        aria-label="Restoring your book"
+      />
+    </div>
+  ) : funnelState === "idle" ||
+    funnelState === "processing" ||
+    funnelState === "album_ready" ? (
+    <QuickUploadStage
+      onFiles={handleFiles}
+      onCreate={() => void handleCreateFreeBook()}
+    />
+  ) : funnelState === "organizing" ||
+    funnelState === "ai_generating" ||
+    previewPreparing ? (
+    <BookGenerationStage />
+  ) : store.freePreviewReady ? (
+    <BookReadyStage
+      onPreview={() => void requestProtectedAction("preview")}
+      onPdf={() => void requestProtectedAction("pdf")}
+      saving={cloudSaving}
+      notice={notice}
+    />
+  ) : (
+    <BookEditor
+      onFiles={handleFiles}
+      onStartOver={() => {
+        ingestion.current?.cancel();
+        store.reset();
+      }}
+      onCreateStory={() => void handleCreateStory()}
+      onSample={() => setSampleOpen(true)}
+      onPreview={() => setPreviewOpen(true)}
+      onCheckout={() => void handleCheckout()}
+      onRegenerate={(chapterId) => void runStories([chapterId])}
+      notice={notice}
+      enableVideoMemories={false}
+    />
+  );
+
   return (
     <>
-      <KeepTabBanner active={hasWork} />
+      <KeepTabBanner active={hasWork && !embedded} />
 
-      <main className="w-full flex-1 pb-0">
-        <LandingHero header={<Header />} />
-        <ProductListing />
-        <BookEditor
-          onFiles={handleFiles}
-          onStartOver={() => {
-            ingestion.current?.cancel();
-            store.reset();
-          }}
-          onCreateStory={() => void handleCreateStory()}
-          onSample={() => setSampleOpen(true)}
-          onPreview={() => setPreviewOpen(true)}
-          onCheckout={() => void handleCheckout()}
-          onRegenerate={(chapterId) => void runStories([chapterId])}
-          notice={notice}
-        />
-
-        <div className="landing-rest">
-          <LandingCta />
-          <Faq />
-          <Footer />
-        </div>
-      </main>
+      {embedded ? (
+        <section
+          id="create-free-book"
+          aria-label="Create your free pet story"
+          className="w-full scroll-mt-4"
+        >
+          {stage}
+        </section>
+      ) : (
+        <main id="create-free-book" className="w-full flex-1 pb-0">
+          <div className="brand-atmosphere px-5 py-5 sm:px-8">
+            <div className="mx-auto max-w-[90rem]">
+              <SiteHeader />
+            </div>
+          </div>
+          {stage}
+        </main>
+      )}
 
       {sampleOpen && (
         <EmailSampleModal
@@ -308,15 +424,20 @@ export function Funnel() {
       {previewOpen && (
         <BookPreviewDialog onClose={() => setPreviewOpen(false)} />
       )}
-    </>
-  );
-}
 
-function Header() {
-  return (
-    <header className="flex items-center justify-between gap-4">
-      <BrandMark href="/" size="md" priority />
-    </header>
+      {authAction && (
+        <BookAuthGate
+          action={authAction}
+          onClose={() => setAuthAction(null)}
+          onAuthenticated={() => {
+            const action = authAction;
+            sessionStorage.removeItem("ourtailtales.pendingBookAction");
+            setAuthAction(null);
+            void saveAndPerformAction(action);
+          }}
+        />
+      )}
+    </>
   );
 }
 

@@ -11,7 +11,7 @@ export function BookEditorIntro({
   onSelect?: (index: number) => void;
 }) {
   return (
-    <div className="book-editor-field relative border-t-4 border-editor-field">
+    <div className="relative">
       <div className="mx-auto grid max-w-[90rem] items-center gap-5 overflow-visible px-4 pt-5 pb-3 sm:gap-8 sm:px-8 sm:pt-10 sm:pb-0 lg:grid-cols-[minmax(12rem,0.7fr)_minmax(22rem,1.8fr)] lg:gap-12">
         <div>
           <p className="mb-1 font-display text-xs text-periwinkle sm:text-base">
