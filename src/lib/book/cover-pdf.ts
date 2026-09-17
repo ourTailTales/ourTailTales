@@ -1,5 +1,6 @@
-import { PDFDocument, StandardFonts, degrees, rgb, type PDFPage } from "pdf-lib";
+import { PDFDocument, degrees, rgb, type PDFPage } from "pdf-lib";
 
+import { embedBookFonts, sanitizeForFont } from "@/lib/book/fonts";
 import { BLEED_INCHES, TRIM_INCHES } from "@/lib/book/layouts";
 import { CLOSING_LINE } from "@/lib/book/pagination";
 import { brand, hexToRgb01 } from "@/lib/brand";
@@ -44,8 +45,7 @@ export async function renderCoverPdf(args: {
   pdf.setTitle(meta.petName ? `${meta.petName} — cover` : "ourTailTales cover");
   pdf.setProducer("ourTailTales");
 
-  const display = await pdf.embedFont(StandardFonts.TimesRoman);
-  const sans = await pdf.embedFont(StandardFonts.Helvetica);
+  const { display, sans } = await embedBookFonts(pdf);
 
   const page = pdf.addPage([dimensions.width, dimensions.height]);
   page.drawRectangle({
@@ -112,7 +112,7 @@ export async function renderCoverPdf(args: {
   drawScrim(page, artLeft, artWidth, artHeight * 0.36);
 
   const titleSize = 42;
-  const petName = meta.petName || "Their name";
+  const petName = sanitizeForFont(display, meta.petName || "Their name");
   const safeLeft = artLeft + BLEED_PT + 0.5 * PT_PER_INCH;
   const titleBaseline = artHeight * 0.16;
 
@@ -167,7 +167,7 @@ export async function renderCoverPdf(args: {
 
   const backLeft = BLEED_PT + 0.75 * PT_PER_INCH;
   const backWidth = TRIM_PT - 1.5 * PT_PER_INCH;
-  const backText = meta.dedication.trim() || CLOSING_LINE;
+  const backText = sanitizeForFont(display, meta.dedication.trim() || CLOSING_LINE);
   const lines = wrap(backText, display, 13, backWidth).slice(0, 8);
 
   let baseline = dimensions.height * 0.62;

@@ -1,12 +1,6 @@
-import {
-  PDFDocument,
-  StandardFonts,
-  degrees,
-  rgb,
-  type PDFFont,
-  type PDFPage,
-} from "pdf-lib";
+import { PDFDocument, degrees, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 
+import { embedBookFonts, sanitizeForFont } from "@/lib/book/fonts";
 import { FIXED_SLOTS, LAYOUTS, PAGE_INCHES } from "@/lib/book/layouts";
 import { CLOSING_LINE, possessivePetName } from "@/lib/book/pagination";
 import { brand, hexToRgb01 } from "@/lib/brand";
@@ -92,11 +86,7 @@ export async function renderInteriorPdf(
   pdf.setProducer("ourTailTales");
   pdf.setCreator("ourTailTales");
 
-  const fonts = {
-    display: await pdf.embedFont(StandardFonts.TimesRoman),
-    displayItalic: await pdf.embedFont(StandardFonts.TimesRomanItalic),
-    sans: await pdf.embedFont(StandardFonts.Helvetica),
-  };
+  const fonts = await embedBookFonts(pdf);
 
   const chaptersById = new Map(chapters.map((chapter) => [chapter.id, chapter]));
   const selected = pageLimit ? pages.slice(0, pageLimit) : pages;
@@ -278,7 +268,12 @@ async function drawOpenerPage(context: DrawContext): Promise<void> {
     cursor -= 26;
   }
 
-  const titleLines = wrapText(chapter?.title ?? "", fonts.display, 30, maxWidth);
+  const titleLines = wrapText(
+    sanitizeForFont(fonts.display, chapter?.title ?? ""),
+    fonts.display,
+    30,
+    maxWidth,
+  );
   for (const line of titleLines) {
     page.drawText(line, {
       x: left,
@@ -292,7 +287,12 @@ async function drawOpenerPage(context: DrawContext): Promise<void> {
 
   cursor -= 6;
 
-  const blurbLines = wrapText(chapter?.blurb ?? "", fonts.sans, 10.5, maxWidth);
+  const blurbLines = wrapText(
+    sanitizeForFont(fonts.sans, chapter?.blurb ?? ""),
+    fonts.sans,
+    10.5,
+    maxWidth,
+  );
   for (const line of blurbLines) {
     if (cursor < boxBottom + 6) break;
     page.drawText(line, {
@@ -471,6 +471,7 @@ function drawCentered(
   options: { font: PDFFont; size: number; color: ReturnType<typeof rgb>; baseline: number },
 ): void {
   if (!text) return;
+  text = sanitizeForFont(options.font, text);
   const width = options.font.widthOfTextAtSize(text, options.size);
   page.drawText(text, {
     x: (PAGE_PT - width) / 2,
@@ -495,7 +496,7 @@ function drawTracked(
   },
 ): void {
   let cursor = options.x;
-  for (const character of text) {
+  for (const character of sanitizeForFont(options.font, text)) {
     page.drawText(character, {
       x: cursor,
       y: options.y,
