@@ -70,7 +70,12 @@ export async function persistLocalDraft(
   state: OurTailTalesStore,
   previewPdf?: Blob,
 ): Promise<string | null> {
-  if (typeof indexedDB === "undefined" || state.photos.length === 0) return null;
+  if (
+    typeof indexedDB === "undefined" ||
+    (state.photos.length === 0 && state.albumVideos.length === 0)
+  ) {
+    return null;
+  }
 
   const photos: StoredPhoto[] = [];
   for (const photo of state.photos) {

@@ -1,7 +1,17 @@
 "use client";
 
-import { FolderOpen, FolderUp, Play, Plus, Sparkles } from "lucide-react";
 import {
+  FolderOpen,
+  FolderUp,
+  Images,
+  Play,
+  Plus,
+  Sparkles,
+  Trash2,
+  X,
+} from "lucide-react";
+import {
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -9,7 +19,12 @@ import {
   type DragEvent,
 } from "react";
 
-import { albumTilesFrom, type AlbumTile } from "@/components/editor/albumTiles";
+import {
+  albumTilesFrom,
+  photoPrintStatus,
+  type AlbumTile,
+} from "@/components/editor/albumTiles";
+import { clearLocalDraft, persistLocalDraft } from "@/lib/drafts/local";
 import { filesFromDataTransfer, isLikelyMedia } from "@/lib/photo/process";
 import { MIN_PHOTOS_FOR_BOOK } from "@/lib/pricing";
 import {
@@ -35,6 +50,7 @@ export function QuickUploadStage({
   const folderRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
   const [readingDrop, setReadingDrop] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(false);
 
   const summary = useMemo(() => summarizeAlbum(photos), [photos]);
   const tiles = useMemo(
@@ -43,6 +59,7 @@ export function QuickUploadStage({
   );
   const backgroundTiles = tiles.slice(-MAX_BACKGROUND_TILES);
   const hasMedia = tiles.length > 0;
+  const usableMediaCount = summary.placeable + videos.length;
   const processing =
     readingDrop || (progress.total > 0 && progress.phase !== "done");
   const canCreate = !processing && summary.placeable >= MIN_PHOTOS_FOR_BOOK;
@@ -70,6 +87,20 @@ export function QuickUploadStage({
         setReadingDrop(false);
       }
     })();
+  };
+
+  const removeTile = (tile: AlbumTile): void => {
+    const actions = useOurTailTalesStore.getState();
+    if (tile.kind === "photo") actions.removeAlbumPhoto(tile.id);
+    else actions.removeAlbumVideo(tile.id);
+
+    const next = useOurTailTalesStore.getState();
+    const save = next.photos.length === 0 && next.albumVideos.length === 0
+      ? clearLocalDraft()
+      : persistLocalDraft(next);
+    void save.catch(() => {
+      // The removal still applies to this session if local storage is unavailable.
+    });
   };
 
   return (
@@ -112,7 +143,22 @@ export function QuickUploadStage({
       <MediaBackdrop tiles={backgroundTiles} hasMedia={hasMedia} />
 
       <div className="relative z-10 mx-auto flex w-full max-w-[90rem] items-start justify-center px-5 py-8 sm:px-8 sm:py-10">
-        <div className="w-full max-w-md rounded-[1.75rem] border border-white/80 bg-white/94 p-6 text-center shadow-[0_12px_32px_-20px_rgb(25_32_58/0.3)] backdrop-blur-xl sm:p-8">
+        <div className="relative w-full max-w-md rounded-[1.75rem] border border-white/80 bg-white/94 p-6 text-center shadow-[0_12px_32px_-20px_rgb(25_32_58/0.3)] backdrop-blur-xl sm:p-8">
+          {hasMedia && !processing ? (
+            <button
+              type="button"
+              onClick={() => setLibraryOpen(true)}
+              className="absolute top-4 right-4 flex size-11 items-center justify-center rounded-full border border-page-line bg-white text-page-ink shadow-sm transition-colors hover:border-periwinkle hover:text-periwinkle sm:top-5 sm:right-5"
+              aria-label={`Open photo and video library, ${usableMediaCount.toLocaleString()} usable uploads`}
+              title="Open photo and video library"
+            >
+              <Images aria-hidden className="size-5" />
+              <span className="absolute -top-1.5 -right-1.5 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-periwinkle px-1 text-[0.65rem] leading-none font-bold text-white ring-2 ring-white">
+                {usableMediaCount > 99 ? "99+" : usableMediaCount}
+              </span>
+            </button>
+          ) : null}
+
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
@@ -208,6 +254,14 @@ export function QuickUploadStage({
           ) : null}
         </div>
       </div>
+
+      {libraryOpen ? (
+        <MediaLibraryDialog
+          tiles={tiles}
+          onClose={() => setLibraryOpen(false)}
+          onRemove={removeTile}
+        />
+      ) : null}
     </section>
   );
 }
@@ -289,11 +343,6 @@ function ReadyCopy({
           Memories from {range}
         </p>
       ) : null}
-      {videos > 0 ? (
-        <p className="mt-3 text-xs leading-5 text-page-ink-faint">
-          Videos are saved for the later Video Memories step. Photos build this first preview.
-        </p>
-      ) : null}
     </div>
   );
 }
@@ -308,7 +357,7 @@ function MediaBackdrop({
   return (
     <div className="absolute inset-0 -z-10">
       {hasMedia && tiles.length >= 4 ? (
-        <div className="flex h-full flex-wrap content-center justify-center gap-2 p-3 opacity-55 sm:gap-3 sm:p-5">
+        <div className="flex h-full flex-wrap content-start justify-center gap-2 p-3 opacity-55 sm:gap-3 sm:p-5">
           {tiles.map((tile) => (
             <div
               key={tile.id}
@@ -328,6 +377,130 @@ function MediaBackdrop({
       {hasMedia && tiles.length >= 4 ? (
         <div className="absolute inset-0 bg-[rgb(226_215_245/0.82)]" />
       ) : null}
+    </div>
+  );
+}
+
+function MediaLibraryDialog({
+  tiles,
+  onClose,
+  onRemove,
+}: {
+  tiles: AlbumTile[];
+  onClose: () => void;
+  onRemove: (tile: AlbumTile) => void;
+}) {
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const photoCount = tiles.filter((tile) => tile.kind === "photo").length;
+  const videoCount = tiles.length - photoCount;
+  const usablePhotoCount = tiles.filter(
+    (tile) => tile.kind === "photo" && photoPrintStatus(tile) === "ready",
+  ).length;
+  const excludedPhotoCount = photoCount - usablePhotoCount;
+
+  useEffect(() => {
+    closeRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  useEffect(() => {
+    if (tiles.length === 0) onClose();
+  }, [onClose, tiles.length]);
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="media-library-title"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
+    >
+      <button
+        type="button"
+        aria-label="Close media library"
+        onClick={onClose}
+        className="absolute inset-0 cursor-default bg-page-ink/55 backdrop-blur-sm"
+      />
+
+      <div className="relative flex max-h-[min(52rem,calc(100dvh-2rem))] w-full max-w-5xl flex-col overflow-hidden rounded-[1.75rem] border border-white/80 bg-white shadow-[0_28px_90px_-28px_rgb(25_32_58/0.7)] sm:max-h-[calc(100dvh-3rem)]">
+        <header className="flex items-start justify-between gap-5 border-b border-page-line px-5 py-4 sm:px-7 sm:py-5">
+          <div>
+            <p className="text-xs font-semibold tracking-[0.14em] text-periwinkle uppercase">
+              Your uploads
+            </p>
+            <h2
+              id="media-library-title"
+              className="mt-1 font-display text-2xl font-bold text-page-ink sm:text-3xl"
+            >
+              Photo &amp; video library
+            </h2>
+            <p className="mt-1 text-sm text-page-ink-soft">
+              {usablePhotoCount.toLocaleString()} usable {usablePhotoCount === 1 ? "photo" : "photos"}
+              {videoCount > 0
+                ? ` · ${videoCount.toLocaleString()} ${videoCount === 1 ? "video" : "videos"}`
+                : ""}
+            </p>
+            {excludedPhotoCount > 0 ? (
+              <p className="mt-1 text-xs text-page-ink-faint">
+                {excludedPhotoCount.toLocaleString()} duplicate or low-quality {excludedPhotoCount === 1 ? "photo is" : "photos are"} excluded from the usable count.
+              </p>
+            ) : null}
+          </div>
+          <button
+            ref={closeRef}
+            type="button"
+            onClick={onClose}
+            className="flex size-10 shrink-0 items-center justify-center rounded-full border border-page-line bg-white text-page-ink-soft transition-colors hover:border-periwinkle hover:text-periwinkle"
+            aria-label="Close media library"
+          >
+            <X aria-hidden className="size-5" />
+          </button>
+        </header>
+
+        <div className="overflow-y-auto p-4 sm:p-6">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5">
+            {tiles.map((tile, index) => {
+              const label = tile.label?.trim() || `${tile.kind} ${index + 1}`;
+              const printStatus = photoPrintStatus(tile);
+              return (
+                <article
+                  key={tile.id}
+                  className="group relative aspect-[4/5] overflow-hidden rounded-2xl border border-page-line bg-memory-blue/25 shadow-sm"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element -- local object URL */}
+                  <img
+                    src={tile.thumbUrl}
+                    alt={label}
+                    className="h-full w-full object-cover"
+                  />
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-page-ink/70 to-transparent" />
+                  {tile.kind === "video" ? (
+                    <span className="pointer-events-none absolute bottom-3 left-3 flex size-8 items-center justify-center rounded-full bg-white/90 text-page-ink shadow-sm">
+                      <Play aria-hidden className="ml-0.5 size-3.5" fill="currentColor" />
+                    </span>
+                  ) : printStatus !== "ready" ? (
+                    <span className="pointer-events-none absolute bottom-3 left-3 rounded-full bg-white/90 px-2.5 py-1 text-[0.65rem] font-bold tracking-wide text-page-ink uppercase shadow-sm">
+                      {printStatus === "duplicate" ? "Duplicate" : "Low quality"}
+                    </span>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => onRemove(tile)}
+                    className="absolute top-2 right-2 flex min-h-10 min-w-10 items-center justify-center rounded-full bg-white/95 text-red-700 shadow-md transition-transform hover:scale-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-periwinkle"
+                    aria-label={`Remove ${label}`}
+                    title={`Remove ${label}`}
+                  >
+                    <Trash2 aria-hidden className="size-4" />
+                  </button>
+                </article>
+              );
+            })}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

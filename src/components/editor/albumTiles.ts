@@ -30,6 +30,7 @@ export function albumTilesFrom(
       thumbUrl: photo.thumbUrl,
       kind: "photo" as const,
       capturedAt: photo.capturedAt,
+      label: photo.fileName,
       usable: photo.usable,
       isDuplicate: photo.isDuplicate,
       width: photo.width,
