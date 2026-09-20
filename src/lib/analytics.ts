@@ -21,6 +21,7 @@ export type FunnelEvent =
   | "book_size_confirmed"
   | "story_generated"
   | "sample_email_submitted"
+  | "lead_captured"
   | "checkout_started"
   | "payment_succeeded";
 

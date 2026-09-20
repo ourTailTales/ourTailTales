@@ -12,46 +12,62 @@ const hardcoverFeatures = [
 
 export function ProductListing() {
   return (
-    <section aria-labelledby="hardcover-heading" className="relative w-full">
-      <div className="mx-auto grid max-w-5xl items-center gap-7 px-5 py-10 sm:px-8 sm:py-14 md:grid-cols-[minmax(15rem,0.9fr)_minmax(19rem,1.1fr)] md:gap-12">
-        <div className="min-w-0">
-          <h2 id="hardcover-heading" className="font-display text-3xl font-bold text-page-ink sm:text-4xl">
-            Hardcover
-          </h2>
+    <section aria-labelledby="hardcover-heading" className="relative w-full" style={{ backgroundColor: "#faf7f2" }}>
+      {/* Dot grid pattern overlay */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          backgroundImage: "radial-gradient(circle, rgba(255,255,255,0.08) 1px, transparent 1px)",
+          backgroundSize: "24px 24px",
+        }}
+      />
+      <div className="relative mx-auto max-w-5xl px-5 py-16 sm:px-8 sm:py-20">
 
-          <p className="mt-4 font-display text-2xl text-page-ink sm:text-3xl">
-            {formatUsd(BASE_PRICE)}
+        {/* Upgrade framing — not a spec sheet */}
+        <div className="mb-10">
+          <p className="text-sm font-semibold uppercase tracking-widest text-periwinkle">
+            Ready to hold it in your hands?
           </p>
-
-          <ul className="mt-5 grid gap-2">
-            {hardcoverFeatures.map((feature) => (
-              <li key={feature} className="flex gap-2.5 text-sm leading-6 text-page-ink">
-                <span aria-hidden className="mt-2 size-1.5 shrink-0 rounded-full bg-periwinkle" />
-                {feature}
-              </li>
-            ))}
-          </ul>
-
-          <div className="mt-6">
-            <a
-              href="#create-free-book"
-              className="inline-flex rounded-xl bg-periwinkle px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-periwinkle-deep"
-            >
-              Start this book
-            </a>
-          </div>
+          <h2
+            id="hardcover-heading"
+            className="mt-2 font-display text-3xl font-bold text-page-ink sm:text-4xl"
+          >
+            Love the free PDF? Order the hardcover.
+          </h2>
+          <p className="mt-3 max-w-xl text-base leading-7 text-page-ink-soft">
+            The same story, printed, bound, and sitting on your shelf forever. A real book
+            with their face on the cover.
+          </p>
         </div>
 
-        <figure className="relative aspect-square overflow-hidden rounded-2xl bg-[#3d342c] shadow-lift">
-          <Image
-            src="/marketing/mockup-2.png"
-            alt="A hardcover book standing on a dresser, with a dog named Gracie on the cover"
-            fill
-            sizes="(min-width: 768px) 44vw, 90vw"
-            className="object-cover object-[center_58%]"
-            priority
-          />
-        </figure>
+        <div className="grid items-center gap-8 md:grid-cols-[minmax(15rem,0.9fr)_minmax(19rem,1.1fr)] md:gap-12">
+          <div className="min-w-0">
+            <p className="font-display text-3xl font-bold text-page-ink sm:text-4xl">
+              {formatUsd(BASE_PRICE)}
+            </p>
+            <p className="mt-1 text-sm text-page-ink-soft">Starting price · no hidden fees</p>
+
+            <ul className="mt-6 grid gap-3">
+              {hardcoverFeatures.map((feature) => (
+                <li key={feature} className="flex gap-2.5 text-sm leading-6 text-page-ink">
+                  <span aria-hidden className="mt-[7px] size-1.5 shrink-0 rounded-full bg-periwinkle/80" />
+                  {feature}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <figure className="relative aspect-square overflow-hidden rounded-2xl bg-[#3d342c] shadow-lift">
+            <Image
+              src="/marketing/mockup-2.png"
+              alt="A hardcover pet memoir book standing on a dresser, with a dog named Gracie on the cover"
+              fill
+              sizes="(min-width: 768px) 44vw, 90vw"
+              className="object-cover object-[center_58%]"
+            />
+          </figure>
+        </div>
       </div>
     </section>
   );

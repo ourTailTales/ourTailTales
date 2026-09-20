@@ -6,10 +6,11 @@ export const brand = {
   name: "ourTailTales",
   domain: "ourtailtales.com",
   line: "Their life, in chapters.",
-  /** Landing / cover title — the cover is the hero. */
-  title: "Hold their Life Story",
+  /** Landing / cover title — problem-first hook. */
+  title: "Their story is still in your camera roll.",
+  /** Hero subtitle — bridges the problem to the free offer. */
   subtitle:
-    "Upload their photos and videos. We organize their memories into a personalized storybook you can hold forever.",
+    "Enter your email and we\'ll send their free story straight to your inbox.",
   logo: {
     /** Web-optimized mark for headers and UI. Source master: `logo.png`. */
     src: "/branding/logo-512.png",

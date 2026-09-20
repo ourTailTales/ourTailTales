@@ -40,41 +40,41 @@ const faqs = [
       "A short video you place in the book. In print it appears as a page with a QR code so you can watch that moment again from your phone.",
   },
   {
-    question: "Can I see a sample before I order?",
+    question: "Can I get a free version before I pay anything?",
     answer:
-      "Yes. Email yourself a free PDF sample from the editor once your chapters are ready, or preview the hardcover layout on screen.",
+      "Yes. That\'s the whole point. Enter your email on the home page, drop your photos, and we build a free PDF story right in your browser. No credit card needed. Only order the hardcover once you\'ve seen it and love it.",
   },
 ] as const;
 
 export function Faq() {
   return (
-    <section aria-labelledby="faq-heading" className="w-full">
+    <section aria-labelledby="faq-heading" className="w-full" style={{ backgroundColor: "#faf7f2" }}>
       <div className="mx-auto max-w-[90rem] px-5 py-16 sm:px-8 sm:py-20">
         <div className="max-w-2xl">
           <h2
             id="faq-heading"
-            className="font-display text-3xl text-ink sm:text-4xl"
+            className="font-display text-3xl text-page-ink sm:text-4xl"
           >
             Questions, answered
           </h2>
-          <p className="mt-3 text-base leading-7 text-ink-soft">
+          <p className="mt-3 text-base leading-7 text-page-ink-soft">
             The short version of how the album becomes a book you can hold.
           </p>
         </div>
 
-        <div className="mt-10 max-w-3xl divide-y divide-line border-t border-line">
+        <div className="mt-10 max-w-3xl divide-y divide-page-line border-t border-page-line">
           {faqs.map((faq) => (
             <details key={faq.question} className="group py-5">
-              <summary className="flex cursor-pointer list-none items-start justify-between gap-4 text-left font-display text-lg text-ink marker:content-none [&::-webkit-details-marker]:hidden sm:text-xl">
+              <summary className="flex cursor-pointer list-none items-start justify-between gap-4 text-left font-display text-lg text-page-ink marker:content-none [&::-webkit-details-marker]:hidden sm:text-xl">
                 <span>{faq.question}</span>
                 <span
                   aria-hidden
-                  className="mt-1 shrink-0 text-base leading-none text-ink-faint transition-transform group-open:rotate-45"
+                  className="mt-1 shrink-0 text-base leading-none text-page-ink-faint transition-transform group-open:rotate-45"
                 >
                   +
                 </span>
               </summary>
-              <p className="mt-3 max-w-2xl pr-8 text-sm leading-6 text-ink-soft sm:text-base sm:leading-7">
+              <p className="mt-3 max-w-2xl pr-8 text-sm leading-6 text-page-ink-soft sm:text-base sm:leading-7">
                 {faq.answer}
               </p>
             </details>
