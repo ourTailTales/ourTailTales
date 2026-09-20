@@ -22,9 +22,6 @@ export const MAX_CHAPTERS = 50;
  */
 export const PHOTOS_PER_CHAPTER_TARGET = { min: 5, max: 30 } as const;
 
-/** Photos that fill a max-length book at the target density. */
-export const PHOTOS_FOR_MAX_BOOK = MAX_CHAPTERS * PHOTOS_PER_CHAPTER_TARGET.max;
-
 /**
  * Hard lower bound for forming an additional chapter.
  */

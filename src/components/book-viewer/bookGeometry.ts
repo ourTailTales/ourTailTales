@@ -12,13 +12,8 @@ export const LEFT_PAGE_PEEK = Math.round(PAGE_WIDTH * 0.18);
 export const SCENE_PERSPECTIVE = 2400;
 
 export const COVER_OPEN_MS = 1720;
-/** Landing hero cover spring — slow start, fast swing, diminishing bounces. */
-export const HERO_COVER_SPRING_MS = 2800;
-export const HERO_COVER_CLOSE_MS = 1200;
 export const SOFT_TURN_MS = 700;
 export const CORNER_ZONE = 72;
-/** Right-page click-to-turn band left open by the upload overlay. */
-export const EDGE_PEEL_ZONE = 0.28;
 
 /**
  * Single-page view (cover / first leaf): shift so the right page sits in the
@@ -26,23 +21,6 @@ export const EDGE_PEEL_ZONE = 0.28;
  */
 export function singlePageOffset(pageWidth = PAGE_WIDTH, peek = LEFT_PAGE_PEEK): number {
   return -(pageWidth - peek);
-}
-
-/** @deprecated use singlePageOffset — kept for call sites during cover anim */
-export function closedBookOffset(pageWidth = PAGE_WIDTH): number {
-  return singlePageOffset(pageWidth);
-}
-
-export function openBookOffset(): number {
-  return 0;
-}
-
-/** Visible frame width while the right page is centered. */
-export function singlePageFrameWidth(
-  pageWidth = PAGE_WIDTH,
-  peek = LEFT_PAGE_PEEK,
-): number {
-  return pageWidth + peek;
 }
 
 /**
@@ -89,19 +67,6 @@ export function sheetsToFaces(sheets: FlipSheet[]): FlipFace[] {
  */
 export function isClosed(currentPage: number): boolean {
   return currentPage <= 0;
-}
-
-export function getVisibleFaces(
-  faces: FlipFace[],
-  currentPage: number,
-): { left: FlipFace | null; right: FlipFace | null } {
-  if (isClosed(currentPage)) {
-    return { left: null, right: faces[0] ?? null };
-  }
-  return {
-    left: faces[currentPage] ?? null,
-    right: faces[currentPage + 1] ?? null,
-  };
 }
 
 export function canGoForward(
@@ -203,46 +168,6 @@ export function hitTestCorner(
 
 function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
-}
-
-/** Cubic Bézier for programmatic corner path. */
-export function cubicBezier(
-  t: number,
-  p0: Point,
-  p1: Point,
-  p2: Point,
-  p3: Point,
-): Point {
-  const u = 1 - t;
-  const tt = t * t;
-  const uu = u * u;
-  const uuu = uu * u;
-  const ttt = tt * t;
-  return {
-    x: uuu * p0.x + 3 * uu * t * p1.x + 3 * u * tt * p2.x + ttt * p3.x,
-    y: uuu * p0.y + 3 * uu * t * p1.y + 3 * u * tt * p2.y + ttt * p3.y,
-  };
-}
-
-export function programmaticCornerPath(
-  direction: TurnDirection,
-  corner: Corner,
-  w: number,
-  h: number,
-): { p0: Point; p1: Point; p2: Point; p3: Point } {
-  const p0 = cornerRestPoint(corner, w, h);
-  const forward = direction === "forward";
-  const p3: Point = forward
-    ? { x: 0, y: corner.startsWith("top") ? 0 : h }
-    : { x: w, y: corner.startsWith("top") ? 0 : h };
-  const midY = corner.startsWith("top") ? h * 0.15 : h * 0.85;
-  const p1: Point = forward
-    ? { x: w * 0.55, y: midY }
-    : { x: w * 0.45, y: midY };
-  const p2: Point = forward
-    ? { x: w * 0.2, y: midY }
-    : { x: w * 0.8, y: midY };
-  return { p0, p1, p2, p3 };
 }
 
 /**

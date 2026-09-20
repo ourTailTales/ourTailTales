@@ -224,60 +224,6 @@
     );
 }
 
-.landing-shelf .bv-scene {
-  padding-top: 0.25rem;
-  padding-bottom: 0;
-}
-
-.landing-shelf .bv-shadow {
-  left: 10%;
-  right: 6%;
-  bottom: -1%;
-  height: 16%;
-  background: rgb(28 18 8 / 0.5);
-  filter: blur(14px);
-  opacity: 1;
-}
-
-.landing-shelf .bv-anchor--closed .bv-shadow {
-  transform: scaleX(0.58);
-  opacity: 0.9;
-}
-
-.landing-shelf .bv-hard-page {
-  filter:
-    drop-shadow(0 22px 28px rgb(0 0 0 / 0.34))
-    drop-shadow(0 4px 8px rgb(0 0 0 / 0.22));
-}
-
-.landing-shelf .bv-hard-page::after {
-  content: "";
-  position: absolute;
-  inset: auto 0 0;
-  height: 16%;
-  z-index: 4;
-  pointer-events: none;
-  border-radius: 0 0 14px 0;
-  background: linear-gradient(to top, rgb(0 0 0 / 0.2), transparent);
-  transform: translateZ(2px);
-}
-
-.landing-shelf .bv-hard-thickness {
-  top: 3%;
-  bottom: 3%;
-  width: 8px;
-  background: linear-gradient(
-    180deg,
-    #c4d0e4 0%,
-    #98a4bc 38%,
-    #78849a 62%,
-    #a8b4c8 100%
-  );
-  box-shadow:
-    inset -1px 0 0 rgb(50 56 68 / 0.2),
-    inset 1px 0 0 rgb(255 255 255 / 0.1);
-}
-
 .bv-viewport {
   position: relative;
   z-index: 1;

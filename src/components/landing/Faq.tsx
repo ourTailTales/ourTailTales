@@ -40,6 +40,11 @@ const faqs = [
       "A short video you place in the book. In print it appears as a page with a QR code so you can watch that moment again from your phone.",
   },
   {
+    question: "What if I don't love the finished book?",
+    answer:
+      "Full refund, no questions asked. We want every copy to be one you actually want on your shelf.",
+  },
+  {
     question: "Can I get a free version before I pay anything?",
     answer:
       "Yes. That\'s the whole point. Enter your email on the home page, drop your photos, and we build a free PDF story right in your browser. No credit card needed. Only order the hardcover once you\'ve seen it and love it.",

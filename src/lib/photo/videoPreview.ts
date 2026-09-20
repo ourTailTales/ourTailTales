@@ -3,14 +3,6 @@ const previews = new Map<string, string>();
 const posterBlobs = new Map<string, Blob>();
 const videoFiles = new Map<string, File>();
 
-export function getVideoPosterUrl(id: string): string | undefined {
-  return posters.get(id);
-}
-
-export function getVideoPreviewUrl(id: string): string | undefined {
-  return previews.get(id);
-}
-
 function revoke(map: Map<string, string>, id: string): void {
   const url = map.get(id);
   if (!url) return;

@@ -1,6 +1,6 @@
 import Stripe from "stripe";
 
-import { isConfigured, requireEnv } from "@/lib/env";
+import { requireEnv } from "@/lib/env";
 
 /**
  * A single Stripe client instance rather than a global API key, so the secret
@@ -13,10 +13,6 @@ export function stripeClient(): Stripe {
   const [secretKey] = requireEnv("STRIPE_SECRET_KEY");
   cached = new Stripe(secretKey);
   return cached;
-}
-
-export function stripeConfigured(): boolean {
-  return isConfigured("STRIPE_SECRET_KEY", "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY");
 }
 
 export function toMinorUnits(amount: number): number {

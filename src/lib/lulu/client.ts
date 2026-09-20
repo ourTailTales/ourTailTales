@@ -29,14 +29,6 @@ export function luluPodPackageId(): string {
   return id;
 }
 
-export function luluConfigured(): boolean {
-  return Boolean(
-    readEnv("LULU_CLIENT_KEY") &&
-      readEnv("LULU_CLIENT_SECRET") &&
-      readEnv("LULU_POD_PACKAGE_ID"),
-  );
-}
-
 async function accessToken(): Promise<string> {
   if (cachedToken && cachedToken.expiresAt > Date.now()) return cachedToken.value;
 

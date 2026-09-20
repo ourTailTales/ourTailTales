@@ -111,10 +111,6 @@ const PHOTO_LAYOUTS_BY_COUNT: Record<number, LayoutId[]> = {
   4: ["four-grid"],
 };
 
-export function layoutSlotCount(id: LayoutId): number {
-  return LAYOUTS[id].slots.length;
-}
-
 export function layoutsForCount(count: number): LayoutId[] {
   return PHOTO_LAYOUTS_BY_COUNT[count] ?? PHOTO_LAYOUTS_BY_COUNT[2];
 }

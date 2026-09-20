@@ -48,7 +48,13 @@ export function ProductListing() {
             </p>
             <p className="mt-1 text-sm text-page-ink-soft">Starting price · no hidden fees</p>
 
-            <ul className="mt-6 grid gap-3">
+            <p className="mt-3 inline-flex items-center gap-2 rounded-full bg-periwinkle/10 px-3.5 py-1.5 text-sm font-semibold text-periwinkle-deep">
+              <span aria-hidden>✓</span>
+              Love it or your money back — no questions asked
+            </p>
+
+            <p className="mt-6 text-sm font-semibold text-page-ink">Here&rsquo;s everything included:</p>
+            <ul className="mt-3 grid gap-3">
               {hardcoverFeatures.map((feature) => (
                 <li key={feature} className="flex gap-2.5 text-sm leading-6 text-page-ink">
                   <span aria-hidden className="mt-[7px] size-1.5 shrink-0 rounded-full bg-periwinkle/80" />

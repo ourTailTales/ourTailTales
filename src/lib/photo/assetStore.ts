@@ -34,14 +34,6 @@ export function getThumbUrl(id: string): string | undefined {
   return assets.get(id)?.thumbUrl;
 }
 
-export function hasAsset(id: string): boolean {
-  return assets.has(id);
-}
-
-export function assetCount(): number {
-  return assets.size;
-}
-
 export function releaseAsset(id: string): void {
   const entry = assets.get(id);
   if (!entry) return;
@@ -54,12 +46,4 @@ export function releaseAll(): void {
     URL.revokeObjectURL(entry.thumbUrl);
   }
   assets.clear();
-}
-
-/** Drop anything not referenced by the current album. */
-export function retainOnly(ids: Iterable<string>): void {
-  const keep = new Set(ids);
-  for (const id of [...assets.keys()]) {
-    if (!keep.has(id)) releaseAsset(id);
-  }
 }
