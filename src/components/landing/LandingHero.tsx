@@ -1,33 +1,12 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
 import type { ReactNode } from "react";
 
 import { brand } from "@/lib/brand";
-import { identifyLead, track } from "@/lib/analytics";
-import { useIsAuthenticated } from "@/hooks/useIsAuthenticated";
+import { EmailCaptureCta } from "@/components/landing/EmailCaptureCta";
 
 export function LandingHero({ header }: { header?: ReactNode }) {
-  const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<"idle" | "working" | "error">("idle");
-  const [error, setError] = useState<string | null>(null);
-  const isAuthenticated = useIsAuthenticated();
-  // TODO: useIsAuthenticated() returns false until Supabase session check is implemented
-
-  const handleSubmit = async () => {
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      setStatus("error");
-      setError("Please enter a valid email.");
-      return;
-    }
-    setStatus("working");
-    setError(null);
-    identifyLead(email.trim());
-    track("lead_captured", { source: "hero" });
-    window.location.href = "/create";
-  };
-
   return (
     <section className="relative isolate flex min-h-[min(94vh,50rem)] w-full flex-col overflow-hidden sm:min-h-[min(98vh,54rem)]">
       <Image
@@ -63,62 +42,12 @@ export function LandingHero({ header }: { header?: ReactNode }) {
 
           {/* Email capture inline */}
           <div className="animate-fade-up-delay-2 mt-8 flex flex-col gap-3 sm:mt-10">
-            {isAuthenticated ? (
-              /* Auth-aware: signed-in users go straight to /create */
-              /* TODO: useIsAuthenticated() returns false until Supabase session check is implemented */
-              <a
-                href="/create"
-                className="inline-flex w-fit items-center gap-2 rounded-xl bg-periwinkle px-8 py-3 text-sm font-semibold text-white shadow-lift transition-colors hover:bg-periwinkle-deep"
-              >
-                Create your Book
-                <svg aria-hidden className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M11 3h6v6" /><path d="M17 3l-8 8" /><path d="M9 5H5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-4" />
-                </svg>
-              </a>
-            ) : (
-              <>
-                <div className="flex w-full max-w-md flex-col gap-2 sm:flex-row">
-                  <label htmlFor="hero-email" className="sr-only">Email address</label>
-                  <input
-                    id="hero-email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => { setEmail(e.target.value); setStatus("idle"); setError(null); }}
-                    onKeyDown={(e) => { if (e.key === "Enter") void handleSubmit(); }}
-                    placeholder="your@email.com"
-                    autoComplete="email"
-                    disabled={status === "working"}
-                    className="flex-1 rounded-xl border border-white/40 bg-white/25 px-4 py-3 text-sm text-white placeholder:text-white/60 outline-none backdrop-blur-sm transition-colors focus:border-periwinkle focus:bg-white/30 focus:ring-2 focus:ring-periwinkle/30 disabled:opacity-60"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => void handleSubmit()}
-                    disabled={status === "working" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())}
-                    className="group inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-periwinkle px-6 py-3 text-sm font-semibold text-white shadow-lift transition-[background-color,transform,opacity] duration-300 hover:enabled:bg-periwinkle-deep hover:enabled:translate-y-px disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    {status === "working" ? "Opening…" : "Create their Book"}
-                    {status !== "working" && (
-                      <svg
-                        aria-hidden
-                        className="h-4 w-4 transition-transform duration-300 group-hover:group-enabled:translate-x-0.5"
-                        viewBox="0 0 20 20"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth={2}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        {/* External link / open-in-new-tab icon */}
-                        <path d="M11 3h6v6" />
-                        <path d="M17 3l-8 8" />
-                        <path d="M9 5H5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-4" />
-                      </svg>
-                    )}
-                  </button>
-                </div>
-                {error && <p className="text-sm text-red-400">{error}</p>}
-              </>
-            )}
+            <EmailCaptureCta
+              source="hero"
+              inputId="hero-email"
+              buttonLabel="Get their Free Story"
+              theme="dark"
+            />
             <p className="text-sm text-white/50">
               Free &nbsp;·&nbsp; No credit card &nbsp;·&nbsp; Photos stay on your device
             </p>
