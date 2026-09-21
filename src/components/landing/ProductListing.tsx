@@ -50,7 +50,7 @@ export function ProductListing() {
 
             <p className="mt-3 inline-flex items-center gap-2 rounded-full bg-periwinkle/10 px-3.5 py-1.5 text-sm font-semibold text-periwinkle-deep">
               <span aria-hidden>✓</span>
-              Love it or your money back — no questions asked
+              Free reprint if it arrives damaged or misprinted
             </p>
 
             <p className="mt-6 text-sm font-semibold text-page-ink">Here&rsquo;s everything included:</p>

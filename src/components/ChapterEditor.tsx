@@ -8,6 +8,7 @@ import type { PhotoAsset } from "@/types/photo";
 
 export function ChapterEditor({
   chapters,
+  activeChapterId,
   photos,
   coverPhotoId,
   onTextChange,
@@ -15,9 +16,9 @@ export function ChapterEditor({
   onReorder,
   onSetCover,
   onRegenerate,
-  onPreview,
 }: {
   chapters: Chapter[];
+  activeChapterId: string;
   photos: Map<string, PhotoAsset>;
   coverPhotoId: string | null;
   onTextChange: (
@@ -28,13 +29,12 @@ export function ChapterEditor({
   onReorder: (chapterId: string, photoId: string, toIndex: number) => void;
   onSetCover: (photoId: string) => void;
   onRegenerate: (chapterId: string) => void;
-  onPreview?: () => void;
 }) {
-  const [activeId, setActiveId] = useState(chapters[0]?.id ?? "");
   const [swapTarget, setSwapTarget] = useState<string | null>(null);
   const [dragged, setDragged] = useState<string | null>(null);
 
-  const chapter = chapters.find((entry) => entry.id === activeId) ?? chapters[0];
+  const chapter =
+    chapters.find((entry) => entry.id === activeChapterId) ?? chapters[0];
   if (!chapter) return null;
 
   const available = chapter.candidateIds.filter(
@@ -43,39 +43,7 @@ export function ChapterEditor({
 
   return (
     <section className="space-y-5">
-      {onPreview && (
-        <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={onPreview}
-            className="rounded-xl border border-line px-4 py-2 text-sm font-medium text-ink-soft transition-colors hover:border-periwinkle hover:text-periwinkle-deep"
-          >
-            Preview your book
-          </button>
-        </div>
-      )}
-      <nav className="flex flex-wrap gap-2" aria-label="Chapters">
-        {chapters.map((entry) => (
-          <button
-            key={entry.id}
-            type="button"
-            onClick={() => {
-              setActiveId(entry.id);
-              setSwapTarget(null);
-            }}
-            className={`rounded-full border px-3.5 py-1.5 text-sm transition-colors ${
-              entry.id === chapter.id
-                ? "border-periwinkle bg-periwinkle text-white"
-                : "border-line bg-white text-ink-soft hover:border-periwinkle"
-            }`}
-          >
-            {entry.index + 1}. {truncate(entry.title, 22)}
-            {entry.aiStatus === "error" && <span className="ml-1">&#9888;</span>}
-          </button>
-        ))}
-      </nav>
-
-      <div className="rounded-2xl border border-line bg-white p-5 shadow-lift sm:p-6">
+      <div>
         <div className="grid gap-4 sm:grid-cols-[2fr_1fr]">
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-ink-soft">
@@ -148,7 +116,7 @@ export function ChapterEditor({
         </div>
       </div>
 
-      <div className="rounded-2xl border border-line bg-white p-5 shadow-lift sm:p-6">
+      <div>
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h3 className="font-display text-lg text-ink">
             Photos in this chapter
@@ -330,6 +298,3 @@ function wordCount(text: string): number {
   return trimmed === "" ? 0 : trimmed.split(/\s+/).length;
 }
 
-function truncate(text: string, max: number): string {
-  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
-}

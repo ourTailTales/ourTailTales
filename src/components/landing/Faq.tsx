@@ -40,9 +40,9 @@ const faqs = [
       "A short video you place in the book. In print it appears as a page with a QR code so you can watch that moment again from your phone.",
   },
   {
-    question: "What if I don't love the finished book?",
+    question: "What if my book arrives damaged or misprinted?",
     answer:
-      "Full refund, no questions asked. We want every copy to be one you actually want on your shelf.",
+      "We\'ll reprint it and send a new copy at no cost. You already see the entire book as a free preview before you order, so this covers the physical printing and shipping \u2014 not the story itself, since you\'ve already seen that.",
   },
   {
     question: "Can I get a free version before I pay anything?",

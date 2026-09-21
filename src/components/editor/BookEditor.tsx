@@ -8,7 +8,6 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 
-import { FunnelBookHero } from "@/components/book-viewer/FunnelBookHero";
 import { albumTilesFrom } from "@/components/editor/albumTiles";
 import { CustomizeStep } from "@/components/editor/CustomizeStep";
 import { EditorStepNav } from "@/components/editor/EditorStepNav";
@@ -20,7 +19,6 @@ import {
   stepFromFunnelState,
 } from "@/components/editor/steps";
 import { MetaPage, SizePanel } from "@/components/hero/funnelSpreads";
-import { BookEditorIntro } from "@/components/landing/BookEditorIntro";
 import { filesFromDataTransfer } from "@/lib/photo/process";
 import { bookSpec, MIN_PHOTOS_FOR_BOOK } from "@/lib/pricing";
 import { track } from "@/lib/analytics";
@@ -34,7 +32,6 @@ export function BookEditor({
   onStartOver,
   onCreateStory,
   onSample,
-  onPreview,
   onCheckout,
   onRegenerate,
   notice,
@@ -44,7 +41,6 @@ export function BookEditor({
   onStartOver: () => void;
   onCreateStory: () => void;
   onSample: () => void;
-  onPreview: () => void;
   onCheckout: () => void;
   onRegenerate: (chapterId: string) => void;
   notice?: string | null;
@@ -84,7 +80,6 @@ export function BookEditor({
     step,
     Math.max(farthest, stepFromFunnelState(funnelState)),
   );
-  const showBook = visibleStep > 0;
   const processing = funnelState === "processing" || dropping;
   const readyCount =
     funnelState === "processing"
@@ -210,11 +205,6 @@ export function BookEditor({
 
   return (
     <div className="book-editor-shell book-editor-field">
-      <BookEditorIntro
-        activeIndex={visibleStep}
-        farthestIndex={farthest}
-        onSelect={goTo}
-      />
       <section
         id="hero-book"
         className={`relative w-full ${
@@ -226,28 +216,13 @@ export function BookEditor({
         onDrop={handleDrop}
       >
         <div
-          className={`relative z-10 mx-auto flex w-full max-w-[90rem] ${
-            showBook
-              ? "flex-col gap-6 px-5 pt-4 sm:px-8 lg:flex-row lg:items-start lg:gap-10"
-              : ""
-          }`}
+          className="relative z-10 mx-auto flex w-full max-w-[90rem]"
           onPointerDown={handlePointerDown}
           onPointerUp={handlePointerUp}
           onPointerCancel={() => setSwipe(null)}
         >
-          {showBook ? (
-            <div className="shrink-0 lg:sticky lg:top-8">
-              <FunnelBookHero
-                docked
-                mode={visibleStep === 1 ? "meta" : "closed"}
-              />
-            </div>
-          ) : null}
-
           <div
-            className={`min-w-0 ${
-              showBook ? "flex-1 pb-4 pt-2 lg:min-h-[min(58vh,32rem)]" : "w-full"
-            }`}
+            className="w-full min-w-0"
             aria-roledescription="carousel"
             aria-label="Book editor steps"
           >
@@ -271,49 +246,41 @@ export function BookEditor({
                   />
                 )}
                 {visibleStep === 1 && (
-                  <div className="rounded-2xl border border-page-line bg-white/85 p-5 shadow-lift sm:p-7">
-                    <MetaPage
-                      summary={summary}
-                      meta={meta}
-                      onMetaChange={setMeta}
-                      onContinue={handleNext}
-                      onStartOver={() => {
-                        setStep(0);
-                        onStartOver();
-                      }}
-                      showNav={false}
-                    />
-                  </div>
+                  <MetaPage
+                    summary={summary}
+                    meta={meta}
+                    onMetaChange={setMeta}
+                    onContinue={handleNext}
+                    onStartOver={() => {
+                      setStep(0);
+                      onStartOver();
+                    }}
+                    showNav={false}
+                  />
                 )}
                 {visibleStep === 2 && (
-                  <div className="rounded-2xl border border-page-line bg-white/85 p-5 shadow-lift sm:p-7">
-                    <SizePanel
-                      chapterCount={chapterCount}
-                      maxChapters={summary.maxChapters}
-                      placeablePhotos={summary.placeable}
-                      onChange={setChapterCount}
-                      onConfirm={handleNext}
-                      showNav={false}
-                    />
-                  </div>
+                  <SizePanel
+                    chapterCount={chapterCount}
+                    maxChapters={summary.maxChapters}
+                    placeablePhotos={summary.placeable}
+                    onChange={setChapterCount}
+                    onConfirm={handleNext}
+                    showNav={false}
+                  />
                 )}
                 {visibleStep === 3 && (
                   <CustomizeStep
                     onCreateStory={onCreateStory}
-                    onPreview={onPreview}
                     onRegenerate={onRegenerate}
                     enableVideoMemories={enableVideoMemories}
                   />
                 )}
                 {visibleStep === 4 && (
-                  <div className="rounded-2xl border border-page-line bg-white/85 p-5 shadow-lift sm:p-7">
-                    <FinishStep
-                      onSample={onSample}
-                      onPreview={onPreview}
-                      onCheckout={onCheckout}
-                      notice={notice}
-                    />
-                  </div>
+                  <FinishStep
+                    onSample={onSample}
+                    onCheckout={onCheckout}
+                    notice={notice}
+                  />
                 )}
             </div>
           </div>

@@ -1,28 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { identifyLead, track } from "@/lib/analytics";
 import { useIsAuthenticated } from "@/hooks/useIsAuthenticated";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const externalLinkIcon = (
-  <svg
-    aria-hidden
-    className="h-6 w-6 transition-transform duration-300 group-hover:group-enabled:translate-x-0.5"
-    viewBox="0 0 20 20"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M11 3h6v6" />
-    <path d="M17 3l-8 8" />
-    <path d="M9 5H5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-4" />
-  </svg>
-);
 
 interface EmailCaptureCtaProps {
   /** Tag sent to analytics on lead capture, identifying where the CTA lives. */
@@ -37,6 +22,8 @@ interface EmailCaptureCtaProps {
   className?: string;
   /** Extra classes on the row containing the input + button. */
   rowClassName?: string;
+  /** Flex-basis/grow class for the input, relative to the button. Defaults to "flex-[2]". */
+  inputWidthClassName?: string;
 }
 
 /**
@@ -51,16 +38,17 @@ export function EmailCaptureCta({
   buttonLabel,
   theme = "light",
   className = "",
-  rowClassName = "",
+  inputWidthClassName = "flex-[2]",
 }: EmailCaptureCtaProps) {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "working" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
   const isAuthenticated = useIsAuthenticated();
+  const router = useRouter();
 
   const isValidEmail = EMAIL_RE.test(email.trim());
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     if (!isValidEmail) {
       setStatus("error");
       setError("Please enter a valid email.");
@@ -68,9 +56,11 @@ export function EmailCaptureCta({
     }
     setStatus("working");
     setError(null);
-    identifyLead(email.trim());
+    const trimmedEmail = email.trim();
+    identifyLead(trimmedEmail);
     track("lead_captured", { source });
-    window.location.href = "/create";
+    router.push(`/create?email=${encodeURIComponent(trimmedEmail)}`);
+    setStatus("idle");
   };
 
   const isDark = theme === "dark";
@@ -87,22 +77,22 @@ export function EmailCaptureCta({
           }`}
         >
           Create your Book
-          {externalLinkIcon}
+
         </a>
       </div>
     );
   }
 
   const inputClassName = isDark
-    ? "flex-1 rounded-2xl border-2 border-white/40 bg-white px-7 py-6 text-xl text-page-ink placeholder:text-page-ink-faint outline-none transition-colors focus:border-periwinkle focus:ring-2 focus:ring-periwinkle/30"
-    : "flex-1 rounded-2xl border-2 border-page-line bg-white px-7 py-6 text-xl text-page-ink placeholder:text-page-ink-faint outline-none transition-colors focus:border-periwinkle focus:bg-white focus:ring-2 focus:ring-periwinkle/30";
+    ? `min-w-0 w-full grow-1 ${inputWidthClassName} rounded-2xl border-2 border-white/40 bg-white px-7 py-6 text-xl text-page-ink placeholder:text-page-ink-faint outline-none transition-colors focus:border-periwinkle focus:ring-2 focus:ring-periwinkle/30`
+    : `min-w-0 w-full grow-1 ${inputWidthClassName} rounded-2xl border-2 border-page-line bg-white px-7 py-6 text-xl text-page-ink placeholder:text-page-ink-faint outline-none transition-colors focus:border-periwinkle focus:bg-white focus:ring-2 focus:ring-periwinkle/30`;
 
-  const buttonTextClassName = isDark ? "text-white" : "text-page-ink";
+  const buttonTextClassName = "text-white";
   const errorClassName = isDark ? "text-lg text-red-400" : "text-lg text-red-500";
 
   return (
-    <div className={`flex flex-col gap-2 ${className}`}>
-      <div className={`flex w-full max-w-3xl flex-col gap-4 sm:flex-row ${rowClassName}`}>
+    <div className={`flex w-full max-w-3xl flex-col gap-2 ${className}`}>
+      <div className={`flex w-full max-w-3xl flex-col gap-4 sm:flex-row`}>
         <label htmlFor={inputId} className="sr-only">Email address</label>
         <input
           id={inputId}
@@ -118,11 +108,10 @@ export function EmailCaptureCta({
         <button
           type="button"
           onClick={() => void handleSubmit()}
-          disabled={status === "working" || !isValidEmail}
+          disabled={status === "working"}
           className={`group inline-flex shrink-0 items-center justify-center gap-3 rounded-2xl bg-periwinkle px-10 py-6 text-xl font-semibold shadow-lift transition-[background-color,transform,opacity] duration-300 hover:enabled:bg-periwinkle-deep hover:enabled:translate-y-px disabled:cursor-not-allowed disabled:opacity-40 ${buttonTextClassName}`}
         >
-          {status === "working" ? "Opening…" : buttonLabel}
-          {status !== "working" && externalLinkIcon}
+          {status === "working" ? "Starting…" : buttonLabel}
         </button>
       </div>
       {error && <p className={errorClassName}>{error}</p>}

@@ -8,18 +8,15 @@ import { useOurTailTalesStore } from "@/store/useOurTailTalesStore";
 
 export function FinishStep({
   onSample,
-  onPreview,
   onCheckout,
   notice,
 }: {
   onSample: () => void;
-  onPreview: () => void;
   onCheckout: () => void;
   notice?: string | null;
 }) {
   const meta = useOurTailTalesStore((state) => state.meta);
   const chapterCount = useOurTailTalesStore((state) => state.chapterCount);
-  const pages = useOurTailTalesStore((state) => state.pages);
   const exportMessage = useOurTailTalesStore((state) => state.exportMessage);
   const funnelState = useOurTailTalesStore((state) => state.funnelState);
   const spec = useMemo(() => bookSpec(chapterCount), [chapterCount]);
@@ -31,7 +28,7 @@ export function FinishStep({
           Keep {possessivePetName(meta.petName || "your pet")} story
         </h2>
         <p className="mt-2 text-sm leading-6 text-page-ink-soft">
-          Email a sample PDF, preview the hardcover, or order the printed book
+          Email a sample PDF or order the printed book
           — {chapterCount} chapters · {formatUsd(spec.price)}.
         </p>
       </div>
@@ -52,15 +49,6 @@ export function FinishStep({
       ) : null}
 
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-        {pages.length > 0 && (
-          <button
-            type="button"
-            onClick={onPreview}
-            className="rounded-xl border border-page-line bg-white/80 px-4 py-2.5 text-sm font-medium text-page-ink-soft transition-colors hover:border-periwinkle hover:text-periwinkle-deep"
-          >
-            Preview your book
-          </button>
-        )}
         <button
           type="button"
           onClick={onSample}

@@ -1,10 +1,18 @@
 @import "tailwindcss";
 
 /* Brand tokens — see docs/BRAND_GUIDELINES.md
-   Page chrome is dark with pastel type; book interiors remount ink via .bv-page-ink. */
+   One light background (Cloud) with dark ink type everywhere, including
+   book chrome. `landing-rest`, `.book-editor-field`, `.book-creation-field`
+   and `.bv-page-ink` are now redundant re-statements of the same default —
+   kept so nothing regresses if the default ever changes again, not because
+   they still do different work. */
 @theme {
   --color-periwinkle: #5b68c8;
-  --color-periwinkle-deep: #7b87d6;
+  /* Official brand value (docs/BRAND_GUIDELINES.md). The dark-chrome era used
+     a lighter #7b87d6 here so hover states stayed visible against a dark
+     background; now that the main background is light, "deep" darkens on
+     hover again, as it should. */
+  --color-periwinkle-deep: #4a56b0;
   --color-periwinkle-wash: #2a3150;
   --color-memory-blue: #c9d8fa;
   --color-lavender: #e2d7f5;
@@ -14,14 +22,17 @@
   --color-pink: #e8648a;
   --color-pink-deep: #c94d72;
   --color-pink-wash: #4a1a2a;
-  /* Pastel type on dark chrome */
-  --color-ink: #c9d8fa;
-  --color-ink-soft: #e2d7f5;
-  --color-ink-faint: #c9ded7;
-  --color-line: rgb(201 216 250 / 0.22);
-  /* Deep night base (not beige, not flat black) */
-  --color-cloud: #1f2433;
-  /* Official Cloud — used for the landing band below the night hero */
+  /* Default ink now matches the light-surface "page-ink" tokens below —
+     one background, one text-color scheme, everywhere. */
+  --color-ink: #252a3a;
+  --color-ink-soft: #5a6070;
+  --color-ink-faint: #8b91a0;
+  --color-line: #d5dceb;
+  /* Cloud — the one main background color everywhere (was a dark "night"
+     navy in an earlier pass; docs/BRAND_GUIDELINES.md always specified this
+     light value). */
+  --color-cloud: #f7f8fc;
+  /* Alias of Cloud, kept for the few places that reference "paper" by name. */
   --color-paper: #f7f8fc;
   --color-white: #ffffff;
   /* Readable ink for printed-page UIs */
@@ -36,6 +47,9 @@
   --font-display: var(--font-display), "Merienda", ui-serif, Georgia, "Times New Roman", serif;
   --font-cover: var(--font-cover), "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
   --font-sans: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  /* Extra cover-font choices offered in the cover editor. */
+  --font-playfair: var(--font-playfair), Georgia, "Times New Roman", serif;
+  --font-caveat: var(--font-caveat), "Brush Script MT", cursive;
 
   --shadow-book:
     0 1px 2px rgb(0 0 0 / 0.2), 0 16px 36px -10px rgb(0 0 0 / 0.45);
@@ -43,7 +57,7 @@
 }
 
 html {
-  color-scheme: dark;
+  color-scheme: light;
   background-color: var(--color-cloud);
   scroll-behavior: smooth;
   /* Stop rubber-band pull past the top/bottom; keep normal page scroll. */
@@ -58,20 +72,22 @@ body {
 }
 
 ::selection {
-  background-color: rgb(201 216 250 / 0.35);
-  color: var(--color-white);
+  background-color: rgb(91 104 200 / 0.22);
+  color: var(--color-ink);
 }
 
 @utility text-balance-tight {
   text-wrap: balance;
 }
 
-/* Matte night field — flat base + quiet paper grain (no glossy glows). */
+/* Matte paper field — flat base + quiet grain (no glossy glows). Grain is
+   ink-tinted now that the base is light (it used to be a light-blue fleck
+   tuned for a dark base). */
 @utility brand-atmosphere {
   background-color: var(--color-cloud);
   background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0.78 0 0 0 0 0.84 0 0 0 0 0.98 0 0 0 0.045 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
-    radial-gradient(rgb(201 216 250 / 0.09) 1px, transparent 1.2px);
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0.145 0 0 0 0 0.165 0 0 0 0 0.227 0 0 0 0.035 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
+    radial-gradient(rgb(37 42 58 / 0.05) 1px, transparent 1.2px);
   background-size: 160px 160px, 20px 20px;
   background-repeat: repeat;
   background-position: 0 0, 0 0;
@@ -152,30 +168,21 @@ body {
   --color-line: var(--color-page-line);
 }
 
-/* Light book-editor field — pastel Memory Blue wash + grain + dots. */
+/* Light book-editor field. `transparent` used to let the dark page
+   background (--color-cloud) show through here, which is why the field
+   looked too dark and the dark-ink text read as low-contrast on it. Give it
+   its own light paper background so it's readable regardless of what's
+   behind it. */
 .book-editor-field {
   color-scheme: light;
   color: var(--color-page-ink);
-  background-color: var(--color-editor-field);
+  background-color: var(--color-paper);
   --color-ink: var(--color-page-ink);
   --color-ink-soft: var(--color-page-ink-soft);
   --color-ink-faint: var(--color-page-ink-faint);
   --color-line: var(--color-page-line);
-  background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0.35 0 0 0 0 0.4 0 0 0 0 0.55 0 0 0 0.07 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
-    radial-gradient(rgb(91 104 200 / 0.16) 1.1px, transparent 1.35px);
-  background-size: 160px 160px, 18px 18px;
-  background-repeat: repeat;
-  background-position: 0 0, 0 0;
 }
 
-/* Recess the editor between the product showcase and the rest of the page. */
+/* No longer recessed — sits flush with the page background. */
 .book-editor-shell {
-  border-top: 1px solid rgb(70 82 126 / 0.42);
-  border-bottom: 1px solid rgb(70 82 126 / 0.42);
-  box-shadow:
-    inset 0 12px 18px -16px rgb(25 32 58 / 0.48),
-    inset 0 -12px 18px -16px rgb(25 32 58 / 0.48),
-    0 -1px 0 rgb(255 255 255 / 0.4),
-    0 1px 0 rgb(255 255 255 / 0.4);
 }

@@ -8,7 +8,7 @@ const legalLinkClass =
 
 export function Footer() {
   return (
-    <footer style={{ backgroundColor: "#7a5540" }}>
+    <footer className="bg-ink">
       <div className="mx-auto flex max-w-[90rem] flex-col gap-4 px-5 py-8 sm:flex-row sm:items-center sm:justify-between">
         <BrandMark href="/" size="sm" className="text-white/80" />
         <div className="flex flex-col gap-2 sm:items-end">

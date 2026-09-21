@@ -138,6 +138,7 @@ export function HowItWorks() {
             source="how_it_works"
             inputId="how-it-works-email"
             buttonLabel="Get their Free Story"
+            inputWidthClassName="flex-[4]"
             theme="light"
           />
         </div>

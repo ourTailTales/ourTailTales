@@ -1,12 +1,10 @@
 "use client";
 
 import Image from "next/image";
-import type { ReactNode } from "react";
-
 import { brand } from "@/lib/brand";
 import { EmailCaptureCta } from "@/components/landing/EmailCaptureCta";
 
-export function LandingHero({ header }: { header?: ReactNode }) {
+export function LandingHero() {
   return (
     <section className="relative isolate flex min-h-[min(94vh,50rem)] w-full flex-col overflow-hidden sm:min-h-[min(98vh,54rem)]">
       <Image
@@ -19,7 +17,7 @@ export function LandingHero({ header }: { header?: ReactNode }) {
       />
       <div
         aria-hidden
-        className="absolute inset-0 bg-[linear-gradient(115deg,rgb(31_36_51/0.98)_0%,rgb(31_36_51/0.9)_24%,rgb(31_36_51/0.72)_44%,rgb(31_36_51/0.38)_66%,rgb(31_36_51/0.12)_82%,transparent_100%),linear-gradient(180deg,rgb(31_36_51/0.52)_0%,rgb(31_36_51/0.16)_38%,transparent_62%),linear-gradient(200deg,rgb(91_104_200/0.18)_0%,transparent_42%)]"
+        className="pointer-events-none absolute inset-0 bg-[linear-gradient(115deg,rgb(31_36_51/0.98)_0%,rgb(31_36_51/0.9)_24%,rgb(31_36_51/0.72)_44%,rgb(31_36_51/0.38)_66%,rgb(31_36_51/0.12)_82%,transparent_100%),linear-gradient(180deg,rgb(31_36_51/0.52)_0%,rgb(31_36_51/0.16)_38%,transparent_62%),linear-gradient(200deg,rgb(91_104_200/0.18)_0%,transparent_42%)]"
       />
       <div
         aria-hidden
@@ -30,8 +28,6 @@ export function LandingHero({ header }: { header?: ReactNode }) {
 
         {/* LEFT — hook + email CTA */}
         <div className="flex flex-col max-w-5xl">
-          <div className="mb-8">{header}</div>
-
           <h1 className="animate-fade-up font-display text-[2.8rem] font-bold leading-[1.1] text-white sm:text-[3.8rem] lg:text-[6rem] lg:leading-[1.08]">
             {brand.title}
           </h1>

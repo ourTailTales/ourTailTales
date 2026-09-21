@@ -26,7 +26,7 @@ export function BrandMark({
 
   const mark = (
     <span
-      className={`inline-flex items-center gap-2.5 ${className ?? "text-memory-blue"}`}
+      className={`inline-flex items-center gap-2.5 ${className ?? "text-ink"}`}
     >
       <Image
         src={brand.logo.src}

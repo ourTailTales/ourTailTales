@@ -89,3 +89,13 @@ export function sampleFileName(petName: string): string {
       .replace(/^-|-$/g, "") || "pet";
   return `ourtailtales-${slug}-sample.pdf`;
 }
+
+export function previewFileName(petName: string): string {
+  const slug =
+    petName
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "") || "pet";
+  return `ourtailtales-${slug}-story.pdf`;
+}

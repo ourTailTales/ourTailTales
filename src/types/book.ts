@@ -74,10 +74,51 @@ export type BookPage = {
   chapterIndex?: number;
 };
 
+/** Free position on the front cover, as a percentage of width/height (0–100), anchored at its center. */
+export type CoverPosition = { x: number; y: number };
+
+/** Background composition of the front cover — photo treatment + logo placement. */
+export type CoverLayoutId =
+  | "classic"
+  | "framed"
+  | "banner"
+  | "minimal"
+  | "sidebar";
+
+/** Which typeface renders the name/years on the front cover. */
+export type CoverFontId = "cover" | "display" | "playfair" | "caveat" | "sans";
+
 export type BookMeta = {
   petName: string;
   birthYear: string;
   deathYear: string;
   dedication: string;
   coverPhotoId: string | null;
+  /** Optional — falls back to DEFAULT_COVER_LAYOUT (see lib/book/coverLayouts). */
+  coverLayoutId?: CoverLayoutId;
+  /** Optional — falls back to DEFAULT_COVER_FONT. */
+  coverFontId?: CoverFontId;
+  /** Optional — falls back to that layout's default name position. */
+  coverNamePos?: CoverPosition;
+  /** Optional — falls back to that layout's default years position. */
+  coverDatesPos?: CoverPosition;
+  /** Cover name font size in rem units — defaults to layout-dependent value. */
+  coverNameSize?: number;
+  /** Whether the cover name is bold — defaults to true. */
+  coverNameBold?: boolean;
+  /** Whether the cover name is underlined — defaults to false. */
+  coverNameUnderline?: boolean;
+  /** User-added extra text fields on the cover (subtitle, date caption, etc.). */
+  coverExtraFields?: CoverTextField[];
+};
+
+/** A user-added text field on the cover canvas. */
+export type CoverTextField = {
+  id: string;
+  text: string;
+  pos: CoverPosition;
+  fontId?: CoverFontId;
+  size?: number;
+  bold?: boolean;
+  underline?: boolean;
 };

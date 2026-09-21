@@ -1,7 +1,13 @@
 import type { Metadata, Viewport } from "next";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
-import { Cormorant_Garamond, Inter, Merienda } from "next/font/google";
+import {
+  Caveat,
+  Cormorant_Garamond,
+  Inter,
+  Merienda,
+  Playfair_Display,
+} from "next/font/google";
 import { brand } from "@/lib/brand";
 import "./globals.css";
 
@@ -23,6 +29,19 @@ const body = Inter({
   subsets: ["latin"],
 });
 
+/** Extra cover-font options, offered in the cover editor alongside display/cover/body. */
+const playfair = Playfair_Display({
+  variable: "--font-playfair",
+  subsets: ["latin"],
+  weight: ["600", "700"],
+});
+
+const caveat = Caveat({
+  variable: "--font-caveat",
+  subsets: ["latin"],
+  weight: ["500", "700"],
+});
+
 export const metadata: Metadata = {
   title: `${brand.name} — ${brand.line}`,
   description:
@@ -41,15 +60,15 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#1f2433",
-  colorScheme: "dark",
+  themeColor: "#f7f8fc",
+  colorScheme: "light",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${display.variable} ${cover.variable} ${body.variable} brand-atmosphere antialiased`}
+      className={`${display.variable} ${cover.variable} ${body.variable} ${playfair.variable} ${caveat.variable} brand-atmosphere antialiased`}
     >
       <body className="min-h-dvh flex flex-col text-ink">
         {children}

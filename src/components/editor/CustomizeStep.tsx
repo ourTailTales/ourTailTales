@@ -1,27 +1,31 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import { ChapterEditor } from "@/components/ChapterEditor";
 import { VideoMemoriesPanel } from "@/components/VideoMemoriesPanel";
-import { possessivePetName } from "@/lib/book/pagination";
-import { bookSpec, formatUsd } from "@/lib/pricing";
+import { BackCoverEditor } from "@/components/editor/BackCoverEditor";
+import {
+  BookSectionNav,
+  sectionKey,
+  type EditorSection,
+} from "@/components/editor/BookSectionNav";
+import { CoverEditor } from "@/components/editor/CoverEditor";
+import { OtherPagesEditor } from "@/components/editor/OtherPagesEditor";
+import { selectablePhotos } from "@/lib/photo/dedupe";
 import { photoMapOf, useOurTailTalesStore } from "@/store/useOurTailTalesStore";
 
 export function CustomizeStep({
   onCreateStory,
-  onPreview,
   onRegenerate,
   enableVideoMemories = true,
 }: {
   onCreateStory: () => void;
-  onPreview: () => void;
   onRegenerate: (chapterId: string) => void;
   enableVideoMemories?: boolean;
 }) {
   const funnelState = useOurTailTalesStore((state) => state.funnelState);
   const meta = useOurTailTalesStore((state) => state.meta);
-  const chapterCount = useOurTailTalesStore((state) => state.chapterCount);
   const chapters = useOurTailTalesStore((state) => state.chapters);
   const pages = useOurTailTalesStore((state) => state.pages);
   const photos = useOurTailTalesStore((state) => state.photos);
@@ -32,21 +36,23 @@ export function CustomizeStep({
     (state) => state.reorderChapterPhoto,
   );
   const setCoverPhoto = useOurTailTalesStore((state) => state.setCoverPhoto);
+  const setMeta = useOurTailTalesStore((state) => state.setMeta);
 
   const photoMap = useMemo(() => photoMapOf(photos), [photos]);
-  const spec = useMemo(() => bookSpec(chapterCount), [chapterCount]);
+  const pickablePhotos = useMemo(() => selectablePhotos(photos), [photos]);
   const storyDone = chapters.filter((chapter) => chapter.aiStatus === "done").length;
+
+  const [section, setSection] = useState<EditorSection>({ kind: "cover" });
+  const activeChapterId =
+    section.kind === "chapter"
+      ? (chapters.find((chapter) => chapter.id === section.chapterId)?.id ??
+        chapters[0]?.id ??
+        "")
+      : (chapters[0]?.id ?? "");
 
   return (
     <div className="space-y-5">
-      <div>
-        <p className="font-display text-xl text-page-ink sm:text-2xl">
-          {possessivePetName(meta.petName || "Your pet")} story
-        </p>
-        <p className="mt-1 text-sm text-page-ink-soft">
-          {chapterCount} chapters · {formatUsd(spec.price)} hardcover
-        </p>
-      </div>
+
 
       {funnelState === "organizing" && (
         <button
@@ -76,17 +82,46 @@ export function CustomizeStep({
         </p>
       )}
 
-      <ChapterEditor
-        chapters={chapters}
-        photos={photoMap}
-        coverPhotoId={meta.coverPhotoId}
-        onTextChange={updateChapterText}
-        onSwap={swapChapterPhoto}
-        onReorder={reorderChapterPhoto}
-        onSetCover={setCoverPhoto}
-        onRegenerate={onRegenerate}
-        onPreview={pages.length > 0 ? onPreview : undefined}
-      />
+      <div className="grid gap-6 lg:grid-cols-[14rem_1fr] lg:items-start">
+        <BookSectionNav
+          chapters={chapters}
+          active={section}
+          onSelect={setSection}
+        />
+
+        <div key={sectionKey(section)}>
+          {section.kind === "cover" && (
+            <CoverEditor
+              meta={meta}
+              photos={pickablePhotos}
+              onMetaChange={setMeta}
+              onSetCover={setCoverPhoto}
+            />
+          )}
+
+          {section.kind === "chapter" && chapters.length > 0 && (
+            <ChapterEditor
+              chapters={chapters}
+              activeChapterId={activeChapterId}
+              photos={photoMap}
+              coverPhotoId={meta.coverPhotoId}
+              onTextChange={updateChapterText}
+              onSwap={swapChapterPhoto}
+              onReorder={reorderChapterPhoto}
+              onSetCover={setCoverPhoto}
+              onRegenerate={onRegenerate}
+            />
+          )}
+
+          {section.kind === "other" && (
+            <OtherPagesEditor onSelect={setSection} />
+          )}
+
+          {section.kind === "back-cover" && (
+            <BackCoverEditor meta={meta} onMetaChange={setMeta} />
+          )}
+        </div>
+      </div>
 
       {enableVideoMemories ? <VideoMemoriesPanel pages={pages} /> : null}
     </div>
