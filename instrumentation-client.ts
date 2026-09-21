@@ -15,11 +15,28 @@ if (!host && process.env.NODE_ENV === "development") {
   );
 }
 
+// Local development runs against the same project token, so its traffic —
+// especially dev-server compilation errors captured as exceptions — reaches
+// production error tracking as noise. Drop every event that starts on a
+// localhost host and keep production capture untouched.
+function isLocalhost(): boolean {
+  if (typeof window === "undefined") return false;
+  const { hostname } = window.location;
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "0.0.0.0" ||
+    hostname === "[::1]" ||
+    hostname.endsWith(".local")
+  );
+}
+
 if (token && host) {
   posthog.init(token, {
     api_host: host,
     defaults: "2026-01-30",
     capture_exceptions: true,
     debug: process.env.NODE_ENV === "development",
+    before_send: (event) => (isLocalhost() ? null : event),
   });
 }
