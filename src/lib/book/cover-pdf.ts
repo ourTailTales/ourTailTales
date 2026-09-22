@@ -1,21 +1,24 @@
 import { PDFDocument, StandardFonts, degrees, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 
-import { BLEED_INCHES, TRIM_INCHES } from "@/lib/book/layouts";
+import {
+  BLEED_PT,
+  PT_PER_INCH,
+  TRIM_PT,
+  WRAP_PT,
+  type CoverDimensionsPt,
+} from "@/lib/book/coverGeometry";
 import { CLOSING_LINE } from "@/lib/book/pagination";
 import {
   DEFAULT_COVER_FONT,
   DEFAULT_COVER_LAYOUT,
-  defaultDatesPos,
-  defaultNamePos,
+  DEFAULT_COVER_NAME_SIZE,
+  coverTextTone,
+  defaultNameAnchor,
 } from "@/lib/book/coverLayouts";
 import { brand, hexToRgb01 } from "@/lib/brand";
 import * as assetStore from "@/lib/photo/assetStore";
 import { rasterizeForPlacement } from "@/lib/photo/pipeline";
 import type { BookMeta, CoverFontId, CoverLayoutId } from "@/types/book";
-
-const PT_PER_INCH = 72;
-const TRIM_PT = TRIM_INCHES * PT_PER_INCH;
-const BLEED_PT = BLEED_INCHES * PT_PER_INCH;
 
 function brandRgb(hex: string) {
   const { r, g, b } = hexToRgb01(hex);
@@ -27,13 +30,11 @@ const INK = brandRgb(brand.colors.ink);
 const PAPER_SOFT = brandRgb(brand.colors.memoryBlue);
 const SCRIM = brandRgb(brand.colors.ink);
 const SCRIM_MAX_OPACITY = 0.72;
-const PERIWINKLE = brandRgb(brand.colors.periwinkle);
-const PERIWINKLE_DEEP = brandRgb(brand.colors.periwinkleDeep);
 
 /** Below this a spine is too narrow to carry legible type. */
 const MIN_SPINE_TEXT_PT = 22;
 
-export type CoverDimensionsPt = { width: number; height: number };
+export type { CoverDimensionsPt } from "@/lib/book/coverGeometry";
 
 type Rect = { x: number; y: number; width: number; height: number };
 
@@ -87,9 +88,9 @@ export async function renderCoverPdf(args: {
 
   const spineWidth = Math.max(
     0,
-    dimensions.width - BLEED_PT * 2 - TRIM_PT * 2,
+    dimensions.width - WRAP_PT * 2 - BLEED_PT * 2 - TRIM_PT * 2,
   );
-  const frontLeft = dimensions.width - BLEED_PT - TRIM_PT;
+  const frontLeft = dimensions.width - WRAP_PT - BLEED_PT - TRIM_PT;
 
   // The front cover art bleeds off the top, right, and bottom edges.
   const artLeft = frontLeft;
@@ -113,28 +114,35 @@ export async function renderCoverPdf(args: {
   });
 
   const nameBold = meta.coverNameBold ?? true;
-  const { name: nameFont, years: yearsFont } = pdfFontsForCoverFont(
+  const { name: nameFont } = pdfFontsForCoverFont(
     fontId,
     fonts,
     nameBold,
   );
 
-  const petName = meta.petName || "Their name";
-  const years = lifespanText(meta);
-  const namePos = meta.coverNamePos ?? defaultNamePos(layoutId);
-  const datesPos = meta.coverDatesPos ?? defaultDatesPos(layoutId);
-  const nameSize = meta.coverNameSize ? meta.coverNameSize * 15 : 30;
+  const petName = meta.petName || "Type name here";
+  const anchor = meta.coverNameAnchor ?? defaultNameAnchor(layoutId);
+  const nameSize = (meta.coverNameSize ?? DEFAULT_COVER_NAME_SIZE) * 15;
+  const nameColor = coverTextTone(layoutId) === "dark" ? INK : PAPER;
 
-  drawCenteredText(page, petName, nameFont, nameSize, PAPER, {
-    x: artLeft + (namePos.x / 100) * artWidth,
-    y: artHeight - (namePos.y / 100) * artHeight,
-  });
+  const [row, col] = anchor.split("-") as [string, string];
+  const yPct = row === "top" ? 14 : row === "bottom" ? 86 : 50;
+  const EDGE_INSET_PCT = 8;
 
-  if (years) {
-    drawCenteredText(page, years, yearsFont, 10, PAPER, {
-      x: artLeft + (datesPos.x / 100) * artWidth,
-      y: artHeight - (datesPos.y / 100) * artHeight,
-      opacity: 0.85,
+  if (col === "left") {
+    drawLeftText(page, petName, nameFont, nameSize, nameColor, {
+      x: artLeft + (EDGE_INSET_PCT / 100) * artWidth,
+      y: artHeight - (yPct / 100) * artHeight,
+    });
+  } else if (col === "right") {
+    drawRightText(page, petName, nameFont, nameSize, nameColor, {
+      x: artLeft + ((100 - EDGE_INSET_PCT) / 100) * artWidth,
+      y: artHeight - (yPct / 100) * artHeight,
+    });
+  } else {
+    drawCenteredText(page, petName, nameFont, nameSize, nameColor, {
+      x: artLeft + 0.5 * artWidth,
+      y: artHeight - (yPct / 100) * artHeight,
     });
   }
 
@@ -142,7 +150,7 @@ export async function renderCoverPdf(args: {
 
   if (spineWidth >= MIN_SPINE_TEXT_PT) {
     const spineCenter = BLEED_PT + TRIM_PT + spineWidth / 2;
-    const spineText = years ? `${petName}   ${years}` : petName;
+    const spineText = petName;
     const spineSize = Math.min(13, spineWidth * 0.42);
     const textWidth = fonts.serif.widthOfTextAtSize(spineText, spineSize);
 
@@ -156,32 +164,44 @@ export async function renderCoverPdf(args: {
     });
   }
 
-  /* ---------------------------------- back --------------------------------- */
+  /* ---------------------------------- back ---------------------------------
+   * Styled like a real memoir/photo-book back cover: a centered pull-quote
+   * (the dedication, or a fallback line) sitting in the upper-middle third,
+   * a small divider, and a publisher-style colophon anchored at the bottom —
+   * mirrors `BackCoverArt` (the on-screen version). */
 
-  const backLeft = BLEED_PT + 0.75 * PT_PER_INCH;
-  const backWidth = TRIM_PT - 1.5 * PT_PER_INCH;
+  const backCenterX = WRAP_PT + (TRIM_PT + BLEED_PT) / 2;
+  const backWidth = TRIM_PT - 1.6 * PT_PER_INCH;
   const backText = meta.dedication.trim() || CLOSING_LINE;
-  const lines = wrap(backText, fonts.serif, 13, backWidth).slice(0, 8);
+  const quoteSize = 13;
+  const quoteLines = wrap(`“${backText}”`, fonts.serifItalic, quoteSize, backWidth).slice(0, 8);
+  const lineHeight = 20;
 
-  let baseline = dimensions.height * 0.62;
-  for (const line of lines) {
-    page.drawText(line, {
-      x: backLeft,
+  let baseline = dimensions.height / 2 + (quoteLines.length * lineHeight) / 2 - lineHeight;
+  for (const line of quoteLines) {
+    drawCenteredText(page, line, fonts.serifItalic, quoteSize, INK, {
+      x: backCenterX,
       y: baseline,
-      font: fonts.serif,
-      size: 13,
-      color: INK,
     });
-    baseline -= 20;
+    baseline -= lineHeight;
   }
 
-  page.drawText("ourTailTales", {
-    x: backLeft,
-    y: BLEED_PT + 0.75 * PT_PER_INCH,
-    font: fonts.sans,
-    size: 9,
-    color: INK,
-    opacity: 0.7,
+  drawCenteredText(page, "•  •  •", fonts.sans, 9, INK, {
+    x: backCenterX,
+    y: baseline - 6,
+    opacity: 0.4,
+  });
+
+  const colophonY = BLEED_PT + 0.9 * PT_PER_INCH;
+  drawCenteredText(page, brand.name, fonts.sansBold, 9, INK, {
+    x: backCenterX,
+    y: colophonY + 12,
+    opacity: 0.8,
+  });
+  drawCenteredText(page, brand.domain, fonts.sans, 7.5, INK, {
+    x: backCenterX,
+    y: colophonY,
+    opacity: 0.5,
   });
 
   const bytes = await pdf.save();
@@ -189,10 +209,42 @@ export async function renderCoverPdf(args: {
 }
 
 /**
- * Draws the front-cover background for the chosen layout: photo placement,
- * any color band/margin/scrim, and the "OURTAILTALES" wordmark. Mirrors
- * `CoverLayoutChrome` (the on-screen version) so the print file matches what
- * the customer designed.
+ * Wraps a customer-supplied PNG/JPG into a single-page PDF at exactly the
+ * dimensions Lulu requires for this book — used at checkout when the
+ * customer uploaded their own front+spine+back artwork instead of using the
+ * in-app cover design. The file has already been validated to match
+ * `dimensions` (see `lib/book/customCover`); a PDF upload skips this
+ * entirely and is sent to Lulu as-is.
+ */
+export async function wrapImageAsCoverPdf(args: {
+  file: File;
+  dimensions: CoverDimensionsPt;
+}): Promise<Blob> {
+  const { file, dimensions } = args;
+  const pdf = await PDFDocument.create();
+  pdf.setProducer("ourTailTales");
+
+  const page = pdf.addPage([dimensions.width, dimensions.height]);
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const isPng = file.type === "image/png" || file.name.toLowerCase().endsWith(".png");
+  const embedded = isPng ? await pdf.embedPng(bytes) : await pdf.embedJpg(bytes);
+  page.drawImage(embedded, {
+    x: 0,
+    y: 0,
+    width: dimensions.width,
+    height: dimensions.height,
+  });
+
+  const out = await pdf.save();
+  return new Blob([out as unknown as BlobPart], { type: "application/pdf" });
+}
+
+/**
+ * Draws the front-cover background for the chosen layout: photo placement
+ * plus any color band/margin/scrim. Mirrors `CoverLayoutChrome` (the
+ * on-screen version) so the print file matches what the customer designed.
+ * The ourTailTales mark stays off the front cover — see the back-cover
+ * colophon below for where it lives instead.
  */
 async function drawCoverLayout(
   pdf: PDFDocument,
@@ -207,97 +259,29 @@ async function drawCoverLayout(
   },
 ): Promise<void> {
   const { layoutId, artLeft, artWidth, artHeight, coverFile, targetPpi } = args;
-  const sans = await pdf.embedFont(StandardFonts.Helvetica);
-  const wordmarkSize = 7;
 
   switch (layoutId) {
-    case "framed": {
-      const insetX = artWidth * 0.07;
-      const insetY = artHeight * 0.07;
-      const rect: Rect = {
-        x: artLeft + insetX,
-        y: insetY,
-        width: artWidth - insetX * 2,
-        height: artHeight - insetY * 2,
-      };
-      await drawPhotoOrFallback(pdf, page, coverFile, targetPpi, rect);
-      drawScrim(page, rect.x, rect.width, rect.height * 0.3, rect.y);
-      page.drawText("OURTAILTALES", {
-        x: artLeft + artWidth / 2 - sans.widthOfTextAtSize("OURTAILTALES", wordmarkSize) / 2,
-        y: artHeight - insetY * 0.6,
-        font: sans,
-        size: wordmarkSize,
-        color: INK,
-        opacity: 0.8,
-      });
-      return;
-    }
-
-    case "banner": {
-      const bandHeight = artHeight * 0.22;
-      const photoRect: Rect = {
-        x: artLeft,
-        y: bandHeight,
-        width: artWidth,
-        height: artHeight - bandHeight,
-      };
-      await drawPhotoOrFallback(pdf, page, coverFile, targetPpi, photoRect);
-      page.drawRectangle({
-        x: artLeft,
-        y: 0,
-        width: artWidth,
-        height: bandHeight,
-        color: PERIWINKLE_DEEP,
-      });
-      page.drawText("OURTAILTALES", {
-        x: artLeft + BLEED_PT + 0.4 * PT_PER_INCH,
-        y: bandHeight / 2 - wordmarkSize / 2,
-        font: sans,
-        size: wordmarkSize,
-        color: PAPER,
-        opacity: 0.9,
-      });
-      return;
-    }
-
     case "minimal": {
       const rect: Rect = { x: artLeft, y: 0, width: artWidth, height: artHeight };
       await drawPhotoOrFallback(pdf, page, coverFile, targetPpi, rect);
       page.drawRectangle({ ...rect, color: SCRIM, opacity: 0.4 });
-      page.drawText("OURTAILTALES", {
-        x: artLeft + artWidth / 2 - sans.widthOfTextAtSize("OURTAILTALES", wordmarkSize) / 2,
-        y: artHeight - BLEED_PT - 0.5 * PT_PER_INCH,
-        font: sans,
-        size: wordmarkSize,
-        color: PAPER,
-        opacity: 0.9,
-      });
       return;
     }
 
-    case "sidebar": {
-      const barWidth = artWidth * 0.18;
+    case "editorial": {
+      const rect: Rect = { x: artLeft, y: 0, width: artWidth, height: artHeight };
+      await drawPhotoOrFallback(pdf, page, coverFile, targetPpi, rect);
+      // A bold ink title band across the vertical middle — mirrors
+      // `CoverLayoutChrome`'s "editorial" case (top 40%, height 27%).
+      const bandHeight = artHeight * 0.27;
+      const bandBottomY = artHeight * (1 - 0.4) - bandHeight;
       page.drawRectangle({
         x: artLeft,
-        y: 0,
-        width: barWidth,
-        height: artHeight,
-        color: PERIWINKLE,
-      });
-      const photoRect: Rect = {
-        x: artLeft + barWidth,
-        y: 0,
-        width: artWidth - barWidth,
-        height: artHeight,
-      };
-      await drawPhotoOrFallback(pdf, page, coverFile, targetPpi, photoRect);
-      page.drawText("OURTAILTALES", {
-        x: artLeft + barWidth * 0.18,
-        y: artHeight - BLEED_PT - 0.6 * PT_PER_INCH,
-        font: sans,
-        size: wordmarkSize,
-        color: PAPER,
-        opacity: 0.9,
+        y: bandBottomY,
+        width: artWidth,
+        height: bandHeight,
+        color: SCRIM,
+        opacity: 0.68,
       });
       return;
     }
@@ -307,14 +291,6 @@ async function drawCoverLayout(
       const rect: Rect = { x: artLeft, y: 0, width: artWidth, height: artHeight };
       await drawPhotoOrFallback(pdf, page, coverFile, targetPpi, rect);
       drawScrim(page, artLeft, artWidth, artHeight * 0.36, 0);
-      page.drawText("OURTAILTALES", {
-        x: artLeft + BLEED_PT + 0.5 * PT_PER_INCH,
-        y: artHeight - BLEED_PT - 0.75 * PT_PER_INCH,
-        font: sans,
-        size: wordmarkSize + 2,
-        color: PAPER,
-        opacity: 0.9,
-      });
       return;
     }
   }
@@ -399,6 +375,45 @@ function drawCenteredText(
   });
 }
 
+/** Left-aligned text — x is the left edge of the text. */
+function drawLeftText(
+  page: PDFPage,
+  text: string,
+  font: PDFFont,
+  size: number,
+  color: ReturnType<typeof rgb>,
+  pos: { x: number; y: number; opacity?: number },
+): void {
+  page.drawText(text, {
+    x: pos.x,
+    y: pos.y - size * 0.35,
+    font,
+    size,
+    color,
+    opacity: pos.opacity ?? 1,
+  });
+}
+
+/** Right-aligned text — x is the right edge of the text. */
+function drawRightText(
+  page: PDFPage,
+  text: string,
+  font: PDFFont,
+  size: number,
+  color: ReturnType<typeof rgb>,
+  pos: { x: number; y: number; opacity?: number },
+): void {
+  const textWidth = font.widthOfTextAtSize(text, size);
+  page.drawText(text, {
+    x: pos.x - textWidth,
+    y: pos.y - size * 0.35,
+    font,
+    size,
+    color,
+    opacity: pos.opacity ?? 1,
+  });
+}
+
 /** Approximates the editor's 5 cover fonts with the closest built-in PDF font. */
 function pdfFontsForCoverFont(
   fontId: CoverFontId,
@@ -440,11 +455,4 @@ function wrap(
   }
   if (current) lines.push(current);
   return lines;
-}
-
-function lifespanText(meta: BookMeta): string {
-  if (meta.birthYear && meta.deathYear) {
-    return `${meta.birthYear} – ${meta.deathYear}`;
-  }
-  return meta.birthYear || meta.deathYear || "";
 }

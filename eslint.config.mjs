@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Vendored pdfjs-dist worker build, copied into public/ as a static
+    // asset for client-side PDF rendering (see lib/book/customCoverPreview.ts)
+    // — minified third-party code, not ours to lint.
+    "public/pdf.worker.min.mjs",
   ]),
 ]);
 

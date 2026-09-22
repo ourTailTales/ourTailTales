@@ -1,24 +1,11 @@
 "use client";
 
-import {
-  useCallback,
-  useMemo,
-  useState,
-  type DragEvent,
-  type PointerEvent as ReactPointerEvent,
-} from "react";
+import { ArrowLeft, ArrowRight } from "lucide-react";
+import { useEffect, useMemo, useState, type DragEvent } from "react";
 
-import { albumTilesFrom } from "@/components/editor/albumTiles";
 import { CustomizeStep } from "@/components/editor/CustomizeStep";
-import { EditorStepNav } from "@/components/editor/EditorStepNav";
 import { FinishStep } from "@/components/editor/FinishStep";
-import { MediaUploadStep } from "@/components/editor/MediaUploadStep";
-import {
-  EDITOR_STEP_COUNT,
-  farthestStep,
-  stepFromFunnelState,
-} from "@/components/editor/steps";
-import { MetaPage, SizePanel } from "@/components/hero/funnelSpreads";
+import { UploadMediaModal } from "@/components/editor/UploadMediaModal";
 import { filesFromDataTransfer } from "@/lib/photo/process";
 import { bookSpec, MIN_PHOTOS_FOR_BOOK } from "@/lib/pricing";
 import { track } from "@/lib/analytics";
@@ -50,109 +37,52 @@ export function BookEditor({
   const photos = useOurTailTalesStore((state) => state.photos);
   const albumVideos = useOurTailTalesStore((state) => state.albumVideos);
   const processingError = useOurTailTalesStore((state) => state.processingError);
-  const meta = useOurTailTalesStore((state) => state.meta);
+  const chapters = useOurTailTalesStore((state) => state.chapters);
   const chapterCount = useOurTailTalesStore((state) => state.chapterCount);
-  const setMeta = useOurTailTalesStore((state) => state.setMeta);
-  const setChapterCount = useOurTailTalesStore((state) => state.setChapterCount);
-  const goToConfigure = useOurTailTalesStore((state) => state.goToConfigure);
   const confirmBookSize = useOurTailTalesStore((state) => state.confirmBookSize);
-  const removeAlbumPhoto = useOurTailTalesStore((state) => state.removeAlbumPhoto);
-  const removeAlbumVideo = useOurTailTalesStore((state) => state.removeAlbumVideo);
 
   const summary = useMemo(() => summarizeAlbum(photos), [photos]);
-  const tiles = useMemo(
-    () => albumTilesFrom(photos, albumVideos),
-    [photos, albumVideos],
-  );
-  const spec = useMemo(() => bookSpec(chapterCount), [chapterCount]);
   const mediaCount = summary.placeable + albumVideos.length;
-  const canLeaveUpload = mediaCount >= MIN_PHOTOS_FOR_BOOK;
-  const canMetaContinue =
-    meta.petName.trim().length > 0 && summary.placeable > 0;
-  const farthest = farthestStep(funnelState, canLeaveUpload);
 
-  const [step, setStep] = useState(() => stepFromFunnelState(funnelState));
   const [dragOver, setDragOver] = useState(false);
   const [dropping, setDropping] = useState(false);
-  const [swipe, setSwipe] = useState<{ x: number; y: number } | null>(null);
+  const [showFinish, setShowFinish] = useState(false);
+  const [uploadModalDismissed, setUploadModalDismissed] = useState(false);
 
-  const visibleStep = Math.min(
-    step,
-    Math.max(farthest, stepFromFunnelState(funnelState)),
-  );
   const processing = funnelState === "processing" || dropping;
+  // Shown once, the moment someone lands in the editor with nothing uploaded
+  // yet — picking files (or dropping them) flips funnelState away from
+  // "idle" on its own, so this closes itself without extra wiring.
+  const showUploadModal =
+    funnelState === "idle" && mediaCount === 0 && !uploadModalDismissed;
   const readyCount =
     funnelState === "processing"
       ? photos.filter((photo) => photo.usable).length
       : summary.placeable;
 
-  const goTo = useCallback(
-    (next: number) => {
-      const target = Math.max(0, Math.min(next, farthest));
-      setStep(target);
-    },
-    [farthest],
-  );
+  // Skip the old "upload → tell us about them → choose chapters" onboarding
+  // pages: build the book skeleton itself as soon as there's enough media,
+  // so customers land straight in the editor. Runs once — later uploads just
+  // add to the photo pool for swapping in, they never reset written pages.
+  useEffect(() => {
+    if (chapters.length > 0) return;
+    if (funnelState === "processing") return;
+    if (mediaCount < MIN_PHOTOS_FOR_BOOK) return;
+    confirmBookSize();
+    track("book_size_confirmed", {
+      chapters: chapterCount,
+      price: bookSpec(chapterCount).price,
+    });
+  }, [chapters.length, funnelState, mediaCount, confirmBookSize, chapterCount]);
 
-  const handleNext = useCallback(() => {
-    if (visibleStep === 0 && canLeaveUpload) {
-      setStep(1);
-      return;
-    }
-    if (visibleStep === 1 && canMetaContinue) {
-      if (farthest < 2) goToConfigure();
-      setStep(2);
-      return;
-    }
-    if (visibleStep === 2) {
-      if (farthest < 3) {
-        confirmBookSize();
-        track("book_size_confirmed", {
-          chapters: chapterCount,
-          price: spec.price,
-        });
-      }
-      setStep(3);
-      return;
-    }
-    if (visibleStep === 3 && funnelState === "editing") {
-      setStep(4);
-    }
-  }, [
-    canLeaveUpload,
-    canMetaContinue,
-    chapterCount,
-    confirmBookSize,
-    farthest,
-    funnelState,
-    goToConfigure,
-    spec.price,
-    visibleStep,
-  ]);
-
-  const canNext =
-    (visibleStep === 0 && canLeaveUpload) ||
-    (visibleStep === 1 && canMetaContinue) ||
-    visibleStep === 2 ||
-    (visibleStep === 3 && funnelState === "editing");
-
-  const nextLabel =
-    visibleStep === 2
-      ? "Continue with these chapters"
-      : visibleStep === 3
-        ? "PDF & order"
-        : "Next";
-
-  const acceptUploads = visibleStep === 0;
+  const canOrder = funnelState === "editing" || funnelState === "exporting";
 
   const handleDragEnter = (event: DragEvent<HTMLElement>): void => {
-    if (!acceptUploads) return;
     event.preventDefault();
     setDragOver(true);
   };
 
   const handleDragOver = (event: DragEvent<HTMLElement>): void => {
-    if (!acceptUploads) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "copy";
     setDragOver(true);
@@ -165,7 +95,6 @@ export function BookEditor({
   };
 
   const handleDrop = (event: DragEvent<HTMLElement>): void => {
-    if (!acceptUploads) return;
     event.preventDefault();
     event.stopPropagation();
     setDragOver(false);
@@ -180,29 +109,6 @@ export function BookEditor({
     })();
   };
 
-  const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>): void => {
-    if (event.target instanceof Element) {
-      if (
-        event.target.closest(
-          "button, a, input, textarea, select, label, [role='button']",
-        )
-      ) {
-        return;
-      }
-    }
-    setSwipe({ x: event.clientX, y: event.clientY });
-  };
-
-  const handlePointerUp = (event: ReactPointerEvent<HTMLDivElement>): void => {
-    if (!swipe) return;
-    const dx = event.clientX - swipe.x;
-    const dy = event.clientY - swipe.y;
-    setSwipe(null);
-    if (Math.abs(dx) < 64 || Math.abs(dx) < Math.abs(dy)) return;
-    if (dx < 0 && canNext) handleNext();
-    else if (dx > 0 && visibleStep > 0) goTo(visibleStep - 1);
-  };
-
   return (
     <div className="book-editor-shell book-editor-field">
       <section
@@ -215,95 +121,73 @@ export function BookEditor({
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
-        <div
-          className="relative z-10 mx-auto flex w-full max-w-[90rem]"
-          onPointerDown={handlePointerDown}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={() => setSwipe(null)}
-        >
-          <div
-            className="w-full min-w-0"
-            aria-roledescription="carousel"
-            aria-label="Book editor steps"
-          >
-            <div
-              role="group"
-              aria-label={`Step ${visibleStep + 1} of ${EDITOR_STEP_COUNT}`}
-            >
-                {visibleStep === 0 && (
-                  <MediaUploadStep
-                    tiles={tiles}
-                    readyCount={readyCount}
-                    processing={processing}
-                    dragOver={dragOver}
-                    canNext={canLeaveUpload}
-                    onFiles={onFiles}
-                    onNext={handleNext}
-                    onRemove={(id, kind) => {
-                      if (kind === "video") removeAlbumVideo(id);
-                      else removeAlbumPhoto(id);
-                    }}
-                  />
-                )}
-                {visibleStep === 1 && (
-                  <MetaPage
-                    summary={summary}
-                    meta={meta}
-                    onMetaChange={setMeta}
-                    onContinue={handleNext}
-                    onStartOver={() => {
-                      setStep(0);
-                      onStartOver();
-                    }}
-                    showNav={false}
-                  />
-                )}
-                {visibleStep === 2 && (
-                  <SizePanel
-                    chapterCount={chapterCount}
-                    maxChapters={summary.maxChapters}
-                    placeablePhotos={summary.placeable}
-                    onChange={setChapterCount}
-                    onConfirm={handleNext}
-                    showNav={false}
-                  />
-                )}
-                {visibleStep === 3 && (
-                  <CustomizeStep
-                    onCreateStory={onCreateStory}
-                    onRegenerate={onRegenerate}
-                    enableVideoMemories={enableVideoMemories}
-                  />
-                )}
-                {visibleStep === 4 && (
-                  <FinishStep
-                    onSample={onSample}
-                    onCheckout={onCheckout}
-                    notice={notice}
-                  />
-                )}
+        {showUploadModal ? (
+          <UploadMediaModal
+            onFiles={onFiles}
+            processing={processing}
+            onClose={() => setUploadModalDismissed(true)}
+          />
+        ) : null}
+
+        <div className="relative z-10 mx-auto w-full max-w-[100rem] px-5 py-8 sm:px-8 sm:py-10 lg:pl-8 lg:pr-14">
+          {showFinish ? (
+            <div className="space-y-4">
+              <button
+                type="button"
+                onClick={() => setShowFinish(false)}
+                className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-page-line bg-white px-4 py-2.5 text-sm font-semibold text-page-ink shadow-sm transition-colors hover:border-periwinkle hover:text-periwinkle-deep"
+              >
+                <ArrowLeft aria-hidden className="h-4 w-4" strokeWidth={2.25} />
+                Back to editing
+              </button>
+              <FinishStep onSample={onSample} onCheckout={onCheckout} notice={notice} />
             </div>
-          </div>
+          ) : (
+            <div className="min-w-0">
+              <div className="mb-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={onStartOver}
+                  className="text-xs text-page-ink-soft underline decoration-page-line underline-offset-4 hover:text-periwinkle-deep"
+                >
+                  Start over with a different album
+                </button>
+              </div>
+
+              <CustomizeStep
+                onCreateStory={onCreateStory}
+                onRegenerate={onRegenerate}
+                onFiles={onFiles}
+                processing={processing}
+                readyCount={readyCount}
+                videoCount={albumVideos.length}
+                enableVideoMemories={enableVideoMemories}
+              />
+
+              {chapters.length > 0 ? (
+                <div className="mt-6 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setShowFinish(true)}
+                    disabled={!canOrder}
+                    className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-periwinkle px-6 py-3 text-base font-semibold text-white shadow-lift transition-colors hover:bg-periwinkle-deep disabled:cursor-not-allowed disabled:bg-page-ink/25 disabled:shadow-none"
+                  >
+                    PDF & order
+                    <ArrowRight aria-hidden className="h-5 w-5" strokeWidth={2.25} />
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          )}
         </div>
 
-        {processingError && visibleStep === 0 ? (
+        {processingError ? (
           <p
             role="alert"
-            className="relative z-10 px-5 pb-2 text-center text-sm text-periwinkle-deep sm:px-8"
+            className="relative z-10 px-5 pb-2 text-center text-sm text-periwinkle-deep sm:px-8 lg:pl-8 lg:pr-14"
           >
             {processingError}
           </p>
-        ) : null}
-
-        {visibleStep > 0 ? (
-          <EditorStepNav
-            canPrev={visibleStep > 0}
-            canNext={canNext}
-            showNext={visibleStep < 4}
-            nextLabel={nextLabel}
-            onPrev={() => goTo(visibleStep - 1)}
-            onNext={handleNext}
-          />
         ) : null}
       </section>
     </div>

@@ -78,15 +78,40 @@ export type BookPage = {
 export type CoverPosition = { x: number; y: number };
 
 /** Background composition of the front cover — photo treatment + logo placement. */
-export type CoverLayoutId =
-  | "classic"
-  | "framed"
-  | "banner"
-  | "minimal"
-  | "sidebar";
+export type CoverLayoutId = "classic" | "minimal" | "editorial";
 
-/** Which typeface renders the name/years on the front cover. */
+/** Which typeface renders the pet's name on the front cover. */
 export type CoverFontId = "cover" | "display" | "playfair" | "caveat" | "sans";
+
+/** Where the pet's name sits on the front cover — a 3×3 grid, like a caption anchor. */
+export type CoverNameAnchor =
+  | "top-left"
+  | "top-center"
+  | "top-right"
+  | "middle-left"
+  | "middle-center"
+  | "middle-right"
+  | "bottom-left"
+  | "bottom-center"
+  | "bottom-right";
+
+/**
+ * A print-ready front+spine+back cover the customer uploaded themselves,
+ * sized to Lulu's exact requirement for the book's current chapter count —
+ * used in place of the in-app designed cover when set. The binary lives in
+ * `lib/book/customCoverStore` (module-level, like photo/video assets); this
+ * is just the metadata that travels through state and the local draft.
+ */
+export type CustomCoverMeta = {
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  /** Interior page count this file's dimensions were checked against — if the
+   * chapter count changes afterward, this no longer matches and needs a re-check. */
+  validatedForPages: number;
+  widthPt: number;
+  heightPt: number;
+};
 
 export type BookMeta = {
   petName: string;
@@ -98,27 +123,12 @@ export type BookMeta = {
   coverLayoutId?: CoverLayoutId;
   /** Optional — falls back to DEFAULT_COVER_FONT. */
   coverFontId?: CoverFontId;
-  /** Optional — falls back to that layout's default name position. */
-  coverNamePos?: CoverPosition;
-  /** Optional — falls back to that layout's default years position. */
-  coverDatesPos?: CoverPosition;
-  /** Cover name font size in rem units — defaults to layout-dependent value. */
+  /** Optional — falls back to that layout's default anchor. */
+  coverNameAnchor?: CoverNameAnchor;
+  /** Cover name font size in rem units — defaults to DEFAULT_COVER_NAME_SIZE. */
   coverNameSize?: number;
   /** Whether the cover name is bold — defaults to true. */
   coverNameBold?: boolean;
   /** Whether the cover name is underlined — defaults to false. */
   coverNameUnderline?: boolean;
-  /** User-added extra text fields on the cover (subtitle, date caption, etc.). */
-  coverExtraFields?: CoverTextField[];
-};
-
-/** A user-added text field on the cover canvas. */
-export type CoverTextField = {
-  id: string;
-  text: string;
-  pos: CoverPosition;
-  fontId?: CoverFontId;
-  size?: number;
-  bold?: boolean;
-  underline?: boolean;
 };

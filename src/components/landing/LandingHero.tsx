@@ -28,11 +28,11 @@ export function LandingHero() {
 
         {/* LEFT — hook + email CTA */}
         <div className="flex flex-col max-w-5xl">
-          <h1 className="animate-fade-up font-display text-[2.8rem] font-bold leading-[1.1] text-white sm:text-[3.8rem] lg:text-[6rem] lg:leading-[1.08]">
+          <h1 className="animate-fade-up font-display text-[3.3rem] font-bold leading-[1.1] text-white sm:text-[3.8rem] lg:text-[6rem] lg:leading-[1.08]">
             {brand.title}
           </h1>
 
-          <p className="animate-fade-up-delay mt-4 max-w-lg font-cover text-xl font-medium italic leading-8 text-white/80 sm:text-2xl sm:leading-9">
+          <p className="animate-fade-up-delay mt-8 max-w-3xl font-cover text-2xl font-medium italic leading-8 text-white/80 sm:text-4xl sm:leading-9">
             {brand.subtitle}
           </p>
 
@@ -44,9 +44,6 @@ export function LandingHero() {
               buttonLabel="Get their Free Story"
               theme="dark"
             />
-            <p className="text-sm text-white/50">
-              Free &nbsp;·&nbsp; No credit card &nbsp;·&nbsp; Photos stay on your device
-            </p>
           </div>
         </div>
 

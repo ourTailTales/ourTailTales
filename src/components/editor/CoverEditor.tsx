@@ -1,384 +1,380 @@
 "use client";
 
-import {
-  useCallback,
-  useRef,
-  useState,
-  type CSSProperties,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type PointerEvent as ReactPointerEvent,
-} from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { AlertCircle, CheckCircle2 } from "lucide-react";
 
-import { coverImageUrl } from "@/components/book-viewer/CoverArt";
+import { BackCoverArt, coverImageUrl } from "@/components/book-viewer/CoverArt";
 import { CoverLayoutChrome } from "@/components/book-viewer/CoverLayoutChrome";
+import { AddMediaControl } from "@/components/editor/AddMediaControl";
+import { CustomCoverPanel } from "@/components/editor/CustomCoverPanel";
 import { LayoutThumbnail } from "@/components/editor/LayoutThumbnail";
+import { useOurTailTalesStore } from "@/store/useOurTailTalesStore";
 import {
   COVER_FONTS,
   COVER_LAYOUTS,
+  COVER_NAME_ANCHORS,
   DEFAULT_COVER_FONT,
   DEFAULT_COVER_LAYOUT,
-  clampCoverPosition,
+  DEFAULT_COVER_NAME_SIZE,
   coverFontVar,
-  defaultDatesPos,
-  defaultNamePos,
+  coverTextTone,
+  defaultNameAnchor,
+  styleForAnchor,
 } from "@/lib/book/coverLayouts";
+import { buildCustomCoverCrops, type CustomCoverCrops } from "@/lib/book/customCoverPreview";
+import { getCustomCoverFile } from "@/lib/book/customCoverStore";
 import { getFullUrl } from "@/lib/photo/assetStore";
 import { selectablePhotos } from "@/lib/photo/dedupe";
-import type {
-  BookMeta,
-  CoverFontId,
-  CoverPosition,
-  CoverTextField,
-} from "@/types/book";
+import { isLikelyMedia } from "@/lib/photo/process";
+import type { BookMeta, CoverFontId, CoverNameAnchor } from "@/types/book";
 import type { PhotoAsset } from "@/types/photo";
 
-/** Available cover-name font sizes (rem). */
-const NAME_SIZES = [1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75] as const;
-const DEFAULT_NAME_SIZE = 2;
+/** Selectable cover-name sizes (rem) — a wider range at a finer step than before. */
+const NAME_SIZES = [
+  1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3, 3.25, 3.5, 3.75, 4, 4.5, 5,
+] as const;
 
-type ToolTab = "text" | "media";
+const inputClass =
+  "w-full rounded-lg border border-page-line bg-white px-3.5 py-2.5 text-page-ink outline-none transition-colors placeholder:text-page-ink-faint focus:border-periwinkle focus:ring-2 focus:ring-periwinkle/20";
 
-/** Which field on the cover is currently selected for editing. */
-type SelectedField =
-  | { kind: "name" }
-  | { kind: "years" }
-  | { kind: "extra"; id: string }
-  | null;
+const selectClass =
+  "h-10 w-full rounded-lg border border-page-line bg-white px-2.5 text-sm text-page-ink outline-none transition-colors hover:border-periwinkle focus:border-periwinkle focus:ring-2 focus:ring-periwinkle/20";
 
+type CoverTab = "front" | "back" | "upload";
+
+/**
+ * Cover editor: a tab group (Front cover / Back cover / Upload cover) drives
+ * both the canvas and the tool panel below it. Each tab carries its own
+ * done/not-done indicator — a checkmark once that side has what it needs, an
+ * exclamation mark while it doesn't — and the upload tab is flagged
+ * "(optional)" since a customer only needs it if they're supplying their own
+ * print-ready cover instead of the in-app design.
+ */
 export function CoverEditor({
   meta,
   photos,
   onMetaChange,
   onSetCover,
+  onFiles,
+  processing,
+  readyCount,
+  videoCount,
 }: {
   meta: BookMeta;
   photos: PhotoAsset[];
   onMetaChange: (patch: Partial<BookMeta>) => void;
   onSetCover: (photoId: string) => void;
+  onFiles: (files: File[]) => void;
+  processing: boolean;
+  readyCount: number;
+  videoCount: number;
 }) {
-  const canvasRef = useRef<HTMLDivElement>(null);
+  const [tab, setTab] = useState<CoverTab>("front");
+  const customCover = useOurTailTalesStore((state) => state.customCover);
   const pickable = selectablePhotos(photos);
   const photoUrl = coverImageUrl(photos, meta.coverPhotoId);
 
   const layoutId = meta.coverLayoutId ?? DEFAULT_COVER_LAYOUT;
+  const textOnLight = coverTextTone(layoutId) === "dark";
   const fontId = meta.coverFontId ?? DEFAULT_COVER_FONT;
-  const namePos = meta.coverNamePos ?? defaultNamePos(layoutId);
-  const datesPos = meta.coverDatesPos ?? defaultDatesPos(layoutId);
-  const nameSize = meta.coverNameSize ?? DEFAULT_NAME_SIZE;
+  const anchor = meta.coverNameAnchor ?? defaultNameAnchor(layoutId);
+  const nameStyle = styleForAnchor(anchor);
+  const nameSize = meta.coverNameSize ?? DEFAULT_COVER_NAME_SIZE;
   const nameBold = meta.coverNameBold ?? true;
-  const nameUnderline = meta.coverNameUnderline ?? false;
-  const extraFields = meta.coverExtraFields ?? [];
-
   const petName = meta.petName.trim();
-  const years = lifespanText(meta);
 
-  const [activeTab, setActiveTab] = useState<ToolTab>("text");
-  const [selected, setSelected] = useState<SelectedField>(null);
-  const [editingField, setEditingField] = useState<string | null>(null);
+  // Lets the empty-cover placeholder on the canvas act as its own upload CTA,
+  // instead of just naming what's missing.
+  const canvasUploadInputRef = useRef<HTMLInputElement>(null);
+  const handleCanvasUploadChange = (event: ChangeEvent<HTMLInputElement>): void => {
+    const files = Array.from(event.target.files ?? []).filter(isLikelyMedia);
+    event.target.value = "";
+    if (files.length > 0) onFiles(files);
+  };
 
-  /* ── field selection helpers ── */
+  // A customer-uploaded cover already contains the front and back — they
+  // don't need to also fill in the in-app design for either to count as done.
+  const uploadDone = Boolean(customCover);
+  const frontDone = uploadDone || (Boolean(photoUrl) && Boolean(petName));
+  const backDone = uploadDone || meta.dedication.trim().length > 0;
 
-  const selectedFontId = selected
-    ? selected.kind === "extra"
-      ? extraFields.find((f) => f.id === selected.id)?.fontId ?? fontId
-      : fontId
-    : fontId;
+  // Once a custom cover is uploaded, the Front/Back tabs preview what's
+  // actually inside that file — cropped from it — instead of the in-app
+  // design, so the customer sees what will really print. Re-crops whenever
+  // the uploaded file changes (new upload, re-check, or removal), keyed on
+  // the file's own identity so a stale result never gets attributed to a
+  // newer (or removed) upload while the effect is still resetting state —
+  // the effect only ever calls setState from inside the async callback, per
+  // the rules of hooks, and this key comparison is what lets "no upload" or
+  // "a different upload" be derived instead of needing a synchronous reset.
+  const customCoverKey = customCover
+    ? `${customCover.fileName}:${customCover.sizeBytes}:${customCover.validatedForPages}`
+    : null;
+  const [cropResult, setCropResult] = useState<
+    | { key: string; status: "ready"; crops: CustomCoverCrops }
+    | { key: string; status: "error" }
+    | null
+  >(null);
 
-  const selectedSize = selected
-    ? selected.kind === "extra"
-      ? extraFields.find((f) => f.id === selected.id)?.size ?? DEFAULT_NAME_SIZE
-      : nameSize
-    : nameSize;
-
-  const selectedBold = selected
-    ? selected.kind === "extra"
-      ? extraFields.find((f) => f.id === selected.id)?.bold ?? true
-      : nameBold
-    : nameBold;
-
-  const selectedUnderline = selected
-    ? selected.kind === "extra"
-      ? extraFields.find((f) => f.id === selected.id)?.underline ?? false
-      : nameUnderline
-    : nameUnderline;
-
-  /* ── position helpers ── */
-
-  const toCanvasPos = useCallback(
-    (clientX: number, clientY: number): CoverPosition | null => {
-      const bounds = canvasRef.current?.getBoundingClientRect();
-      if (!bounds) return null;
-      return clampCoverPosition({
-        x: ((clientX - bounds.left) / bounds.width) * 100,
-        y: ((clientY - bounds.top) / bounds.height) * 100,
+  useEffect(() => {
+    if (!customCoverKey || !customCover) return;
+    const file = getCustomCoverFile();
+    if (!file) return;
+    let cancelled = false;
+    buildCustomCoverCrops(file, { width: customCover.widthPt, height: customCover.heightPt })
+      .then((crops) => {
+        if (!cancelled) setCropResult({ key: customCoverKey, status: "ready", crops });
+      })
+      .catch(() => {
+        if (!cancelled) setCropResult({ key: customCoverKey, status: "error" });
       });
-    },
-    [],
+    return () => {
+      cancelled = true;
+    };
+  }, [customCoverKey, customCover]);
+
+  const customCoverCrops =
+    cropResult && cropResult.key === customCoverKey && cropResult.status === "ready"
+      ? cropResult.crops
+      : null;
+  const customCoverCropError = Boolean(
+    cropResult && cropResult.key === customCoverKey && cropResult.status === "error",
   );
 
-  function moveField(field: "coverNamePos" | "coverDatesPos", clientX: number, clientY: number) {
-    const pos = toCanvasPos(clientX, clientY);
-    if (pos) onMetaChange({ [field]: pos });
-  }
-
-  function nudgeField(field: "coverNamePos" | "coverDatesPos", current: CoverPosition, dx: number, dy: number) {
-    onMetaChange({ [field]: clampCoverPosition({ x: current.x + dx, y: current.y + dy }) });
-  }
-
-  function moveExtraField(id: string, clientX: number, clientY: number) {
-    const pos = toCanvasPos(clientX, clientY);
-    if (!pos) return;
-    onMetaChange({
-      coverExtraFields: extraFields.map((f) => (f.id === id ? { ...f, pos } : f)),
-    });
-  }
-
-  function nudgeExtraField(id: string, current: CoverPosition, dx: number, dy: number) {
-    onMetaChange({
-      coverExtraFields: extraFields.map((f) =>
-        f.id === id ? { ...f, pos: clampCoverPosition({ x: current.x + dx, y: current.y + dy }) } : f,
-      ),
-    });
-  }
-
-  /* ── toolbar actions (apply to whichever field is selected) ── */
-
-  function applyFont(id: CoverFontId) {
-    if (!selected || selected.kind === "years") {
-      onMetaChange({ coverFontId: id });
-    } else if (selected.kind === "name") {
-      onMetaChange({ coverFontId: id });
-    } else {
-      onMetaChange({
-        coverExtraFields: extraFields.map((f) =>
-          f.id === selected.id ? { ...f, fontId: id } : f,
-        ),
-      });
-    }
-  }
-
-  function applySize(s: number) {
-    if (!selected || selected.kind === "name") {
-      onMetaChange({ coverNameSize: s });
-    } else if (selected.kind === "extra") {
-      onMetaChange({
-        coverExtraFields: extraFields.map((f) =>
-          f.id === selected.id ? { ...f, size: s } : f,
-        ),
-      });
-    }
-  }
-
-  function applyBold() {
-    if (!selected || selected.kind === "name") {
-      onMetaChange({ coverNameBold: !nameBold });
-    } else if (selected.kind === "extra") {
-      const field = extraFields.find((f) => f.id === selected.id);
-      onMetaChange({
-        coverExtraFields: extraFields.map((f) =>
-          f.id === selected.id ? { ...f, bold: !(field?.bold ?? true) } : f,
-        ),
-      });
-    }
-  }
-
-  function applyUnderline() {
-    if (!selected || selected.kind === "name") {
-      onMetaChange({ coverNameUnderline: !nameUnderline });
-    } else if (selected.kind === "extra") {
-      const field = extraFields.find((f) => f.id === selected.id);
-      onMetaChange({
-        coverExtraFields: extraFields.map((f) =>
-          f.id === selected.id ? { ...f, underline: !(field?.underline ?? false) } : f,
-        ),
-      });
-    }
-  }
-
-  function addTextField() {
-    const id = crypto.randomUUID();
-    const newField: CoverTextField = {
-      id,
-      text: "New text",
-      pos: { x: 50, y: 50 },
-      fontId,
-      size: 1.5,
-      bold: false,
-      underline: false,
-    };
-    onMetaChange({ coverExtraFields: [...extraFields, newField] });
-    setSelected({ kind: "extra", id });
-    setEditingField(id);
-  }
-
-  function removeTextField(id: string) {
-    onMetaChange({ coverExtraFields: extraFields.filter((f) => f.id !== id) });
-    if (selected?.kind === "extra" && selected.id === id) setSelected(null);
-  }
-
-  function updateExtraText(id: string, text: string) {
-    onMetaChange({
-      coverExtraFields: extraFields.map((f) => (f.id === id ? { ...f, text } : f)),
-    });
-  }
-
-return (
+  return (
     <section>
-      {/* ─── Two-column: canvas + tool panel (top-aligned, nothing above) ─── */}
+      <div className="mb-5 inline-flex flex-wrap gap-0.5 rounded-lg border border-page-line bg-white p-0.5 text-sm">
+        <CoverTabButton
+          label="Front cover"
+          active={tab === "front"}
+          done={frontDone}
+          onClick={() => setTab("front")}
+        />
+        <CoverTabButton
+          label="Back cover"
+          active={tab === "back"}
+          done={backDone}
+          onClick={() => setTab("back")}
+        />
+        <CoverTabButton
+          label="Upload cover"
+          suffix="(optional)"
+          active={tab === "upload"}
+          done={uploadDone}
+          onClick={() => setTab("upload")}
+        />
+      </div>
+
       <div className="grid gap-6 lg:grid-cols-[1fr_26rem] lg:items-start">
-        {/* Left: cover canvas (square, 8.5 × 8.5 in) */}
-        <div
-          ref={canvasRef}
-          onClick={() => setSelected(null)}
-          className="@container relative aspect-square w-full touch-none select-none overflow-hidden rounded-xl shadow-book"
-        >
-          <CoverLayoutChrome layoutId={layoutId} photoUrl={photoUrl} />
+        {tab !== "upload" ? (
+          <div className="relative aspect-square w-full">
+            <div className="@container relative h-full w-full overflow-hidden rounded-xl shadow-book">
+              {customCover ? (
+                <CustomCoverPreviewPane
+                  url={tab === "front" ? customCoverCrops?.frontUrl : customCoverCrops?.backUrl}
+                  error={customCoverCropError}
+                  side={tab === "front" ? "front" : "back"}
+                />
+              ) : tab === "front" ? (
+                <>
+                  <input
+                    ref={canvasUploadInputRef}
+                    type="file"
+                    accept="image/*,video/*"
+                    multiple
+                    className="sr-only"
+                    onChange={handleCanvasUploadChange}
+                  />
+                  <CoverLayoutChrome
+                    layoutId={layoutId}
+                    photoUrl={photoUrl}
+                    onUploadClick={
+                      photoUrl ? undefined : () => canvasUploadInputRef.current?.click()
+                    }
+                  />
+                  {(photoUrl || !meta.coverPhotoId) && petName ? (
+                    <p
+                      className={`absolute z-10 max-w-[82%] leading-[1.05] ${
+                        textOnLight ? "text-ink" : "text-white"
+                      }`}
+                      style={{
+                        ...nameStyle,
+                        fontFamily: coverFontVar(fontId),
+                        fontSize: `clamp(1rem, ${nameSize * 2.5}cqw, ${nameSize * 1.25}rem)`,
+                        fontWeight: nameBold ? 700 : 400,
+                        textShadow: textOnLight
+                          ? "0 1px 3px rgba(255,255,255,0.55)"
+                          : "0 1px 4px rgba(15,17,23,0.55)",
+                      }}
+                    >
+                      {petName}
+                    </p>
+                  ) : null}
+                </>
+              ) : (
+                <div className="h-full w-full bg-[#e4ddd0]">
+                  <BackCoverArt dedication={meta.dedication} />
+                </div>
+              )}
+            </div>
+          </div>
+        ) : null}
 
-          {/* Pet name */}
-          {(photoUrl || !meta.coverPhotoId) && petName ? (
-            <DraggableLabel
-              label={petName}
-              pos={namePos}
-              editing={editingField === "__name__"}
-              isSelected={selected?.kind === "name"}
-              onSelect={(e) => {
-                e.stopPropagation();
-                setSelected({ kind: "name" });
-                setActiveTab("text");
-              }}
-              onStartEdit={() => setEditingField("__name__")}
-              onEndEdit={(text) => {
-                setEditingField(null);
-                if (text.trim() && text.trim() !== petName) {
-                  onMetaChange({ petName: text.trim() });
-                }
-              }}
-              onDrag={(x, y) => moveField("coverNamePos", x, y)}
-              onNudge={(dx, dy) => nudgeField("coverNamePos", namePos, dx, dy)}
-              style={{
-                fontFamily: coverFontVar(fontId),
-                fontSize: `clamp(1rem, ${nameSize * 2.5}cqw, ${nameSize * 1.25}rem)`,
-                fontWeight: nameBold ? 700 : 400,
-                textDecoration: nameUnderline ? "underline" : "none",
-                textUnderlineOffset: "0.15em",
-              }}
-              className="text-white"
-            />
-          ) : null}
-
-          {/* Years */}
-          {(photoUrl || !meta.coverPhotoId) && years ? (
-            <DraggableLabel
-              label={years}
-              pos={datesPos}
-              isSelected={selected?.kind === "years"}
-              onSelect={(e) => {
-                e.stopPropagation();
-                setSelected({ kind: "years" });
-              }}
-              onDrag={(x, y) => moveField("coverDatesPos", x, y)}
-              onNudge={(dx, dy) => nudgeField("coverDatesPos", datesPos, dx, dy)}
-              className="text-xs tracking-wide text-white/85"
-            />
-          ) : null}
-
-          {/* Extra user-added text fields */}
-          {extraFields.map((field) => (
-            <DraggableLabel
-              key={field.id}
-              label={field.text}
-              pos={field.pos}
-              editing={editingField === field.id}
-              isSelected={selected?.kind === "extra" && selected.id === field.id}
-              onSelect={(e) => {
-                e.stopPropagation();
-                setSelected({ kind: "extra", id: field.id });
-                setActiveTab("text");
-              }}
-              onStartEdit={() => setEditingField(field.id)}
-              onEndEdit={(text) => {
-                setEditingField(null);
-                if (text.trim()) updateExtraText(field.id, text.trim());
-              }}
-              onDrag={(x, y) => moveExtraField(field.id, x, y)}
-              onNudge={(dx, dy) => nudgeExtraField(field.id, field.pos, dx, dy)}
-              style={{
-                fontFamily: coverFontVar(field.fontId ?? fontId),
-                fontSize: `clamp(0.7rem, ${(field.size ?? 1.5) * 2.5}cqw, ${(field.size ?? 1.5) * 1.25}rem)`,
-                fontWeight: (field.bold ?? false) ? 700 : 400,
-                textDecoration: (field.underline ?? false) ? "underline" : "none",
-                textUnderlineOffset: "0.15em",
-              }}
-              className="text-white"
-            />
-          ))}
-        </div>
-
-        {/* Right: tool panel — heading, layouts, tabs all here so nothing pushes the panel down */}
-        <div className="space-y-4">
-          {/* Header */}
-          <div>
-            <h3 className="font-display text-lg text-page-ink">Cover</h3>
-            <p className="mt-1 text-xs text-page-ink-faint">
-              Click text to edit, drag to reposition.
+        {/* Tool panel: full width on the Upload tab, sharing the row otherwise */}
+        <div className={`space-y-4 ${tab === "upload" ? "lg:col-span-2" : ""}`}>
+          {customCover && tab !== "upload" ? (
+            <p className="rounded-xl border border-periwinkle/30 bg-periwinkle-wash/40 px-4 py-3 text-sm text-page-ink-soft">
+              You have an uploaded cover in use for printing — this design won&rsquo;t be used
+              unless you remove it from the &ldquo;Upload cover&rdquo; tab.
             </p>
-          </div>
+          ) : null}
 
-          {/* Layout carousel */}
-          <div className="flex snap-x snap-mandatory gap-2 overflow-x-auto pb-1 scrollbar-thin">
-            {COVER_LAYOUTS.map((layout) => (
-              <LayoutThumbnail
-                key={layout.id}
-                layoutId={layout.id}
-                petName={petName || "Name"}
-                active={layoutId === layout.id}
-                onClick={() =>
-                  onMetaChange({
-                    coverLayoutId: layout.id,
-                    coverNamePos: defaultNamePos(layout.id),
-                    coverDatesPos: defaultDatesPos(layout.id),
-                  })
-                }
+          {tab === "front" && (
+            <>
+              <div>
+                <h3 className="font-display text-lg text-page-ink">Front cover</h3>
+                <p className="mt-1 text-xs text-page-ink-faint">
+                  Pick a layout, choose the cover photo, and add your pet&rsquo;s name.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                {COVER_LAYOUTS.map((layout) => (
+                  <LayoutThumbnail
+                    key={layout.id}
+                    layoutId={layout.id}
+                    petName={petName || "Type name here"}
+                    active={layoutId === layout.id}
+                    onClick={() => onMetaChange({ coverLayoutId: layout.id })}
+                  />
+                ))}
+              </div>
+
+              <label className="block">
+                <span className="mb-1.5 block text-sm font-medium text-page-ink-soft">
+                  Pet&rsquo;s name
+                </span>
+                <input
+                  type="text"
+                  value={meta.petName}
+                  onChange={(event) =>
+                    onMetaChange({ petName: event.target.value.slice(0, 60) })
+                  }
+                  placeholder="Type name here"
+                  className={inputClass}
+                />
+              </label>
+
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-page-ink-soft">
+                    Font
+                  </span>
+                  <select
+                    value={fontId}
+                    onChange={(event) =>
+                      onMetaChange({ coverFontId: event.target.value as CoverFontId })
+                    }
+                    className={selectClass}
+                    aria-label="Name font"
+                  >
+                    {COVER_FONTS.map((font) => (
+                      <option key={font.id} value={font.id}>
+                        {font.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-page-ink-soft">
+                    Size
+                  </span>
+                  <select
+                    value={nameSize}
+                    onChange={(event) =>
+                      onMetaChange({ coverNameSize: Number(event.target.value) })
+                    }
+                    className={selectClass}
+                    aria-label="Name size"
+                  >
+                    {NAME_SIZES.map((size) => (
+                      <option key={size} value={size}>
+                        {size}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div>
+                <span className="mb-1.5 block text-sm font-medium text-page-ink-soft">
+                  Name position
+                </span>
+                <NamePositionPicker
+                  value={anchor}
+                  onChange={(nextAnchor) => onMetaChange({ coverNameAnchor: nextAnchor })}
+                />
+              </div>
+
+              <AddMediaControl
+                onFiles={onFiles}
+                processing={processing}
+                readyCount={readyCount}
+                videoCount={videoCount}
               />
-            ))}
-          </div>
 
-          {/* Tab bar */}
-          <div className="flex gap-1 rounded-lg border border-line bg-white p-1">
-            <TabButton active={activeTab === "text"} onClick={() => setActiveTab("text")}>
-              Text
-            </TabButton>
-            <TabButton active={activeTab === "media"} onClick={() => setActiveTab("media")}>
-              Media
-            </TabButton>
-          </div>
-
-          {/* Tab content */}
-          {activeTab === "text" && (
-            <TextPanel
-              fontId={selectedFontId}
-              size={selectedSize}
-              bold={selectedBold}
-              underline={selectedUnderline}
-              selectedField={selected}
-              extraFields={extraFields}
-              onFontChange={applyFont}
-              onSizeChange={applySize}
-              onBoldToggle={applyBold}
-              onUnderlineToggle={applyUnderline}
-              onAddField={addTextField}
-              onRemoveField={removeTextField}
-              onSelectField={setSelected}
-            />
+              <MediaPanel
+                photos={pickable}
+                coverPhotoId={meta.coverPhotoId}
+                photoUrl={photoUrl}
+                onSetCover={onSetCover}
+              />
+            </>
           )}
 
-          {activeTab === "media" && (
-            <MediaPanel
-              photos={pickable}
-              coverPhotoId={meta.coverPhotoId}
-              photoUrl={photoUrl}
-              onSetCover={onSetCover}
-            />
+          {tab === "back" && (
+            <>
+              <div>
+                <h3 className="font-display text-lg text-page-ink">Back cover</h3>
+                <p className="mt-1 text-xs text-page-ink-faint">
+                  Add a short dedication — it also appears on the dedication page inside the
+                  book.
+                </p>
+              </div>
+              <label className="block">
+                <span className="mb-1.5 flex items-baseline justify-between text-sm font-medium text-page-ink-soft">
+                  <span>Dedication</span>
+                  <span className="text-xs font-normal text-page-ink-faint">
+                    {meta.dedication.length}/320
+                  </span>
+                </span>
+                <textarea
+                  value={meta.dedication}
+                  onChange={(event) =>
+                    onMetaChange({ dedication: event.target.value.slice(0, 320) })
+                  }
+                  rows={8}
+                  placeholder="For the best copilot a family could ask for."
+                  className={`${inputClass} resize-none leading-relaxed`}
+                />
+              </label>
+            </>
+          )}
+
+          {tab === "upload" && (
+            <>
+              <div>
+                <h3 className="font-display text-lg text-page-ink">Upload your own cover</h3>
+                <p className="mt-1 max-w-2xl text-xs text-page-ink-faint">
+                  Already have a print-ready front, spine, and back cover? Upload it here —
+                  when present, it&rsquo;s used for printing instead of the Front/Back design.
+                  Entirely optional.
+                </p>
+              </div>
+              <div className="max-w-xl">
+                <CustomCoverPanel />
+              </div>
+            </>
           )}
         </div>
       </div>
@@ -386,202 +382,131 @@ return (
   );
 }
 
+/* ─────────────────────── Custom cover preview ─────────────────────── */
+
+/** Shows the front or back panel cropped from the customer's uploaded cover file, in place of the in-app design, while it renders (or if it couldn't be). */
+function CustomCoverPreviewPane({
+  url,
+  error,
+  side,
+}: {
+  url: string | undefined;
+  error: boolean;
+  side: "front" | "back";
+}) {
+  if (error) {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-[#e4ddd0] px-6 text-center text-sm text-page-ink-faint">
+        Couldn&rsquo;t preview the uploaded {side} cover here — it&rsquo;s still what will print.
+      </div>
+    );
+  }
+  if (!url) {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-[#e4ddd0] text-sm text-page-ink-faint">
+        Loading your uploaded cover&hellip;
+      </div>
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element -- local data URL crop
+    <img
+      src={url}
+      alt={`${side === "front" ? "Front" : "Back"} cover, from your uploaded file`}
+      className="h-full w-full object-cover"
+    />
+  );
+}
+
 /* ─────────────────────── Tab button ─────────────────────── */
 
-function TabButton({
+function CoverTabButton({
+  label,
+  suffix,
   active,
+  done,
   onClick,
-  children,
 }: {
+  label: string;
+  suffix?: string;
   active: boolean;
+  done: boolean;
   onClick: () => void;
-  children: React.ReactNode;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+      aria-pressed={active}
+      className={`flex items-center gap-1.5 rounded-md px-3.5 py-1.5 font-medium transition-colors ${
         active
-          ? "bg-periwinkle text-white shadow-sm"
-          : "text-ink-soft hover:bg-ink/5"
+          ? "bg-periwinkle text-white"
+          : "text-page-ink-soft hover:text-periwinkle-deep"
       }`}
     >
-      {children}
+      {done ? (
+        <CheckCircle2
+          className={`h-3.5 w-3.5 shrink-0 ${active ? "text-white" : "text-emerald-600"}`}
+          aria-hidden
+        />
+      ) : (
+        <AlertCircle
+          className={`h-3.5 w-3.5 shrink-0 ${active ? "text-white" : "text-amber-500"}`}
+          aria-hidden
+        />
+      )}
+      <span>
+        {label}
+        {suffix ? (
+          <span className={active ? "text-white/80" : "text-page-ink-faint"}> {suffix}</span>
+        ) : null}
+      </span>
     </button>
   );
 }
 
-/* ─────────────────────── Text panel ─────────────────────── */
+/* ─────────────────────── Name position picker ─────────────────────── */
 
-function TextPanel({
-  fontId,
-  size,
-  bold,
-  underline,
-  selectedField,
-  extraFields,
-  onFontChange,
-  onSizeChange,
-  onBoldToggle,
-  onUnderlineToggle,
-  onAddField,
-  onRemoveField,
-  onSelectField,
+/** 3×3 grid of anchor choices — same "pick a tile" pattern as the layout grid above. */
+function NamePositionPicker({
+  value,
+  onChange,
 }: {
-  fontId: string;
-  size: number;
-  bold: boolean;
-  underline: boolean;
-  selectedField: SelectedField;
-  extraFields: CoverTextField[];
-  onFontChange: (id: CoverFontId) => void;
-  onSizeChange: (s: number) => void;
-  onBoldToggle: () => void;
-  onUnderlineToggle: () => void;
-  onAddField: () => void;
-  onRemoveField: (id: string) => void;
-  onSelectField: (field: SelectedField) => void;
+  value: CoverNameAnchor;
+  onChange: (anchor: CoverNameAnchor) => void;
 }) {
   return (
-    <div className="space-y-4">
-      {/* Formatting toolbar */}
-      <div className="space-y-3 rounded-lg border border-line bg-white p-3">
-        <p className="text-xs font-medium text-ink-soft">
-          {selectedField
-            ? selectedField.kind === "name"
-              ? "Formatting: Name"
-              : selectedField.kind === "years"
-                ? "Formatting: Years"
-                : "Formatting: Text field"
-            : "Formatting: Name"}
-        </p>
-
-        {/* Font family */}
-        <select
-          value={fontId}
-          onChange={(e) => onFontChange(e.target.value as CoverFontId)}
-          className="h-8 w-full rounded border border-line bg-white px-2 text-sm text-ink outline-none transition-colors hover:border-periwinkle focus:border-periwinkle"
-          aria-label="Font family"
-        >
-          {COVER_FONTS.map((font) => (
-            <option key={font.id} value={font.id}>
-              {font.label}
-            </option>
-          ))}
-        </select>
-
-        {/* Size + Bold + Underline row */}
-        <div className="flex items-center gap-2">
-          <select
-            value={size}
-            onChange={(e) => onSizeChange(Number(e.target.value))}
-            className="h-8 w-20 rounded border border-line bg-white px-1 text-center text-sm text-ink outline-none transition-colors hover:border-periwinkle focus:border-periwinkle"
-            aria-label="Font size"
-          >
-            {NAME_SIZES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-
-          <span className="h-5 w-px bg-line" aria-hidden />
-
+    <div className="grid grid-cols-3 gap-1.5 rounded-lg border border-page-line bg-white p-2">
+      {COVER_NAME_ANCHORS.map((option) => {
+        const active = value === option.id;
+        return (
           <button
+            key={option.id}
             type="button"
-            onClick={onBoldToggle}
-            title="Bold"
-            className={`flex h-8 w-8 items-center justify-center rounded text-sm font-bold transition-colors ${
-              bold ? "bg-periwinkle text-white" : "text-ink hover:bg-ink/5"
+            onClick={() => onChange(option.id)}
+            title={option.label}
+            aria-label={option.label}
+            aria-pressed={active}
+            className={`relative aspect-square rounded-md border transition-colors ${
+              active
+                ? "border-periwinkle bg-periwinkle/10"
+                : "border-page-line/70 hover:border-periwinkle/50 hover:bg-periwinkle/5"
             }`}
-            aria-pressed={bold}
-            aria-label="Bold"
           >
-            B
-          </button>
-
-          <button
-            type="button"
-            onClick={onUnderlineToggle}
-            title="Underline"
-            className={`flex h-8 w-8 items-center justify-center rounded text-sm transition-colors ${
-              underline ? "bg-periwinkle text-white" : "text-ink hover:bg-ink/5"
-            }`}
-            aria-pressed={underline}
-            aria-label="Underline"
-          >
-            <span className="underline underline-offset-2">U</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Text fields list */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <p className="text-xs font-medium text-ink-soft">Text fields</p>
-          <button
-            type="button"
-            onClick={onAddField}
-            className="rounded-md border border-line px-2.5 py-1 text-xs font-medium text-ink-soft transition-colors hover:border-periwinkle hover:text-periwinkle"
-          >
-            + Add text
-          </button>
-        </div>
-
-        <ul className="space-y-1">
-          <li>
-            <button
-              type="button"
-              onClick={() => onSelectField({ kind: "name" })}
-              className={`w-full rounded-md px-3 py-2 text-left text-sm transition-colors ${
-                selectedField?.kind === "name"
-                  ? "bg-periwinkle/10 text-periwinkle"
-                  : "text-ink hover:bg-ink/5"
+            <span
+              aria-hidden
+              className={`absolute h-1.5 w-1.5 rounded-full transition-colors ${
+                active ? "bg-periwinkle" : "bg-page-ink/25"
               }`}
-            >
-              Pet name
-            </button>
-          </li>
-          <li>
-            <button
-              type="button"
-              onClick={() => onSelectField({ kind: "years" })}
-              className={`w-full rounded-md px-3 py-2 text-left text-sm transition-colors ${
-                selectedField?.kind === "years"
-                  ? "bg-periwinkle/10 text-periwinkle"
-                  : "text-ink hover:bg-ink/5"
-              }`}
-            >
-              Years
-            </button>
-          </li>
-          {extraFields.map((field) => (
-            <li key={field.id} className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => onSelectField({ kind: "extra", id: field.id })}
-                className={`flex-1 truncate rounded-md px-3 py-2 text-left text-sm transition-colors ${
-                  selectedField?.kind === "extra" && selectedField.id === field.id
-                    ? "bg-periwinkle/10 text-periwinkle"
-                    : "text-ink hover:bg-ink/5"
-                }`}
-              >
-                {field.text}
-              </button>
-              <button
-                type="button"
-                onClick={() => onRemoveField(field.id)}
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-ink-faint transition-colors hover:bg-pink/10 hover:text-pink"
-                title="Remove field"
-                aria-label={`Remove "${field.text}"`}
-              >
-                ×
-              </button>
-            </li>
-          ))}
-        </ul>
-      </div>
+              style={{
+                left: `${option.dot.x}%`,
+                top: `${option.dot.y}%`,
+                transform: "translate(-50%, -50%)",
+              }}
+            />
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -644,142 +569,4 @@ function MediaPanel({
       </ol>
     </div>
   );
-}
-
-/* ─────────────────── Draggable / editable label ─────────────────── */
-
-function DraggableLabel({
-  label,
-  pos,
-  editing = false,
-  isSelected = false,
-  onSelect,
-  onStartEdit,
-  onEndEdit,
-  onDrag,
-  onNudge,
-  className = "",
-  style,
-}: {
-  label: string;
-  pos: CoverPosition;
-  editing?: boolean;
-  isSelected?: boolean;
-  onSelect?: (e: React.MouseEvent) => void;
-  onStartEdit?: () => void;
-  onEndEdit?: (text: string) => void;
-  onDrag: (clientX: number, clientY: number) => void;
-  onNudge: (dx: number, dy: number) => void;
-  className?: string;
-  style?: CSSProperties;
-}) {
-  const dragging = useRef(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (editing) return;
-    event.preventDefault();
-    dragging.current = true;
-    event.currentTarget.setPointerCapture(event.pointerId);
-  };
-
-  const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!dragging.current) return;
-    onDrag(event.clientX, event.clientY);
-  };
-
-  const handlePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
-    dragging.current = false;
-    event.currentTarget.releasePointerCapture(event.pointerId);
-  };
-
-  const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (editing) return;
-    const step = event.shiftKey ? 5 : 1;
-    if (event.key === "ArrowLeft") onNudge(-step, 0);
-    else if (event.key === "ArrowRight") onNudge(step, 0);
-    else if (event.key === "ArrowUp") onNudge(0, -step);
-    else if (event.key === "ArrowDown") onNudge(0, step);
-    else if (event.key === "Enter" && onStartEdit) {
-      event.preventDefault();
-      onStartEdit();
-      requestAnimationFrame(() => {
-        inputRef.current?.focus();
-        inputRef.current?.select();
-      });
-    } else return;
-    event.preventDefault();
-  };
-
-  const handleDoubleClick = () => {
-    if (onStartEdit) {
-      onStartEdit();
-      requestAnimationFrame(() => {
-        inputRef.current?.focus();
-        inputRef.current?.select();
-      });
-    }
-  };
-
-  return (
-    <div
-      role="button"
-      tabIndex={0}
-      aria-label={
-        editing
-          ? `Editing "${label}"`
-          : `Click to select, double-click to edit "${label}"`
-      }
-      onClick={onSelect}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onKeyDown={handleKeyDown}
-      onDoubleClick={handleDoubleClick}
-      className={`absolute z-10 max-w-[82%] whitespace-normal text-center leading-[1.05] outline-none ${
-        editing ? "cursor-text" : "cursor-grab active:cursor-grabbing"
-      } ${
-        isSelected && !editing
-          ? "ring-2 ring-white/70 ring-offset-1 ring-offset-transparent rounded-sm"
-          : ""
-      } focus-visible:ring-2 focus-visible:ring-white/80 ${className}`}
-      style={{
-        left: `${pos.x}%`,
-        top: `${pos.y}%`,
-        transform: "translate(-50%, -50%)",
-        ...style,
-      }}
-    >
-      {editing ? (
-        <input
-          ref={inputRef}
-          type="text"
-          defaultValue={label}
-          className="w-full min-w-[6ch] bg-transparent text-center outline-none"
-          style={{ font: "inherit", color: "inherit", textDecoration: "inherit" }}
-          onBlur={(e) => onEndEdit?.(e.currentTarget.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              onEndEdit?.(e.currentTarget.value);
-            }
-            if (e.key === "Escape") {
-              e.preventDefault();
-              onEndEdit?.(label);
-            }
-            e.stopPropagation();
-          }}
-        />
-      ) : (
-        label
-      )}
-    </div>
-  );
-}
-
-function lifespanText(meta: BookMeta): string {
-  if (meta.birthYear && meta.deathYear) {
-    return `${meta.birthYear} – ${meta.deathYear}`;
-  }
-  return meta.birthYear || meta.deathYear || "";
 }

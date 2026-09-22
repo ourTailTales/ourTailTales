@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import { placeSummary } from "@/lib/story/client";
 import type { Chapter } from "@/types/book";
@@ -16,6 +17,7 @@ export function ChapterEditor({
   onReorder,
   onSetCover,
   onRegenerate,
+  onSelectChapter,
 }: {
   chapters: Chapter[];
   activeChapterId: string;
@@ -29,6 +31,7 @@ export function ChapterEditor({
   onReorder: (chapterId: string, photoId: string, toIndex: number) => void;
   onSetCover: (photoId: string) => void;
   onRegenerate: (chapterId: string) => void;
+  onSelectChapter: (chapterId: string) => void;
 }) {
   const [swapTarget, setSwapTarget] = useState<string | null>(null);
   const [dragged, setDragged] = useState<string | null>(null);
@@ -41,8 +44,41 @@ export function ChapterEditor({
     (id) => !chapter.photoIds.includes(id),
   );
 
+  const position = chapters.findIndex((entry) => entry.id === chapter.id);
+  const prevChapter = position > 0 ? chapters[position - 1] : null;
+  const nextChapter =
+    position >= 0 && position < chapters.length - 1
+      ? chapters[position + 1]
+      : null;
+
   return (
     <section className="space-y-5">
+      {chapters.length > 1 && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-line bg-white px-3 py-2">
+          <button
+            type="button"
+            onClick={() => prevChapter && onSelectChapter(prevChapter.id)}
+            disabled={!prevChapter}
+            className="flex items-center gap-1 rounded-lg px-2 py-1 text-sm text-ink-soft transition-colors enabled:hover:bg-ink/5 enabled:hover:text-periwinkle-deep disabled:opacity-30"
+          >
+            <ChevronLeft className="h-4 w-4" aria-hidden />
+            Previous
+          </button>
+          <p className="text-xs font-medium text-ink-faint">
+            Chapter {position + 1} of {chapters.length}
+          </p>
+          <button
+            type="button"
+            onClick={() => nextChapter && onSelectChapter(nextChapter.id)}
+            disabled={!nextChapter}
+            className="flex items-center gap-1 rounded-lg px-2 py-1 text-sm text-ink-soft transition-colors enabled:hover:bg-ink/5 enabled:hover:text-periwinkle-deep disabled:opacity-30"
+          >
+            Next
+            <ChevronRight className="h-4 w-4" aria-hidden />
+          </button>
+        </div>
+      )}
+
       <div>
         <div className="grid gap-4 sm:grid-cols-[2fr_1fr]">
           <label className="block">

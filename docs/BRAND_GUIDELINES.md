@@ -92,18 +92,25 @@ Use for:
 - Body copy
 - High contrast text
 
+Cream
+`#FAF7F2`
+
+Use as:
+- Main page/app background (landing page and the book-creation app)
+- The warm off-white behind the hero, How it works, testimonials, FAQ, footer, and the whole `/create` editor
+
 Cloud
 `#F7F8FC`
 
-Use as:
-- Main website background
-- Replacement for the current tan/cream background
+Use for:
+- Small inset callouts and secondary surfaces that should read as a step cooler than the page (e.g. an info box sitting on Cream)
+- Not the page background — see Cream above
 
 White
 `#FFFFFF`
 
 Recommended overall visual ratio:
-- 60% Cloud / white
+- 60% Cream / white
 - 20% Ink
 - 12% Periwinkle
 - 8% supporting pastels
@@ -133,7 +140,8 @@ CSS / Tailwind (`src/app/globals.css`) and TypeScript (`src/lib/brand.ts`):
 | `--color-ink-soft` | `#5A6070` | Secondary text |
 | `--color-ink-faint` | `#8B91A0` | Metadata |
 | `--color-line` | `#D5DCEB` | Borders |
-| `--color-cloud` | `#F7F8FC` | Page background |
+| `--color-cream` | `#FAF7F2` | Page background (landing + app) |
+| `--color-cloud` | `#F7F8FC` | Small inset callouts only |
 | `--color-white` | `#FFFFFF` | Cards, book pages |
 
 ## Typography
@@ -242,7 +250,7 @@ Use the book-with-paw mark alongside the wordmark `ourTailTales` in site headers
 Do:
 - Pair logo + wordmark in navigation/headers
 - Keep generous clear space around the mark
-- Use the transparent PNG on Cloud / white / soft pastel surfaces
+- Use the transparent PNG on Cream / white / soft pastel surfaces
 
 Don’t:
 - Recolor the mark arbitrarily

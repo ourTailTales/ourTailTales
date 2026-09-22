@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 import { EmailSampleModal } from "@/components/EmailSampleModal";
 import { CreateHeaderActions } from "@/components/create/CreateHeaderActions";
+import { SaveStatusIndicator } from "@/components/create/SaveStatusIndicator";
 import { BookEditor } from "@/components/editor/BookEditor";
 import { SiteHeader } from "@/components/SiteHeader";
 import { captureClientException, identifyLead, track } from "@/lib/analytics";
@@ -42,10 +43,16 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
 
   useEffect(() => {
     track("create_page_viewed");
+    // Each customer's saved album/book lives under their own email, so the
+    // very first restore needs to know which one to look up — a link with
+    // ?email= identifies the visitor immediately; otherwise this starts (or
+    // resumes) the shared anonymous slot, same as a pre-login cart.
+    const emailParam = searchParams.get("email")?.trim() || null;
     void useOurTailTalesStore
       .getState()
-      .restoreLocalBook()
+      .restoreLocalBook(emailParam)
       .finally(() => setLocalReady(true));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- read once on mount by design
   }, []);
 
   // The landing-page email CTA already captured an email; carry it straight
@@ -60,6 +67,31 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
     current.setLeadEmail(emailParam);
     identifyLead(emailParam);
   }, [localReady, searchParams]);
+
+  // Autosave: anything the customer types or picks — pet name, cover style,
+  // dedication, chapter text, photo order, a custom cover upload — lands in
+  // the local draft a moment after they stop editing, and the header's save
+  // indicator flips to "saving" for that moment. Skips the very first render
+  // after restore, since that's a read, not an edit.
+  const autosaveHydrated = useRef(false);
+  const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!localReady) return;
+    if (!autosaveHydrated.current) {
+      autosaveHydrated.current = true;
+      return;
+    }
+    useOurTailTalesStore.getState().setSaveStatus("saving");
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+    autosaveTimer.current = setTimeout(() => {
+      void persistLocalDraft(useOurTailTalesStore.getState())
+        .catch(() => {})
+        .finally(() => useOurTailTalesStore.getState().setSaveStatus("saved"));
+    }, 800);
+    return () => {
+      if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+    };
+  }, [localReady, store.meta, store.chapters, store.pages, store.customCover]);
 
   const handleFiles = useCallback(
     (files: File[]) => {
@@ -106,11 +138,14 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
       void Promise.all([photosDone, videosDone]).then(() => {
         store.setProgressPhase("deduplicating");
         store.finishProcessing();
-        void persistLocalDraft(useOurTailTalesStore.getState()).catch(() => {
-          setNotice(
-            "This browser could not save the album for later. Keep this tab open while creating your book.",
-          );
-        });
+        useOurTailTalesStore.getState().setSaveStatus("saving");
+        void persistLocalDraft(useOurTailTalesStore.getState())
+          .catch(() => {
+            setNotice(
+              "This browser could not save the album for later. Keep this tab open while creating your book.",
+            );
+          })
+          .finally(() => useOurTailTalesStore.getState().setSaveStatus("saved"));
         track("album_processing_completed", {
           count: images.length + videos.length,
         });
@@ -171,11 +206,14 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
     useOurTailTalesStore.getState().finishStoryGeneration();
     const completed = useOurTailTalesStore.getState();
     track("story_generated", { chapters: completed.chapters.length });
-    await persistLocalDraft(completed).catch(() => {
-      setNotice(
-        "This browser could not save the finished draft for later. Keep this tab open to view it.",
-      );
-    });
+    completed.setSaveStatus("saving");
+    await persistLocalDraft(completed)
+      .catch(() => {
+        setNotice(
+          "This browser could not save the finished draft for later. Keep this tab open to view it.",
+        );
+      })
+      .finally(() => useOurTailTalesStore.getState().setSaveStatus("saved"));
   }, [runStories]);
 
   const handleDownloadPdf = useCallback(async () => {
@@ -261,6 +299,7 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
         draftId: state.draftId,
         draftSecret: state.draftSecret,
         placements: state.placements,
+        customCover: state.customCover,
         onStatus: (message) => state.setExporting(message),
       });
 
@@ -286,7 +325,7 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
       />
     </div>
   ) : (
-    <div className="mx-auto w-full max-w-[90rem] px-0 pb-16 lg:px-4">
+    <div className="w-full pb-16">
       <BookEditor
         onFiles={handleFiles}
         onStartOver={() => {
@@ -315,9 +354,10 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
         </section>
       ) : (
         <main id="create-free-book" className="w-full flex-1 pb-0">
-          <div className="brand-atmosphere px-5 py-5 sm:px-8">
-            <div className="mx-auto max-w-[90rem]">
+          <div className="brand-atmosphere py-5">
+            <div className="mx-auto w-full max-w-[100rem] px-5 sm:px-8 lg:pl-8 lg:pr-14">
               <SiteHeader
+                status={<SaveStatusIndicator />}
                 right={
                   <CreateHeaderActions
                     onDownloadPdf={() => void handleDownloadPdf()}

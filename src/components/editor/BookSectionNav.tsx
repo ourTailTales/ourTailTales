@@ -1,12 +1,13 @@
 "use client";
 
+import { Lock } from "lucide-react";
+
 import type { Chapter } from "@/types/book";
 
 export type EditorSection =
   | { kind: "cover" }
   | { kind: "chapter"; chapterId: string }
-  | { kind: "other" }
-  | { kind: "back-cover" };
+  | { kind: "other" };
 
 export function sectionKey(section: EditorSection): string {
   return section.kind === "chapter"
@@ -18,12 +19,20 @@ export function BookSectionNav({
   chapters,
   active,
   onSelect,
+  coverDone,
 }: {
   chapters: Chapter[];
   active: EditorSection;
   onSelect: (section: EditorSection) => void;
+  /** Front + back cover both have what they need — gates the Chapters tab. */
+  coverDone: boolean;
 }) {
   const activeKey = sectionKey(active);
+  const chaptersReady = chapters.length > 0;
+  const chaptersLocked = !chaptersReady || !coverDone;
+  const chaptersLockedTitle = !chaptersReady
+    ? "Add photos to build your chapters first"
+    : "Finish the front and back cover first";
 
   return (
     <nav
@@ -36,28 +45,26 @@ export function BookSectionNav({
         onClick={() => onSelect({ kind: "cover" })}
       />
 
-      <p className="mt-1 hidden px-3 text-[11px] font-medium uppercase tracking-wide text-page-ink-faint lg:block">
-        Chapters
-      </p>
-      {chapters.map((chapter) => (
-        <NavButton
-          key={chapter.id}
-          label={`${chapter.index + 1}. ${truncate(chapter.title || `Chapter ${chapter.index + 1}`, 24)}`}
-          active={activeKey === `chapter:${chapter.id}`}
-          warn={chapter.aiStatus === "error"}
-          onClick={() => onSelect({ kind: "chapter", chapterId: chapter.id })}
-        />
-      ))}
+      <NavButton
+        label="Chapters"
+        active={activeKey.startsWith("chapter:")}
+        warn={chapters.some((chapter) => chapter.aiStatus === "error")}
+        locked={chaptersLocked}
+        lockedTitle={chaptersLockedTitle}
+        onClick={() =>
+          onSelect({
+            kind: "chapter",
+            chapterId:
+              active.kind === "chapter" ? active.chapterId : (chapters[0]?.id ?? ""),
+          })
+        }
+      />
 
       <NavButton
         label="Other pages"
         active={activeKey === "other"}
+        locked
         onClick={() => onSelect({ kind: "other" })}
-      />
-      <NavButton
-        label="Back cover"
-        active={activeKey === "back-cover"}
-        onClick={() => onSelect({ kind: "back-cover" })}
       />
     </nav>
   );
@@ -67,13 +74,32 @@ function NavButton({
   label,
   active,
   warn,
+  locked,
+  lockedTitle = "Coming soon",
   onClick,
 }: {
   label: string;
   active: boolean;
   warn?: boolean;
+  locked?: boolean;
+  lockedTitle?: string;
   onClick: () => void;
 }) {
+  if (locked) {
+    return (
+      <button
+        type="button"
+        disabled
+        title={lockedTitle}
+        aria-disabled="true"
+        className="flex shrink-0 cursor-not-allowed items-center gap-1.5 rounded-full px-3.5 py-1.5 text-left text-sm text-page-ink-faint/70 lg:w-full lg:rounded-lg"
+      >
+        <span className="truncate">{label}</span>
+        <Lock className="h-3.5 w-3.5 shrink-0" aria-hidden />
+      </button>
+    );
+  }
+
   return (
     <button
       type="button"
@@ -88,8 +114,4 @@ function NavButton({
       {warn && <span className="ml-1">&#9888;</span>}
     </button>
   );
-}
-
-function truncate(text: string, max: number): string {
-  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }

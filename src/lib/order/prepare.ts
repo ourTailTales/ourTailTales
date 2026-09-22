@@ -1,8 +1,9 @@
-import { renderCoverPdf } from "@/lib/book/cover-pdf";
+import { renderCoverPdf, wrapImageAsCoverPdf } from "@/lib/book/cover-pdf";
+import { getCustomCoverFile } from "@/lib/book/customCoverStore";
 import { renderInteriorPdf } from "@/lib/book/interior-pdf";
 import { postHogHeaders } from "@/lib/posthog-client";
 import { luluInteriorPages } from "@/lib/pricing";
-import type { BookMeta, BookPage, Chapter } from "@/types/book";
+import type { BookMeta, BookPage, Chapter, CustomCoverMeta } from "@/types/book";
 import type { PhotoAsset } from "@/types/photo";
 import type { VideoMemoryPlacement } from "@/types/video-memory";
 
@@ -31,9 +32,25 @@ export async function prepareOrder(args: {
   draftId?: string | null;
   draftSecret?: string | null;
   placements?: VideoMemoryPlacement[];
+  /** A customer-uploaded print-ready cover, used instead of the in-app design when set. */
+  customCover?: CustomCoverMeta | null;
   onStatus: (message: string) => void;
 }): Promise<PreparedOrder> {
   const totalPages = luluInteriorPages(args.chapterCount);
+
+  // Catch a stale upload (chapter count changed since it was checked) before
+  // the expensive interior render even starts.
+  if (args.customCover && args.customCover.validatedForPages !== totalPages) {
+    throw new Error(
+      "Your uploaded cover was sized for a different chapter count. Re-check it against the current size before ordering.",
+    );
+  }
+  const customCoverFile = args.customCover ? getCustomCoverFile() : null;
+  if (args.customCover && !customCoverFile) {
+    throw new Error(
+      "Your uploaded cover could not be found in this browser. Please re-upload it.",
+    );
+  }
 
   args.onStatus("Setting up your order…");
   const order = await postJson<{ orderId: string }>("/api/orders", {
@@ -69,11 +86,16 @@ export async function prepareOrder(args: {
   );
 
   args.onStatus("Printing the cover artwork…");
-  const cover = await renderCoverPdf({
-    meta: args.meta,
-    dimensions,
-    targetPpi: 300,
-  });
+  const cover = customCoverFile
+    ? customCoverFile.type === "application/pdf" ||
+      customCoverFile.name.toLowerCase().endsWith(".pdf")
+      ? customCoverFile
+      : await wrapImageAsCoverPdf({ file: customCoverFile, dimensions })
+    : await renderCoverPdf({
+        meta: args.meta,
+        dimensions,
+        targetPpi: 300,
+      });
 
   args.onStatus("Uploading your print files…");
   const uploads = await postJson<{

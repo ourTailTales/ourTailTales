@@ -31,6 +31,8 @@ export const brand = {
     inkFaint: "#8B91A0",
     line: "#D5DCEB",
     cloud: "#F7F8FC",
+    /** Warm page background used across the landing page and the app. */
+    cream: "#FAF7F2",
     white: "#FFFFFF",
   },
 } as const;

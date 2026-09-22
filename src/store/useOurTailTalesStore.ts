@@ -6,6 +6,7 @@ import { proposeChapters } from "@/lib/photo/cluster";
 import { groupDuplicates, selectablePhotos } from "@/lib/photo/dedupe";
 import { paginateBook } from "@/lib/book/pagination";
 import * as assetStore from "@/lib/photo/assetStore";
+import { clearCustomCoverFile } from "@/lib/book/customCoverStore";
 import {
   releaseAllVideoPosters,
   releaseVideoPoster,
@@ -15,7 +16,13 @@ import {
   recommendedChapters,
   BASE_CHAPTERS,
 } from "@/lib/pricing";
-import type { BookMeta, BookPage, Chapter, PlaceLabel } from "@/types/book";
+import type {
+  BookMeta,
+  BookPage,
+  Chapter,
+  CustomCoverMeta,
+  PlaceLabel,
+} from "@/types/book";
 import type { StoryDraft } from "@/types/story";
 import type {
   PhotoAsset,
@@ -55,6 +62,10 @@ type State = {
   videoNotice: string | null;
   albumVideos: AlbumVideoPreview[];
   freePreviewReady: boolean;
+  /** Local-draft save state, shown in the header as a saved/saving indicator. */
+  saveStatus: "saved" | "saving";
+  /** Customer-uploaded print-ready cover, used instead of the designed one when set. */
+  customCover: CustomCoverMeta | null;
 };
 
 export type AlbumVideoPreview = {
@@ -118,8 +129,10 @@ type Actions = {
   removeAlbumPhoto: (id: string) => void;
   removeAlbumVideo: (id: string) => void;
   hydrateDraft: () => void;
-  restoreLocalBook: () => Promise<boolean>;
+  restoreLocalBook: (knownEmail?: string | null) => Promise<boolean>;
   setFreePreviewReady: (ready: boolean) => void;
+  setSaveStatus: (status: "saved" | "saving") => void;
+  setCustomCover: (customCover: CustomCoverMeta | null) => void;
   reset: () => void;
 };
 
@@ -180,6 +193,8 @@ const initialState: State = {
   videoNotice: null,
   albumVideos: [],
   freePreviewReady: false,
+  saveStatus: "saved",
+  customCover: null,
 };
 
 export const useOurTailTalesStore = create<OurTailTalesStore>((set) => ({
@@ -254,6 +269,7 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set) => ({
   cancelProcessing: () => {
     assetStore.releaseAll();
     releaseAllVideoPosters();
+    clearCustomCoverFile();
     const stored = loadStoredDraft();
     set({
       ...initialState,
@@ -441,8 +457,8 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set) => ({
     set({ draftId: stored.draftId, draftSecret: stored.secret });
   },
 
-  restoreLocalBook: async () => {
-    const restored = await restoreLocalDraft().catch(() => null);
+  restoreLocalBook: async (knownEmail) => {
+    const restored = await restoreLocalDraft(knownEmail).catch(() => null);
     if (!restored) return false;
     set({
       funnelState: restored.funnelState,
@@ -456,15 +472,22 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set) => ({
       leadEmail: restored.leadEmail,
       albumVideos: restored.albumVideos,
       freePreviewReady: Boolean(restored.previewPdf),
+      saveStatus: "saved",
+      customCover: restored.customCover ?? null,
     });
     return true;
   },
 
   setFreePreviewReady: (freePreviewReady) => set({ freePreviewReady }),
 
+  setSaveStatus: (saveStatus) => set({ saveStatus }),
+
+  setCustomCover: (customCover) => set({ customCover }),
+
   reset: () => {
     assetStore.releaseAll();
     releaseAllVideoPosters();
+    clearCustomCoverFile();
     void clearLocalDraft();
     const stored = loadStoredDraft();
     set({

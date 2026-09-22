@@ -28,12 +28,16 @@
   --color-ink-soft: #5a6070;
   --color-ink-faint: #8b91a0;
   --color-line: #d5dceb;
-  /* Cloud — the one main background color everywhere (was a dark "night"
-     navy in an earlier pass; docs/BRAND_GUIDELINES.md always specified this
-     light value). */
+  /* Cloud — cool-light accent used for small inset callouts (never the page
+     background — see Cream below for that). */
   --color-cloud: #f7f8fc;
-  /* Alias of Cloud, kept for the few places that reference "paper" by name. */
-  --color-paper: #f7f8fc;
+  /* Cream — the landing page's actual background (hero fade, How it works,
+     testimonials, FAQ, footer all use this warm off-white). The app/editor
+     background matches it here so the webapp reads as the same product as
+     the landing page. */
+  --color-cream: #faf7f2;
+  /* Alias of Cream, kept for the few places that reference "paper" by name. */
+  --color-paper: #faf7f2;
   --color-white: #ffffff;
   /* Readable ink for printed-page UIs */
   --color-page-ink: #252a3a;
@@ -58,7 +62,7 @@
 
 html {
   color-scheme: light;
-  background-color: var(--color-cloud);
+  background-color: var(--color-cream);
   scroll-behavior: smooth;
   /* Stop rubber-band pull past the top/bottom; keep normal page scroll. */
   overscroll-behavior-y: none;
@@ -84,7 +88,7 @@ body {
    ink-tinted now that the base is light (it used to be a light-blue fleck
    tuned for a dark base). */
 @utility brand-atmosphere {
-  background-color: var(--color-cloud);
+  background-color: var(--color-cream);
   background-image:
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0.145 0 0 0 0 0.165 0 0 0 0 0.227 0 0 0 0.035 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
     radial-gradient(rgb(37 42 58 / 0.05) 1px, transparent 1.2px);
@@ -93,7 +97,7 @@ body {
   background-position: 0 0, 0 0;
 }
 
-/* Light Cloud band under the night hero — remount editorial ink. */
+/* Light Cream band under the night hero — remount editorial ink. */
 @utility landing-rest {
   color-scheme: light;
   color: var(--color-page-ink);
@@ -168,11 +172,9 @@ body {
   --color-line: var(--color-page-line);
 }
 
-/* Light book-editor field. `transparent` used to let the dark page
-   background (--color-cloud) show through here, which is why the field
-   looked too dark and the dark-ink text read as low-contrast on it. Give it
-   its own light paper background so it's readable regardless of what's
-   behind it. */
+/* Light book-editor field, in the same Cream used across the landing page so
+   the app doesn't read as a different, colder product once you start
+   creating a book. */
 .book-editor-field {
   color-scheme: light;
   color: var(--color-page-ink);

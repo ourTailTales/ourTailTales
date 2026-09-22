@@ -1,16 +1,37 @@
 import * as assetStore from "@/lib/photo/assetStore";
 import {
+  clearCustomCoverFile,
+  getCustomCoverFile,
+  setCustomCoverFile,
+} from "@/lib/book/customCoverStore";
+import {
   getStoredVideoPreview,
   restoreVideoPreview,
 } from "@/lib/photo/videoPreview";
 import type { OurTailTalesStore } from "@/store/useOurTailTalesStore";
-import type { BookMeta, BookPage, Chapter } from "@/types/book";
+import type { BookMeta, BookPage, Chapter, CustomCoverMeta } from "@/types/book";
 import type { PhotoAsset, ProcessingProgressState } from "@/types/photo";
 
 const DATABASE = "ourtailtales-local";
 const STORE = "drafts";
-const ACTIVE_KEY = "active";
 const VERSION = 1;
+
+/** Pre-2026-09 records all lived under this one shared key. Migrated on first read. */
+const LEGACY_ACTIVE_KEY = "active";
+/** Bucket for a session with no known email yet — shared like an anonymous cart. */
+const ANONYMOUS_KEY = "anon";
+
+/**
+ * Each customer's in-progress album/book lives under its own key so two
+ * different emails on the same browser never read or overwrite each other's
+ * photos and story. Until an email is known, work is kept in a single
+ * "anonymous" bucket (same trade-off as any pre-login cart); it's re-keyed to
+ * that email's own bucket as soon as one is captured.
+ */
+function keyForEmail(email: string | null | undefined): string {
+  const normalized = email?.trim().toLowerCase();
+  return normalized ? `email:${normalized}` : ANONYMOUS_KEY;
+}
 
 type StoredPhoto = Omit<PhotoAsset, "thumbUrl"> & {
   file: File;
@@ -24,8 +45,10 @@ type StoredVideo = {
   posterBlob: Blob;
 };
 
+type StoredCustomCover = CustomCoverMeta & { file: File };
+
 type StoredDraft = {
-  key: typeof ACTIVE_KEY;
+  key: string;
   version: 1;
   localDraftId: string;
   savedAt: number;
@@ -38,6 +61,7 @@ type StoredDraft = {
   leadEmail: string | null;
   photos: StoredPhoto[];
   videos: StoredVideo[];
+  customCover?: StoredCustomCover;
   previewPdf?: Blob;
 };
 
@@ -60,10 +84,12 @@ export type RestoredLocalDraft = Pick<
     posterUrl: string;
     previewUrl: string;
   }[];
+  customCover: CustomCoverMeta | null;
   previewPdf?: Blob;
 };
 
 let activeDraftId: string | null = null;
+let activeDraftKey: string | null = null;
 let activePreviewPdf: Blob | null = null;
 
 export async function persistLocalDraft(
@@ -99,11 +125,17 @@ export async function persistLocalDraft(
     });
   }
 
-  const localDraftId = activeDraftId ?? crypto.randomUUID();
-  activeDraftId = localDraftId;
+  const customCoverFile = state.customCover ? getCustomCoverFile() : null;
+  const customCover: StoredCustomCover | undefined =
+    state.customCover && customCoverFile
+      ? { ...state.customCover, file: customCoverFile }
+      : undefined;
+
+  const key = keyForEmail(state.leadEmail);
+  const localDraftId = activeDraftKey === key && activeDraftId ? activeDraftId : crypto.randomUUID();
   if (previewPdf) activePreviewPdf = previewPdf;
   const draft: StoredDraft = {
-    key: ACTIVE_KEY,
+    key,
     version: VERSION,
     localDraftId,
     savedAt: Date.now(),
@@ -116,6 +148,7 @@ export async function persistLocalDraft(
     leadEmail: state.leadEmail,
     photos,
     videos,
+    customCover,
     previewPdf: previewPdf ?? activePreviewPdf ?? undefined,
   };
 
@@ -123,20 +156,41 @@ export async function persistLocalDraft(
   await requestPromise(
     database.transaction(STORE, "readwrite").objectStore(STORE).put(draft),
   );
+
+  // Moving from one identity to another (anonymous → email, or one email to
+  // another) — drop the old bucket so a subsequent visitor under the
+  // previous identity doesn't inherit this session's content.
+  if (activeDraftKey && activeDraftKey !== key) {
+    await requestPromise(
+      database.transaction(STORE, "readwrite").objectStore(STORE).delete(activeDraftKey),
+    ).catch(() => {
+      // Best effort — leaving a stale bucket behind is harmless.
+    });
+  }
+
   database.close();
+  activeDraftId = localDraftId;
+  activeDraftKey = key;
   return localDraftId;
 }
 
-export async function restoreLocalDraft(): Promise<RestoredLocalDraft | null> {
+export async function restoreLocalDraft(
+  knownEmail?: string | null,
+): Promise<RestoredLocalDraft | null> {
   if (typeof indexedDB === "undefined") return null;
   const database = await openDatabase();
+
+  await migrateLegacyRecord(database);
+
+  const key = keyForEmail(knownEmail);
   const stored = (await requestPromise(
-    database.transaction(STORE, "readonly").objectStore(STORE).get(ACTIVE_KEY),
+    database.transaction(STORE, "readonly").objectStore(STORE).get(key),
   )) as StoredDraft | undefined;
   database.close();
   if (!stored || stored.version !== VERSION) return null;
 
   activeDraftId = stored.localDraftId;
+  activeDraftKey = key;
   activePreviewPdf = stored.previewPdf ?? null;
   const photos = stored.photos.map(({ file, thumbBlob, ...metadata }) => ({
     ...metadata,
@@ -147,6 +201,15 @@ export async function restoreLocalDraft(): Promise<RestoredLocalDraft | null> {
     fileName: video.fileName,
     ...restoreVideoPreview(video.id, video.file, video.posterBlob),
   }));
+
+  let customCover: CustomCoverMeta | null = null;
+  if (stored.customCover) {
+    const { file, ...meta } = stored.customCover;
+    setCustomCoverFile(file);
+    customCover = meta;
+  } else {
+    clearCustomCoverFile();
+  }
 
   return {
     localDraftId: stored.localDraftId,
@@ -160,8 +223,46 @@ export async function restoreLocalDraft(): Promise<RestoredLocalDraft | null> {
     leadEmail: stored.leadEmail,
     photos,
     albumVideos,
+    customCover,
     previewPdf: stored.previewPdf,
   };
+}
+
+/**
+ * One-time upgrade: before drafts were split per email, everyone shared the
+ * single `LEGACY_ACTIVE_KEY` record. Move it into its rightful bucket (the
+ * email it was saved under, or the anonymous one) so nobody's in-progress
+ * book vanished the day this shipped. No-ops once it's been moved.
+ */
+async function migrateLegacyRecord(database: IDBDatabase): Promise<void> {
+  const legacy = (await requestPromise(
+    database
+      .transaction(STORE, "readonly")
+      .objectStore(STORE)
+      .get(LEGACY_ACTIVE_KEY),
+  ).catch(() => undefined)) as StoredDraft | undefined;
+  if (!legacy) return;
+
+  const targetKey = keyForEmail(legacy.leadEmail);
+  const existingTarget = (await requestPromise(
+    database.transaction(STORE, "readonly").objectStore(STORE).get(targetKey),
+  ).catch(() => undefined)) as StoredDraft | undefined;
+
+  if (!existingTarget) {
+    await requestPromise(
+      database
+        .transaction(STORE, "readwrite")
+        .objectStore(STORE)
+        .put({ ...legacy, key: targetKey }),
+    ).catch(() => {});
+  }
+
+  await requestPromise(
+    database
+      .transaction(STORE, "readwrite")
+      .objectStore(STORE)
+      .delete(LEGACY_ACTIVE_KEY),
+  ).catch(() => {});
 }
 
 export function getLocalPreviewPdf(): Blob | null {
@@ -173,12 +274,14 @@ export function getLocalDraftId(): string | null {
 }
 
 export async function clearLocalDraft(): Promise<void> {
+  const key = activeDraftKey ?? ANONYMOUS_KEY;
   activeDraftId = null;
+  activeDraftKey = null;
   activePreviewPdf = null;
   if (typeof indexedDB === "undefined") return;
   const database = await openDatabase();
   await requestPromise(
-    database.transaction(STORE, "readwrite").objectStore(STORE).delete(ACTIVE_KEY),
+    database.transaction(STORE, "readwrite").objectStore(STORE).delete(key),
   );
   database.close();
 }

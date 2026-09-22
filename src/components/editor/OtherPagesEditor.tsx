@@ -51,15 +51,15 @@ export function OtherPagesEditor({
       </ul>
 
       <p className="text-xs text-page-ink-faint">
-        Looking for the dedication? It&rsquo;s shared with the{" "}
+        Looking for the dedication? It&rsquo;s now part of the{" "}
         <button
           type="button"
-          onClick={() => onSelect({ kind: "back-cover" })}
+          onClick={() => onSelect({ kind: "cover" })}
           className="text-periwinkle-deep underline decoration-line underline-offset-4 hover:text-periwinkle"
         >
-          Back cover
-        </button>
-        .
+          Cover
+        </button>{" "}
+        page.
       </p>
     </section>
   );

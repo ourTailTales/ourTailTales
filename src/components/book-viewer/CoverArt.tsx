@@ -7,9 +7,11 @@ import { CLOSING_LINE } from "@/lib/book/pagination";
 import {
   DEFAULT_COVER_FONT,
   DEFAULT_COVER_LAYOUT,
+  DEFAULT_COVER_NAME_SIZE,
   coverFontVar,
-  defaultDatesPos,
-  defaultNamePos,
+  coverTextTone,
+  defaultNameAnchor,
+  styleForAnchor,
 } from "@/lib/book/coverLayouts";
 import { brand } from "@/lib/brand";
 import type { BookMeta } from "@/types/book";
@@ -37,8 +39,8 @@ export function coverImageUrl(
 
 /**
  * Hardcover front — placeholder until an album lands, then the print wrap:
- * chosen layout's photo treatment, the name and years at wherever they were
- * positioned in the cover editor (or that layout's default spot).
+ * chosen layout's photo treatment and the pet's name at their chosen spot,
+ * font, and size (falling back to that layout's default anchor).
  */
 export function CoverFrontArt({
   meta,
@@ -49,47 +51,38 @@ export function CoverFrontArt({
 }) {
   const ready = Boolean(photoUrl);
   const petName = meta?.petName.trim() ?? "";
-  const years = ready ? lifespanText(meta) : "";
   const layoutId = meta?.coverLayoutId ?? DEFAULT_COVER_LAYOUT;
+  const textOnLight = coverTextTone(layoutId) === "dark";
   const fontId = meta?.coverFontId ?? DEFAULT_COVER_FONT;
-  const namePos = meta?.coverNamePos ?? defaultNamePos(layoutId);
-  const datesPos = meta?.coverDatesPos ?? defaultDatesPos(layoutId);
+  const nameStyle = styleForAnchor(
+    meta?.coverNameAnchor ?? defaultNameAnchor(layoutId),
+  );
   const nameBold = meta?.coverNameBold ?? true;
   const nameUnderline = meta?.coverNameUnderline ?? false;
-  const nameSize = meta?.coverNameSize ?? 2;
+  const nameSize = meta?.coverNameSize ?? DEFAULT_COVER_NAME_SIZE;
 
   return (
-    <div className="relative h-full w-full overflow-hidden text-white">
+    <div
+      className={`relative h-full w-full overflow-hidden ${textOnLight ? "text-ink" : "text-white"}`}
+    >
       <CoverLayoutChrome layoutId={layoutId} photoUrl={photoUrl ?? null} />
 
       {ready && petName ? (
         <p
-          className="absolute z-10 max-w-[82%] text-center leading-[1.05]"
+          className="absolute z-10 max-w-[82%] leading-[1.05]"
           style={{
-            left: `${namePos.x}%`,
-            top: `${namePos.y}%`,
-            transform: "translate(-50%, -50%)",
+            ...nameStyle,
             fontFamily: coverFontVar(fontId),
             fontSize: `clamp(1rem, ${nameSize * 2.5}cqw, ${nameSize * 1.25}rem)`,
             fontWeight: nameBold ? 700 : 400,
             textDecoration: nameUnderline ? "underline" : "none",
             textUnderlineOffset: "0.15em",
+            textShadow: textOnLight
+              ? "0 1px 3px rgba(255,255,255,0.55)"
+              : "0 1px 4px rgba(15,17,23,0.55)",
           }}
         >
           {petName}
-        </p>
-      ) : null}
-
-      {ready && years ? (
-        <p
-          className="absolute z-10 text-center text-[0.7rem] tracking-wide text-white/85 sm:text-xs"
-          style={{
-            left: `${datesPos.x}%`,
-            top: `${datesPos.y}%`,
-            transform: "translate(-50%, -50%)",
-          }}
-        >
-          {years}
         </p>
       ) : null}
     </div>
@@ -119,25 +112,32 @@ export function CoverInsideArt({
   );
 }
 
+/**
+ * Hardcover back — styled after real memoir/photo-book backs: a centered
+ * pull-quote (the dedication, or a fallback line) in the upper-middle third,
+ * a small divider, and a publisher-style colophon anchored at the bottom.
+ */
 export function BackCoverArt({ dedication }: { dedication?: string }) {
   const body = dedication?.trim() || CLOSING_LINE;
 
   return (
-    <div className="relative z-[1] flex h-full w-full flex-col justify-between bg-transparent px-[12%] py-[12%] text-page-ink">
-      <p className="font-cover text-[clamp(0.95rem,2.2vw,1.15rem)] leading-7">
-        {body}
-      </p>
-      <p className="font-sans text-[0.7rem] tracking-wide text-page-ink/70">
-        {brand.name}
-      </p>
+    <div className="relative z-[1] flex h-full w-full flex-col bg-transparent px-[13%] py-[13%] text-page-ink">
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
+        <p className="font-cover text-[clamp(0.95rem,2.3vw,1.15rem)] italic leading-7">
+          &ldquo;{body}&rdquo;
+        </p>
+        <span aria-hidden className="text-[10px] tracking-[0.4em] text-page-ink/35">
+          &bull;&nbsp;&bull;&nbsp;&bull;
+        </span>
+      </div>
+      <div className="flex flex-col items-center gap-0.5 text-center">
+        <p className="font-display text-[0.7rem] font-semibold tracking-wide text-page-ink/80">
+          {brand.name}
+        </p>
+        <p className="font-sans text-[0.6rem] tracking-wide text-page-ink/45">
+          {brand.domain}
+        </p>
+      </div>
     </div>
   );
-}
-
-function lifespanText(meta?: BookMeta): string {
-  if (!meta) return "";
-  if (meta.birthYear && meta.deathYear) {
-    return `${meta.birthYear} – ${meta.deathYear}`;
-  }
-  return meta.birthYear || meta.deathYear || "";
 }

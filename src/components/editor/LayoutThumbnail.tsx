@@ -20,12 +20,11 @@ export function LayoutThumbnail({
     <button
       type="button"
       onClick={onClick}
-      className={`group relative flex-none snap-center overflow-hidden rounded-lg border-2 transition-all ${
+      className={`group relative aspect-square w-full overflow-hidden rounded-lg border-2 transition-all ${
         active
           ? "border-periwinkle shadow-md"
           : "border-line hover:border-periwinkle/50"
       }`}
-      style={{ width: 120, height: 120 }}
       title={layoutId.charAt(0).toUpperCase() + layoutId.slice(1)}
     >
       <SkeletonLayout layoutId={layoutId} petName={petName} />
@@ -48,29 +47,9 @@ function SkeletonLayout({
   layoutId: CoverLayoutId;
   petName: string;
 }) {
-  const name = petName || "Name";
+  const name = petName || "Type name here";
 
   switch (layoutId) {
-    case "framed":
-      return (
-        <div className="absolute inset-0 bg-[#e8e2d8]">
-          <div className="absolute inset-[7%] rounded-sm bg-[#c8d0dc]/60" />
-          <div className="absolute inset-[7%] flex items-end justify-center pb-2">
-            <span className="text-[9px] font-semibold text-ink/70">{name}</span>
-          </div>
-        </div>
-      );
-
-    case "banner":
-      return (
-        <div className="absolute inset-0 bg-[#c8d0dc]/60">
-          <div className="absolute inset-x-0 bottom-0 h-[22%] bg-periwinkle-deep" />
-          <div className="absolute inset-x-0 bottom-[22%] flex items-end justify-center pb-2">
-            <span className="text-[9px] font-semibold text-ink/70">{name}</span>
-          </div>
-        </div>
-      );
-
     case "minimal":
       return (
         <div className="absolute inset-0 bg-[#c8d0dc]/60">
@@ -81,12 +60,12 @@ function SkeletonLayout({
         </div>
       );
 
-    case "sidebar":
+    case "editorial":
       return (
         <div className="absolute inset-0 bg-[#c8d0dc]/60">
-          <div className="absolute inset-y-0 left-0 w-[18%] bg-periwinkle" />
-          <div className="absolute inset-y-0 left-[18%] right-0 flex items-end justify-center pb-3">
-            <span className="text-[9px] font-semibold text-ink/70">{name}</span>
+          <div className="absolute inset-x-0 top-[40%] h-[27%] bg-ink/70" />
+          <div className="absolute inset-x-0 top-[40%] flex h-[27%] items-center justify-center">
+            <span className="text-[10px] font-semibold text-white/90">{name}</span>
           </div>
         </div>
       );
