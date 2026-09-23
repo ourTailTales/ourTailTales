@@ -200,13 +200,6 @@ body {
   touch-action: pan-x pan-y;
 }
 
-/* The page turn needs depth, and the sheet must not paint outside the page. */
-.book-scene {
-  perspective: 1700px;
-  perspective-origin: 28% 50%;
-  transform-style: preserve-3d;
-}
-
 .filmstrip::-webkit-scrollbar {
   display: none;
 }

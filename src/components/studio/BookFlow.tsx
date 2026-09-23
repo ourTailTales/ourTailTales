@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 
 import { BookStudio } from "@/components/studio/BookStudio";
-import { GatheringPages } from "@/components/studio/GatheringPages";
 import { PetIntake } from "@/components/studio/PetIntake";
 import { UploadMediaModal } from "@/components/editor/UploadMediaModal";
 import { nextBookStep } from "@/lib/book/progress";
@@ -354,12 +353,33 @@ function Waiting({
 
   return (
     <div className="flex min-h-[55dvh] flex-col items-center justify-center gap-5 text-center">
-      <GatheringPages done={done} label={line} />
-      <p className="max-w-sm text-sm leading-6 text-page-ink-soft">
-        {writing
-          ? "Every chapter comes from the photos you gave us. You can change all of it afterwards."
-          : "This happens on your own device. Nothing is uploaded."}
-      </p>
+      <span
+        className="size-10 animate-spin rounded-full border-[3px] border-periwinkle/25 border-t-periwinkle"
+        aria-hidden
+      />
+      <div>
+        <p role="status" className="font-display text-xl text-page-ink">
+          {line}
+        </p>
+        <p className="mt-1.5 text-sm text-page-ink-soft">
+          {writing
+            ? "Every chapter comes from the photos you gave us. You can change all of it afterwards."
+            : "This happens on your own device. Nothing is uploaded."}
+        </p>
+      </div>
+
+      <div
+        className="h-1.5 w-56 overflow-hidden rounded-full bg-page-line"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(done * 100)}
+      >
+        <span
+          className="block h-full rounded-full bg-periwinkle transition-[width] duration-500"
+          style={{ width: `${Math.max(4, Math.round(done * 100))}%` }}
+        />
+      </div>
     </div>
   );
 }
