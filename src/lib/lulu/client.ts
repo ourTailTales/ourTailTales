@@ -306,6 +306,17 @@ export async function fetchPrintJob(printJobId: string): Promise<LuluPrintJob> {
 }
 
 /** Look up by our order UUID when create response was ambiguous. */
+/**
+ * The print job we filed under this order id, if Lulu has one.
+ *
+ * The returned job's `external_id` is checked rather than assumed. Taking
+ * `results[0]` on trust means that if Lulu ever stops honouring the query
+ * parameter — an unrecognised filter on a DRF list endpoint is ignored, not
+ * rejected, and comes back as an unfiltered first page — we would attach a
+ * different customer's print job to this order, record their tracking against
+ * it, mark it submitted, and never print this book at all. A wrong answer
+ * here is worse than no answer, so anything that does not match is no answer.
+ */
 export async function findPrintJobByExternalId(
   externalId: string,
 ): Promise<LuluPrintJob | null> {
@@ -313,7 +324,9 @@ export async function findPrintJobByExternalId(
     `/print-jobs/?external_id=${encodeURIComponent(externalId)}`,
     { method: "GET" },
   );
-  return data.results?.[0] ?? null;
+  return (
+    (data.results ?? []).find((job) => job.external_id === externalId) ?? null
+  );
 }
 
 function toLuluAddress(address: ShippingAddress, email: string) {

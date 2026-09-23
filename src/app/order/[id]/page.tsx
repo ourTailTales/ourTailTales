@@ -111,6 +111,7 @@ function OrderDetail({ order }: { order: OrderView }) {
     needsAttention &&
     (order.reviewReason === "video_memory_prepare_failed" ||
       order.reviewReason === VIDEO_MEMORIES_STUCK_CUSTOMER);
+  const canceled = order.status === "canceled";
 
   return (
     <>
@@ -139,13 +140,24 @@ function OrderDetail({ order }: { order: OrderView }) {
       )}
 
       {needsAttention && (
-        <Callout tone="warn" title="We're looking into this order">
+        <Callout
+          tone="warn"
+          title={canceled ? "This order has been stopped" : "We're looking into this order"}
+        >
+          {/*
+            `review_reason` is deliberately not printed here any more. It is
+            an operator's note — "No shipping address was recorded", "Print
+            files were missing at submission time", and at one point a literal
+            error code — and it was being shown to the customer word for word,
+            including instructions meant for us about cancelling things at the
+            printer.
+          */}
           {stuckMemories
             ? VIDEO_MEMORIES_STUCK_CUSTOMER
-            : (order.reviewReason ??
-              order.luluStatusMessage ??
-              "Something needed a human to check it.")}{" "}
-          We&rsquo;ll email you at {order.email ?? "your address"} — you don&rsquo;t
+            : canceled
+              ? "Nothing more will be printed or charged."
+              : "Something on this order needed a person to look at it. Your book is safe and has not been sent to print."}{" "}
+          We&rsquo;ll email you at {order.email ?? "your address"}. You don&rsquo;t
           need to do anything, and you won&rsquo;t be charged twice.
         </Callout>
       )}

@@ -79,7 +79,24 @@ export async function submitPaidOrderToLulu(orderId: string): Promise<void> {
   // full cost, to the same address, and the first anyone knows is when the
   // customer says two arrived. The order id is already sent as Lulu's
   // `external_id`, so it is the thing to ask about.
-  const existing = await findPrintJobByExternalId(orderId).catch(() => null);
+  let existing: Awaited<ReturnType<typeof findPrintJobByExternalId>>;
+  try {
+    existing = await findPrintJobByExternalId(orderId);
+  } catch (lookupError) {
+    // Emphatically not "no job exists".
+    //
+    // The outage that loses a POST's response is the same outage that fails
+    // this lookup, so swallowing the error reintroduced the double print at
+    // exactly the moment it mattered. Printing is the irreversible half of
+    // this, so an unanswered question stops here and waits for a person.
+    console.error("[ourTailTales] Could not ask Lulu about", orderId, lookupError);
+    await markNeedsReview(
+      orderId,
+      "We could not confirm this order with the printer. It is being checked by hand.",
+    );
+    return;
+  }
+
   if (existing) {
     console.warn(
       "[ourTailTales] Adopting an existing Lulu job rather than printing twice",
@@ -123,7 +140,7 @@ async function recordPrintJob(
   orderId: string,
   printJob: { id: number | string; status?: { name?: string } | null; tracking_urls?: string[] | null },
 ): Promise<void> {
-  const { error } = await supabaseAdmin()
+  const { data, error } = await supabaseAdmin()
     .from("orders")
     .update({
       lulu_print_job_id: String(printJob.id),
@@ -134,7 +151,21 @@ async function recordPrintJob(
       submitted_at: new Date().toISOString(),
     })
     .eq("id", orderId)
-    .is("lulu_print_job_id", null);
+    .is("lulu_print_job_id", null)
+    .select("id");
 
   if (error) throw new Error(error.message);
+
+  // Nothing matched, which means a job id was already there: two submissions
+  // overlapped and both reached Lulu. One of them is a second book, printed
+  // and shipped at full cost. This used to return quietly as though it had
+  // recorded the job, and the only trace was a mismatch nobody was looking
+  // for.
+  if (!data || data.length === 0) {
+    await alertOps("An order may have been printed twice", {
+      order: orderId,
+      printJob: String(printJob.id),
+      note: "A second print job was created while one was already recorded. Cancel one at Lulu.",
+    });
+  }
 }

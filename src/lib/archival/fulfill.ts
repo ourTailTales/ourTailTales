@@ -18,7 +18,8 @@ import {
 } from "@/lib/archival/qr";
 import { stampQrCodes } from "@/lib/archival/stamp";
 import { mayStartArchival, videosEligibleForArchival } from "@/lib/archival/can-archive";
-import { STORAGE_BUCKET, supabaseAdmin } from "@/lib/supabase/server";
+import { STORAGE_BUCKET, orderAssetPath, supabaseAdmin } from "@/lib/supabase/server";
+import { VIDEO_MEMORIES_STUCK_CUSTOMER } from "@/lib/video-memory/config";
 import { markNeedsReview, submitPaidOrderToLulu } from "@/lib/order/submit-print";
 import type { FrozenBookRevision } from "@/types/video-memory";
 import { readEnv } from "@/lib/env";
@@ -127,7 +128,7 @@ export async function fulfillNextVideoMemory(): Promise<string | null> {
       .eq("id", claimed.id);
 
     if (attempts >= MAX_ATTEMPTS) {
-      await markNeedsReview(order.id, "video_memory_prepare_failed");
+      await markNeedsReview(order.id, VIDEO_MEMORIES_STUCK_CUSTOMER);
       await supabase
         .from("orders")
         .update({ fulfill_error_code: "video_memory_prepare_failed" })
@@ -205,7 +206,14 @@ async function maybeFinishOrders(): Promise<void> {
         ),
       });
 
-      const interiorPath = `orders/${order.id}/interior.pdf`;
+      // Deliberately not `orders/<id>/interior.pdf`. That is the path
+      // `order-assets` mints an upsert-capable signed upload URL for, and
+      // that URL stays usable for a couple of hours after the customer paid.
+      // Writing the stamped interior there and then printing from it put the
+      // one flow the freeze exists for — where Lulu is not called until
+      // archival finishes, often days later — back on a file the customer can
+      // still replace.
+      const interiorPath = orderAssetPath(order.id, "frozen-interior");
       const { error: uploadError } = await supabase.storage
         .from(STORAGE_BUCKET)
         .upload(interiorPath, stamped, { contentType: "application/pdf", upsert: true });
@@ -225,7 +233,7 @@ async function maybeFinishOrders(): Promise<void> {
     } catch (error) {
       const code = error instanceof Error ? error.message : "print_prepare_failed";
       console.error("[ourTailTales] print prepare failed", order.id, safeErrorCode(code));
-      await markNeedsReview(order.id, "video_memory_prepare_failed");
+      await markNeedsReview(order.id, VIDEO_MEMORIES_STUCK_CUSTOMER);
     }
   }
 }

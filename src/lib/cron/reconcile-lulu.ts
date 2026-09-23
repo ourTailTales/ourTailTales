@@ -4,7 +4,6 @@ import {
   mapLuluStatus,
 } from "@/lib/lulu/client";
 import { alertOps } from "@/lib/ops/alert";
-import { VIDEO_MEMORIES_STUCK_CUSTOMER } from "@/lib/video-memory/config";
 import { supabaseAdmin } from "@/lib/supabase/server";
 
 /**
@@ -17,11 +16,18 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 const OPEN_STATUSES = ["paid", "submitted", "production"] as const;
 
 /**
- * How long a Video Memory order may sit part-archived before somebody is
- * told. Archival is slow by nature, so this is generous; what it catches is
- * an order that has stopped rather than one that is taking its time.
+ * How long a Video Memory order may sit part-archived before somebody is told.
+ *
+ * Measured in days rather than hours, because archival is genuinely slow: the
+ * dispatcher runs once a day and takes one video per run, so an order with
+ * five videos legitimately takes the better part of a week. A threshold of
+ * hours does not describe a stalled order, it describes every order.
  */
-const ARCHIVE_STALL_HOURS = 12;
+const ARCHIVE_STALL_DAYS = 10;
+
+/** Lulu calls and mail are not free, and this runs ahead of the work that
+ *  actually moves books. Both passes stay small on purpose. */
+const SIDE_PASS_LIMIT = 5;
 
 /**
  * Extracted from the route handler so the daily dispatcher can call it
@@ -154,10 +160,16 @@ export async function reconcileLulu(): Promise<Record<string, unknown>> {
  * the sweep above looks at, so nothing ever went back for it. The job sat at
  * Lulu, invisible, until a human "retried" it and printed a second book.
  *
- * Its own bounded query rather than another status in the sweep: orders stay
- * in `needs_review` until a person moves them, so letting them into a query
- * ordered oldest-first would eventually fill every page of it and starve the
+ * Its own small query rather than another status in the sweep: orders stay in
+ * `needs_review` until a person moves them, so letting them into the main
+ * oldest-first query would eventually fill every page of it and starve the
  * orders that are actually moving.
+ *
+ * Newest first, and only a handful, which means this is a safety net for a
+ * receipt lost recently rather than an exhaustive search. An older one is not
+ * silently abandoned: `markNeedsReview` mails a person the moment it happens,
+ * which is the part that was missing. `review_reason` is left alone here so
+ * adoption cannot wipe a note somebody wrote on the order.
  */
 async function adoptLostJobs(
   supabase: ReturnType<typeof supabaseAdmin>,
@@ -167,8 +179,9 @@ async function adoptLostJobs(
     .select("id")
     .eq("status", "needs_review")
     .is("lulu_print_job_id", null)
+    .not("paid_at", "is", null)
     .order("created_at", { ascending: false })
-    .limit(20);
+    .limit(SIDE_PASS_LIMIT);
 
   let adopted = 0;
   for (const order of orders ?? []) {
@@ -181,7 +194,6 @@ async function adoptLostJobs(
           lulu_print_job_id: String(printJob.id),
           lulu_status: printJob.status?.name ?? null,
           status: "submitted",
-          review_reason: null,
           submitted_at: new Date().toISOString(),
         })
         .eq("id", order.id)
@@ -212,7 +224,7 @@ async function flagStalledArchives(
   supabase: ReturnType<typeof supabaseAdmin>,
 ): Promise<number> {
   const cutoff = new Date(
-    Date.now() - ARCHIVE_STALL_HOURS * 60 * 60 * 1000,
+    Date.now() - ARCHIVE_STALL_DAYS * 24 * 60 * 60 * 1000,
   ).toISOString();
 
   const { data: stuck } = await supabase
@@ -221,24 +233,27 @@ async function flagStalledArchives(
     .eq("status", "paid")
     .lt("paid_at", cutoff)
     .in("fulfillment_stage", ["pending_archive", "archiving", "preparing_print"])
-    .limit(20);
+    .limit(SIDE_PASS_LIMIT);
 
-  for (const order of stuck ?? []) {
-    await supabase
-      .from("orders")
-      .update({
-        status: "needs_review",
-        review_reason: VIDEO_MEMORIES_STUCK_CUSTOMER,
-      })
-      .eq("id", order.id)
-      .eq("status", "paid");
+  if (!stuck || stuck.length === 0) return 0;
 
-    await alertOps("A paid order has stopped part way through archiving", {
-      order: order.id,
-      stage: order.fulfillment_stage,
-      paidAt: order.paid_at,
-    });
-  }
+  // Deliberately no write.
+  //
+  // The obvious thing here is to set `needs_review`, which is what the order
+  // page reads to explain a stuck order to the customer. It is also what
+  // `mayStartArchival` and `maybeFinishOrders` both refuse to act on, so
+  // marking a slow order as stuck is not an alert at all: it is a permanent
+  // stop, applied by a watchdog, to the orders it was written to rescue. One
+  // mail to a person who can look is the whole of the useful part.
+  await alertOps(
+    `${stuck.length} paid order(s) have stopped part way through archiving`,
+    {
+      orders: stuck.map((order) => order.id).join(", "),
+      stages: stuck.map((order) => order.fulfillment_stage ?? "?").join(", "),
+      oldestPaidAt: stuck[0]?.paid_at ?? "",
+      note: `Still 'paid' and mid-archive after ${ARCHIVE_STALL_DAYS} days. Nothing has been changed on these orders.`,
+    },
+  );
 
-  return (stuck ?? []).length;
+  return stuck.length;
 }

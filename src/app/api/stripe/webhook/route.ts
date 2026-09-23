@@ -51,7 +51,21 @@ export async function POST(request: Request): Promise<Response> {
     } else if (event.type === "payment_intent.succeeded") {
       await fulfill(event.data.object);
     } else if (event.type === "charge.refunded") {
-      await moneyGoingBack(event.data.object.payment_intent, "refunded");
+      const charge = event.data.object;
+      // Fires for a partial refund too. Refunding shipping as a goodwill
+      // gesture must not cancel the book the customer is still waiting for.
+      const whole =
+        charge.refunded === true ||
+        (charge.amount > 0 && charge.amount_refunded >= charge.amount);
+      if (whole) {
+        await moneyGoingBack(charge.payment_intent, "refunded");
+      } else {
+        await alertOps("An order was partly refunded and left running", {
+          charge: charge.id,
+          refunded: charge.amount_refunded,
+          of: charge.amount,
+        });
+      }
     } else if (event.type === "charge.dispute.created") {
       await moneyGoingBack(event.data.object.payment_intent, "disputed");
     } else if (event.type === "payment_intent.payment_failed") {
@@ -265,13 +279,31 @@ async function moneyGoingBack(
     return;
   }
 
+  // A book already in the post is not a book we can stop, and overwriting a
+  // shipped order's status would take its tracking off the customer's page
+  // for no benefit.
+  if (order.status === "shipped" || order.status === "delivered") {
+    await alertOps(`A ${kind} payment on an order that already shipped`, {
+      order: order.id,
+      status: order.status,
+      note: "Nothing was changed on the order.",
+    });
+    return;
+  }
+
   if (order.lulu_print_job_id) {
+    // `review_reason` is printed to the customer verbatim on their order
+    // page, so it says what it means to them. What to do about it goes to
+    // the person who can do it.
     await markNeedsReview(
       order.id,
-      kind === "refunded"
-        ? "Refunded after the print job was submitted. Cancel it at Lulu if it has not shipped."
-        : "Payment disputed after the print job was submitted. Cancel it at Lulu if it has not shipped.",
+      "This order is on hold while we sort out the payment. Nothing further will be printed until we do.",
     );
+    await alertOps(`An order was ${kind} after it went to the printer`, {
+      order: order.id,
+      printJob: order.lulu_print_job_id,
+      note: "Cancel the job at Lulu if it has not shipped.",
+    });
     return;
   }
 
@@ -279,7 +311,10 @@ async function moneyGoingBack(
     .from("orders")
     .update({
       status: "canceled",
-      review_reason: `Payment ${kind}.`,
+      review_reason:
+        kind === "refunded"
+          ? "This order was refunded."
+          : "This order is on hold while the payment is disputed.",
     })
     .eq("id", order.id)
     .not("status", "in", "(shipped,delivered,canceled)");
