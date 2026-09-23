@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { BookStudio } from "@/components/studio/BookStudio";
 import { PetIntake } from "@/components/studio/PetIntake";
 import { UploadMediaModal } from "@/components/editor/UploadMediaModal";
+import { nextBookStep } from "@/lib/book/progress";
 import { filesFromDataTransfer } from "@/lib/photo/process";
 import { bookSpec, MIN_PHOTOS_FOR_BOOK } from "@/lib/pricing";
 import { track } from "@/lib/analytics";
@@ -61,50 +62,84 @@ export function BookFlow({
   const leadEmail = useOurTailTalesStore((state) => state.leadEmail);
   const setLeadEmail = useOurTailTalesStore((state) => state.setLeadEmail);
   const confirmBookSize = useOurTailTalesStore((state) => state.confirmBookSize);
+  const goToEditing = useOurTailTalesStore((state) => state.goToEditing);
 
   const summary = useMemo(() => summarizeAlbum(photos), [photos]);
   const mediaCount = summary.placeable + albumVideos.length;
 
   const [dragOver, setDragOver] = useState(false);
   const [dropping, setDropping] = useState(false);
-  const [uploadDismissed, setUploadDismissed] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
   // A restored draft has already been through this, so it never sees it twice.
   const [intakeDone, setIntakeDone] = useState(() => Boolean(petName.trim()));
 
   const processing = funnelState === "processing" || dropping;
   const atStart = funnelState === "idle" && mediaCount === 0;
   const showIntake = atStart && !intakeDone;
-  const showUploadModal = atStart && intakeDone && !uploadDismissed;
 
-  // Build the skeleton as soon as there is enough media. Runs once — later
-  // uploads add to the pool photos can be swapped from, they never reset
-  // pages the customer has already read or edited.
+  // The picker opens itself once, on arriving with nothing to show, and is
+  // otherwise opened on request — which is what lets a half-filled album ask
+  // for more. Latched so dismissing it does not immediately reopen it.
+  const pickerOffered = useRef(false);
   useEffect(() => {
-    if (chapters.length > 0) return;
-    if (funnelState === "processing") return;
-    if (mediaCount < MIN_PHOTOS_FOR_BOOK) return;
-    confirmBookSize();
-    track("book_size_confirmed", {
-      chapters: chapterCount,
-      price: bookSpec(chapterCount).price,
-    });
-  }, [chapters.length, funnelState, mediaCount, confirmBookSize, chapterCount]);
+    if (!atStart || !intakeDone || pickerOffered.current) return;
+    pickerOffered.current = true;
+    setUploadOpen(true);
+  }, [atStart, intakeDone]);
 
-  // ...and start writing the moment it exists. There is no question left to
-  // ask at this point, so a button here would only be a door to hold open.
-  //
-  // Latched rather than left to the dependency list: generation costs a model
-  // call per chapter, and an effect that runs twice — which React does on
-  // purpose in development — would pay for the whole book twice.
+  const unwritten = chapters.filter(
+    (chapter) => chapter.aiStatus !== "done",
+  ).length;
+  const step = nextBookStep({
+    funnelState,
+    chapterCount: chapters.length,
+    unwritten,
+    mediaCount,
+  });
+  const shortOfPhotos = step === "needPhotos";
+
+  /**
+   * Gets the book from wherever it is to written, in one place.
+   *
+   * This was two effects, each guarding a single step of the happy path, and
+   * between them they left two states that advanced nowhere. A draft restored
+   * mid-generation comes back with its chapters already built but its state
+   * recorded as `album_ready`, which neither effect would touch — the book sat
+   * on the waiting screen forever, with everything it needed already in hand.
+   * An album under the minimum sat there too, with no way to add more.
+   *
+   * So the rule is stated from the book's own condition rather than from the
+   * step it last completed: no chapters means build them, chapters with
+   * nothing written means write them, everything written means open the book.
+   * Any state that is recoverable now recovers on its own, on the next render.
+   */
   const writingStarted = useRef(false);
   useEffect(() => {
-    if (funnelState !== "organizing") return;
-    if (chapters.length === 0) return;
+    if (step === "build") {
+      confirmBookSize();
+      track("book_size_confirmed", {
+        chapters: chapterCount,
+        price: bookSpec(chapterCount).price,
+      });
+      return;
+    }
+
+    if (step === "open") {
+      // A finished book that was only ever one flag short of being readable.
+      goToEditing();
+      return;
+    }
+
+    if (step !== "write") return;
+
+    // Latched: generation costs a model call per chapter, and an effect that
+    // runs twice — which React does on purpose in development — would pay for
+    // the whole book twice.
     if (writingStarted.current) return;
     writingStarted.current = true;
     onCreateStory();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- fires on entering `organizing`, not on identity changes
-  }, [funnelState, chapters.length]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- driven by the book's condition, not by callback identity
+  }, [step, chapterCount, confirmBookSize, goToEditing]);
 
   const handleDrop = (event: DragEvent<HTMLElement>): void => {
     event.preventDefault();
@@ -144,11 +179,14 @@ export function BookFlow({
       }}
       onDrop={handleDrop}
     >
-      {showUploadModal && !showIntake ? (
+      {uploadOpen && !showIntake ? (
         <UploadMediaModal
-          onFiles={onFiles}
+          onFiles={(files) => {
+            setUploadOpen(false);
+            onFiles(files);
+          }}
           processing={processing}
-          onClose={() => setUploadDismissed(true)}
+          onClose={() => setUploadOpen(false)}
           email={leadEmail}
           onEmailChange={setLeadEmail}
         />
@@ -184,11 +222,13 @@ export function BookFlow({
         ) : (
           <Waiting
             funnelState={funnelState}
+            shortOfPhotos={shortOfPhotos}
+            mediaCount={mediaCount}
             processed={progress.processed}
             total={progress.total}
             chaptersDone={chapters.filter((chapter) => chapter.aiStatus === "done").length}
             chapterCount={chapters.length}
-            onOpenUpload={() => setUploadDismissed(false)}
+            onOpenUpload={() => setUploadOpen(true)}
             hasMedia={mediaCount > 0}
             petName={petName}
           />
@@ -213,6 +253,8 @@ export function BookFlow({
  */
 function Waiting({
   funnelState,
+  shortOfPhotos,
+  mediaCount,
   processed,
   total,
   chaptersDone,
@@ -222,6 +264,8 @@ function Waiting({
   petName,
 }: {
   funnelState: string;
+  shortOfPhotos: boolean;
+  mediaCount: number;
   processed: number;
   total: number;
   chaptersDone: number;
@@ -231,14 +275,14 @@ function Waiting({
   petName: string;
 }) {
   const writing = funnelState === "ai_generating";
-  const reading = funnelState === "processing";
+  const readingPhotos = funnelState === "processing";
 
   const name = petName.trim();
   const line = writing
     ? chapterCount > 0
       ? `Writing chapter ${Math.min(chaptersDone + 1, chapterCount)} of ${chapterCount}`
       : "Writing the chapters"
-    : reading
+    : readingPhotos
       ? total > 0
         ? `Reading your photos — ${processed} of ${total}`
         : "Reading your photos"
@@ -253,6 +297,33 @@ function Waiting({
     : total > 0
       ? processed / total
       : 0;
+
+  // Enough photos arrived to start, but not enough to fill a book. Says how
+  // many are missing and opens the picker — the alternative was a spinner that
+  // never resolved, for a reason nobody could see.
+  if (shortOfPhotos && !readingPhotos && funnelState !== "idle") {
+    const missing = MIN_PHOTOS_FOR_BOOK - mediaCount;
+    return (
+      <div className="flex min-h-[55dvh] flex-col items-center justify-center gap-4 text-center">
+        <h1 className="font-display text-2xl text-page-ink">
+          {missing === 1
+            ? "One more photo and we can start"
+            : `${missing} more photos and we can start`}
+        </h1>
+        <p className="max-w-sm text-sm leading-6 text-page-ink-soft">
+          A book needs at least {MIN_PHOTOS_FOR_BOOK} usable photos to fill five
+          chapters without repeating itself. You have {mediaCount}.
+        </p>
+        <button
+          type="button"
+          onClick={onOpenUpload}
+          className="mt-1 inline-flex min-h-12 items-center rounded-xl bg-periwinkle px-6 text-base font-semibold text-white shadow-lift hover:bg-periwinkle-deep"
+        >
+          Add more photos
+        </button>
+      </div>
+    );
+  }
 
   if (funnelState === "idle" && !hasMedia) {
     return (

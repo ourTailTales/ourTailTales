@@ -275,8 +275,17 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
 
   const handleCreateStory = useCallback(async () => {
     const state = useOurTailTalesStore.getState();
+
+    // Only what is still unwritten. A draft picked up after a reload or a
+    // failed chapter comes back with most of the book already written, and
+    // rewriting those would both pay for them twice and throw away anything
+    // the customer had already changed.
+    const pending = state.chapters
+      .filter((chapter) => chapter.aiStatus !== "done")
+      .map((chapter) => chapter.id);
+
     state.beginStoryGeneration();
-    await runStories(state.chapters.map((chapter) => chapter.id));
+    await runStories(pending);
     useOurTailTalesStore.getState().finishStoryGeneration();
     const completed = useOurTailTalesStore.getState();
     track("story_generated", { chapters: completed.chapters.length });
