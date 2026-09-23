@@ -208,7 +208,13 @@ export async function persistLocalDraft(
       : undefined;
 
   const key = keyForEmail(state.leadEmail);
-  const localDraftId = activeDraftKey === key && activeDraftId ? activeDraftId : crypto.randomUUID();
+
+  return serialize(async () => {
+  // Everything that touches the three module pointers happens in here. Read
+  // outside the queue, they can be the values a restore is halfway through
+  // changing, and the delete below then names the wrong bucket.
+  const localDraftId =
+    activeDraftKey === key && activeDraftId ? activeDraftId : crypto.randomUUID();
   if (previewPdf) activePreviewPdf = previewPdf;
   const draft: StoredDraft = {
     key,
@@ -231,26 +237,25 @@ export async function persistLocalDraft(
 
   const previousKey = activeDraftKey;
 
-  await serialize(() =>
-    withDatabase(async (database) => {
-      const transaction = database.transaction(STORE, "readwrite");
-      const objectStore = transaction.objectStore(STORE);
-      objectStore.put(draft);
+  await withDatabase(async (database) => {
+    const transaction = database.transaction(STORE, "readwrite");
+    const objectStore = transaction.objectStore(STORE);
+    objectStore.put(draft);
 
-      // Moving from one identity to another (anonymous → email, or one email
-      // to another) — drop the old bucket so a subsequent visitor under the
-      // previous identity doesn't inherit this session's content. In the same
-      // transaction as the put, so a failure can never take the old book away
-      // without having written the new one.
-      if (previousKey && previousKey !== key) objectStore.delete(previousKey);
+    // Moving from one identity to another (anonymous → email, or one email
+    // to another) — drop the old bucket so a subsequent visitor under the
+    // previous identity doesn't inherit this session's content. In the same
+    // transaction as the put, so a failure can never take the old book away
+    // without having written the new one.
+    if (previousKey && previousKey !== key) objectStore.delete(previousKey);
 
-      await committed(transaction);
-    }),
-  );
+    await committed(transaction);
+  });
 
   activeDraftId = localDraftId;
   activeDraftKey = key;
   return { localDraftId, missingPhotos };
+  });
 }
 
 export async function restoreLocalDraft(
@@ -260,25 +265,35 @@ export async function restoreLocalDraft(
 
   const key = keyForEmail(knownEmail);
 
+  return serialize(async () => {
+  // Claim the bucket before anything here can fail.
+  //
+  // Doing it after the read meant a read that threw left the pointer on the
+  // previous address. The caller then cleared the screen for the new one, and
+  // that person's first save deleted the previous person's intact record as
+  // "the old bucket" — the precise loss this whole file is arranged to
+  // prevent, caused by the branch added to prevent it.
+  const changingBucket = activeDraftKey !== key;
+  activeDraftKey = key;
+  if (changingBucket) {
+    // The cached preview belongs to whoever we were reading for. Held on to,
+    // it ends up written into the next person's record and handed to their
+    // book as if it were theirs.
+    activeDraftId = null;
+    activePreviewPdf = null;
+  }
+
   // Throws rather than returning null when storage itself fails. The two mean
   // completely different things to the caller: nothing saved under this
   // address is a reason to clear the screen, and "the database would not open
   // just now" is a reason to leave the book exactly where it is. Treating the
   // second as the first is how an intact record gets written straight over.
-  const stored = await serialize(() =>
-    withDatabase(async (database) => {
-      await migrateLegacyRecord(database);
-      return (await requestPromise(
-        database.transaction(STORE, "readonly").objectStore(STORE).get(key),
-      )) as StoredDraft | undefined;
-    }),
-  );
-
-  // Point at this bucket either way. A miss that left the pointer on the
-  // previous address meant the next save deleted *that* person's book, on the
-  // grounds that the identity had changed — which it had, in the wrong
-  // direction.
-  activeDraftKey = key;
+  const stored = await withDatabase(async (database) => {
+    await migrateLegacyRecord(database);
+    return (await requestPromise(
+      database.transaction(STORE, "readonly").objectStore(STORE).get(key),
+    )) as StoredDraft | undefined;
+  });
 
   if (!stored || stored.version !== VERSION) {
     activeDraftId = null;
@@ -357,6 +372,7 @@ export async function restoreLocalDraft(
     originalBook: stored.originalBook ?? null,
     missingPhotos,
   };
+  });
 }
 
 /**
@@ -427,17 +443,48 @@ export async function clearLocalDraft(): Promise<void> {
   );
 }
 
+/** Long enough for a slow disk, short enough that nothing waits on it forever. */
+const OPEN_TIMEOUT_MS = 10_000;
+
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DATABASE, VERSION);
+    let settled = false;
+
+    const finish = (
+      outcome: "resolve" | "reject",
+      value: IDBDatabase | Error,
+    ): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (outcome === "resolve") resolve(value as IDBDatabase);
+      else reject(value as Error);
+    };
+
+    // Every operation queues behind this one, so an open that never settles
+    // stops the app saving for the rest of the session with the indicator
+    // still reading "Saving…". A version upgrade pending in another tab does
+    // exactly that, and fires `onblocked` rather than either handler below.
+    const timer = setTimeout(
+      () => finish("reject", new Error("Local draft storage did not open.")),
+      OPEN_TIMEOUT_MS,
+    );
+
     request.onupgradeneeded = () => {
       const database = request.result;
       if (!database.objectStoreNames.contains(STORE)) {
         database.createObjectStore(STORE, { keyPath: "key" });
       }
     };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error ?? new Error("Local draft storage failed."));
+    request.onblocked = () =>
+      finish("reject", new Error("Another tab is holding local draft storage."));
+    request.onsuccess = () => finish("resolve", request.result);
+    request.onerror = () =>
+      finish(
+        "reject",
+        request.error ?? new Error("Local draft storage failed."),
+      );
   });
 }
 

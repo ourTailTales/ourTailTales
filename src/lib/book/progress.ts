@@ -56,11 +56,17 @@ export function nextBookStep(book: {
   }
 
   if (chapterCount === 0) {
-    // Both conditions, not just the first. An album of twenty-five videos and
-    // no photographs clears the size gate and then proposes nothing, and the
-    // screen sits waiting for chapters that can never arrive.
-    const enough = mediaCount >= MIN_PHOTOS_FOR_BOOK && photoCount > 0;
-    return enough ? "build" : "needPhotos";
+    // Photographs, not media. Videos are part of the album and none of them
+    // becomes a chapter, so counting them here was the gate letting through
+    // books that could not be made: one picture and twenty-four videos
+    // cleared it, and since the chapter count floors at five, that produced a
+    // five-chapter book with four empty chapters, five paid writing calls and
+    // a fifty dollar price on it.
+    //
+    // `MIN_PHOTOS_FOR_BOOK` is five chapters times the five pictures a
+    // chapter needs, which is exactly the question being asked here.
+    void mediaCount;
+    return photoCount >= MIN_PHOTOS_FOR_BOOK ? "build" : "needPhotos";
   }
 
   return unwritten === 0 ? "open" : "write";

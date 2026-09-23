@@ -154,11 +154,11 @@ export function BookFlow({
     event.preventDefault();
     event.stopPropagation();
     setDragOver(false);
-    // A second album dropped while the first is still being read used to
-    // overwrite the first run without cancelling it, and whichever batch
-    // finished first declared the whole album ready. Chapters were then built
-    // from half of it and never rebuilt.
-    if (processing) return;
+    // Handled again in `handleFiles`, which is the chokepoint every path
+    // goes through; this just avoids reading the files at all.
+    if (processing || funnelState === "ai_generating" || funnelState === "organizing") {
+      return;
+    }
     void (async () => {
       setDropping(true);
       try {
@@ -362,7 +362,7 @@ function Waiting({
   // many are missing and opens the picker — the alternative was a spinner that
   // never resolved, for a reason nobody could see.
   if (shortOfPhotos && !readingPhotos && funnelState !== "idle") {
-    const missing = MIN_PHOTOS_FOR_BOOK - mediaCount;
+    const missing = Math.max(0, MIN_PHOTOS_FOR_BOOK - photoCount);
     return (
       <div className="flex min-h-[55dvh] flex-col items-center justify-center gap-4 text-center">
         <h1 className="font-display text-2xl text-page-ink">
@@ -381,8 +381,14 @@ function Waiting({
             </>
           ) : (
             <>
-              A book needs at least {MIN_PHOTOS_FOR_BOOK} photos to fill five
-              chapters. You have {mediaCount}.
+              A book needs at least {MIN_PHOTOS_FOR_BOOK} photographs to fill
+              five chapters. You have {photoCount}
+              {mediaCount > photoCount
+                ? `, plus ${mediaCount - photoCount} video${
+                    mediaCount - photoCount === 1 ? "" : "s"
+                  } we will keep`
+                : ""}
+              .
             </>
           )}
         </p>

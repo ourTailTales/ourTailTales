@@ -99,7 +99,11 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
   // the local draft a moment after they stop editing, and the header's save
   // indicator flips to "saving" for that moment. Skips the very first render
   // after restore, since that's a read, not an edit.
-  const autosaveHydrated = useRef(false);
+  // Which identity the autosave has already seen. A plain boolean was set
+  // once for the life of the tab, so after a second restore the "this is a
+  // read, not an edit" skip stopped working and every arrival wrote the whole
+  // album back out again.
+  const autosaveHydrated = useRef<string | null>(null);
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /**
@@ -111,26 +115,30 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
    * case the indicator existed for was the one it lied about: the customer
    * read "Saved", closed the tab, and the book was gone.
    */
-  const save = useCallback(async () => {
-    const state = useOurTailTalesStore.getState();
+  const save = useCallback(async (previewPdf?: Blob): Promise<boolean> => {
     try {
-      const result = await persistLocalDraft(state);
-      state.setSaveStatus("saved");
+      const result = await persistLocalDraft(
+        useOurTailTalesStore.getState(),
+        previewPdf,
+      );
+      useOurTailTalesStore.getState().setSaveStatus("saved");
       if (result && result.missingPhotos > 0) {
         captureClientException(
           new Error(`Saved without ${result.missingPhotos} photo(s).`),
         );
       }
+      return true;
     } catch (error) {
       useOurTailTalesStore.getState().setSaveStatus("error");
       captureClientException(error);
+      return false;
     }
   }, []);
 
   useEffect(() => {
     if (!localReady) return;
-    if (!autosaveHydrated.current) {
-      autosaveHydrated.current = true;
+    if (autosaveHydrated.current !== emailKey) {
+      autosaveHydrated.current = emailKey;
       return;
     }
     useOurTailTalesStore.getState().setSaveStatus("saving");
@@ -147,6 +155,7 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
     // unrelated edit happened to come along.
   }, [
     localReady,
+    emailKey,
     save,
     store.meta,
     store.chapters,
@@ -192,12 +201,24 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
         return;
       }
 
-      // One album at a time. A second batch started while the first is still
-      // being read overwrote the running ingestion without cancelling it, and
-      // whichever finished first declared the album ready: chapters were built
-      // from half of it and the rest were never placed.
-      if (useOurTailTalesStore.getState().funnelState === "processing") {
-        setNotice("Still reading the last batch. Try again in a moment.");
+      // Only while the book is sitting still.
+      //
+      // Two separate failures live here. A second batch started while the
+      // first is still being read overwrote the running ingestion without
+      // cancelling it, and whichever finished first declared the album ready,
+      // so chapters were built from half of it and never rebuilt. And a drop
+      // during writing is worse: finishing the batch sets the state back to
+      // `album_ready` while chapters are still being written, which reopens
+      // the generation step and pays for the unwritten chapters a second
+      // time. The drop zone covers the waiting screen, so this is one
+      // mis-aimed file away at any point in the wait.
+      const busy = useOurTailTalesStore.getState().funnelState;
+      if (busy !== "idle" && busy !== "album_ready" && busy !== "editing") {
+        setNotice(
+          busy === "ai_generating"
+            ? "We are still writing the chapters. Add more photos once the book opens."
+            : "Still reading the last batch. Try again in a moment.",
+        );
         return;
       }
 
@@ -240,19 +261,19 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
         store.setProgressPhase("deduplicating");
         store.finishProcessing();
         useOurTailTalesStore.getState().setSaveStatus("saving");
-        void persistLocalDraft(useOurTailTalesStore.getState())
-          .catch(() => {
+        void save().then((ok) => {
+          if (!ok) {
             setNotice(
               "This browser could not save the album for later. Keep this tab open while creating your book.",
             );
-          })
-          .finally(() => useOurTailTalesStore.getState().setSaveStatus("saved"));
+          }
+        });
         track("album_processing_completed", {
           count: images.length + videos.length,
         });
       });
     },
-    [store],
+    [store, save],
   );
 
   const runStories = useCallback(async (chapterIds: string[]) => {
@@ -383,18 +404,16 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
     track("story_generated", { chapters: completed.chapters.length });
 
     completed.setSaveStatus("saving");
-    await persistLocalDraft(completed)
-      .catch(() => {
-        setNotice(
-          "This browser could not save the finished book. Keep this tab open to read it.",
-        );
-      })
-      .finally(() => useOurTailTalesStore.getState().setSaveStatus("saved"));
+    if (!(await save())) {
+      setNotice(
+        "This browser could not save the finished book. Keep this tab open to read it.",
+      );
+    }
 
     void deliverTeaser().catch((error: unknown) =>
       captureClientException(error),
     );
-  }, [runStories, deliverTeaser]);
+  }, [runStories, deliverTeaser, save]);
 
   /**
    * What the account actually buys.
@@ -415,7 +434,12 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
       photos: photoMapOf(state.photos),
     });
 
-    await persistLocalDraft(useOurTailTalesStore.getState(), pdf);
+    // Best effort, deliberately. This is a local cache of the rendered book,
+    // and it now rejects when the browser refuses the write. Awaited bare, a
+    // full disk aborted this function before the book was banked, so the
+    // emailed link never resolved and the PDF could not be sold: a cache
+    // failure took out the sale.
+    await save(pdf);
 
     const banked = await bankBook({
       pdf,
@@ -437,7 +461,7 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
       photos: saved.photos,
     });
     track("free_book_saved", { chapters: saved.chapterCount });
-  }, []);
+  }, [save]);
 
   const handleAuthenticated = useCallback(() => {
     setAuthOpen(false);

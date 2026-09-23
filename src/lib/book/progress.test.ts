@@ -25,7 +25,7 @@ describe("nextBookStep", () => {
         chapterCount: 0,
         unwritten: 0,
         mediaCount: enough - 1,
-        photoCount: enough,
+        photoCount: enough - 1,
       }),
     ).toBe("needPhotos");
   });
@@ -134,7 +134,10 @@ describe("nextBookStep", () => {
     ).toBe("needPhotos");
   });
 
-  it("builds as soon as there is one real photograph among the videos", () => {
+  it("does not build a five chapter book out of one photograph", () => {
+    // The chapter count floors at five whatever the album holds, so one
+    // picture and twenty-four videos used to produce five chapters, four of
+    // them empty, five paid writing calls and a fifty dollar price.
     expect(
       nextBookStep({
         funnelState: "album_ready",
@@ -143,6 +146,18 @@ describe("nextBookStep", () => {
         mediaCount: enough,
         photoCount: 1,
       }),
-    ).toBe("build");
+    ).toBe("needPhotos");
+  });
+
+  it("counts photographs rather than the album, so videos never fill the gap", () => {
+    expect(
+      nextBookStep({
+        funnelState: "album_ready",
+        chapterCount: 0,
+        unwritten: 0,
+        mediaCount: enough * 4,
+        photoCount: enough - 1,
+      }),
+    ).toBe("needPhotos");
   });
 });

@@ -380,12 +380,21 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
       // and re-taking it there would snapshot a book the customer has already
       // edited, so "reset to original" would quietly restore their edits
       // instead of undoing them.
+      // Not taken at all until every chapter is written. A first pass that
+      // left one chapter failed used to be snapshotted as it stood, and since
+      // it is never retaken, a successful retry afterwards meant "reset to
+      // original" walked the customer back to a book with a hole in it and
+      // threw away the retry.
       originalBook:
-        state.originalBook ?? {
-          meta: structuredClone(state.meta),
-          chapters: structuredClone(state.chapters),
-          pages: structuredClone(state.pages),
-        },
+        state.originalBook ??
+        (state.chapters.length > 0 &&
+        state.chapters.every((chapter) => chapter.aiStatus === "done")
+          ? {
+              meta: structuredClone(state.meta),
+              chapters: structuredClone(state.chapters),
+              pages: structuredClone(state.pages),
+            }
+          : null),
     })),
 
   updateChapterText: (chapterId, patch) =>
