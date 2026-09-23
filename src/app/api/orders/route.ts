@@ -37,7 +37,7 @@ export async function POST(request: Request): Promise<Response> {
   try {
     // Nothing authenticates this route — it is where a funnel begins — so the
     // only thing standing between a script and unbounded rows is this.
-    const limited = await enforceRateLimit(request, LIMITS.draft);
+    const limited = await enforceRateLimit(request, LIMITS.order);
     if (limited) return limited;
 
     const parsed = requestSchema.safeParse(await request.json());

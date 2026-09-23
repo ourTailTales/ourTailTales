@@ -7,6 +7,7 @@ import { pdfPageCount } from "@/lib/book/pdf-pages";
 import { TEASER_PAGE_COUNT } from "@/lib/book/teaser";
 import { watermarkPdf } from "@/lib/book/watermark";
 import { BASE_CHAPTERS, MAX_CHAPTERS } from "@/lib/pricing";
+import { LIMITS, enforceRateLimit } from "@/lib/rate-limit";
 import { PREVIEW_BUCKET, supabaseAdmin } from "@/lib/supabase/server";
 
 /**
@@ -107,6 +108,13 @@ export async function PUT(request: Request): Promise<Response> {
       return Response.json({ error: "Unknown draft." }, { status: 401 });
     }
 
+    // Downloading a whole book, stamping every page and uploading it twice is
+    // the most expensive thing this server does, and a draft costs nothing to
+    // mint. Counted against the draft rather than the address, since holding
+    // one is what gets you in here.
+    const limited = await enforceRateLimit(request, LIMITS.bank, `draft:${draft.id}`);
+    if (limited) return limited;
+
     const parsed = finalizeSchema.safeParse(await request.json());
     if (!parsed.success) {
       return Response.json(
@@ -165,6 +173,20 @@ export async function PUT(request: Request): Promise<Response> {
       }
       await write("teaser", bytes);
       readablePath = "teaser";
+    } else if (pages <= TEASER_PAGE_COUNT) {
+      // The other half of the same check. `clean_pdf_storage_path` being set
+      // is the only thing `checkout-digital` looks at before selling "the
+      // complete book", so a teaser banked as the full book would put a
+      // ten-page file behind a $4.99 purchase. Two tabs on one lead email
+      // share a draft and a staging path, so this is reachable by accident as
+      // well as on purpose.
+      console.error(
+        `[ourTailTales] Draft ${draft.id} banked a ${pages}-page file as the whole book.`,
+      );
+      return Response.json(
+        { error: "That is not the whole book. Please try again." },
+        { status: 400 },
+      );
     } else {
       await write("preview", await watermarkPdf(bytes));
       // The buyer's copy is written here too, so the file a purchase unlocks

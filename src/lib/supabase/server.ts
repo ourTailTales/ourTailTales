@@ -40,9 +40,15 @@ export function supabaseConfigured(): boolean {
 }
 
 /** Object paths for one order's temporary print files. */
+/**
+ * `interior` and `cover` are where the browser uploads, through signed URLs
+ * that stay usable for hours afterwards. The `frozen-` pair is where the
+ * server copies them the moment payment lands, and no client is ever given a
+ * URL for those. What gets printed is read from the frozen pair.
+ */
 export function orderAssetPath(
   orderId: string,
-  kind: "interior" | "cover",
+  kind: "interior" | "cover" | "frozen-interior" | "frozen-cover",
 ): string {
   return `orders/${orderId}/${kind}.pdf`;
 }

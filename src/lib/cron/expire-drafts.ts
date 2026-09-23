@@ -17,6 +17,9 @@ import { PREVIEW_BUCKET, supabaseAdmin } from "@/lib/supabase/server";
 /** Batch size per run. Keeps one pass well inside a function's time budget. */
 const BATCH = 200;
 
+/** Storage refuses more keys than this in one call. */
+const REMOVE_CHUNK = 500;
+
 /**
  * Extracted from the route handler so the daily dispatcher can call it
  * directly, without a second HTTP hop or a second cold start.
@@ -70,28 +73,32 @@ export async function expireDrafts(): Promise<Record<string, unknown>> {
   for (const row of justBought ?? []) keep.add(row.id);
 
   const reapable = expired.filter((draft) => !keep.has(draft.id));
+
+  // A book somebody paid for is permanent, and saying so is what stops this
+  // batch from filling up with rows it will never touch. They match the same
+  // three predicates tomorrow, so once there are enough of them every run
+  // selects only kept rows and reaps nothing, quietly, forever.
+  if (keep.size > 0) {
+    await supabase
+      .from("book_drafts")
+      .update({ expires_at: null, updated_at: now })
+      .in("id", [...keep]);
+  }
+
   if (reapable.length === 0) {
     return { expired: 0, filesDeleted: 0, keptForOrders: keep.size };
   }
 
-  // Every file the draft can own, not only the two the row points at. The
-  // teaser is superseded by the watermarked preview the moment an account is
-  // made, and staging is superseded as soon as a book is banked; neither is
-  // recorded on the row afterwards, so listing only the recorded paths left
-  // both behind forever while the page told the customer the file was gone.
-  const paths = reapable.flatMap((draft) => allDraftPdfPaths(draft.id));
-
-  if (paths.length > 0) {
-    const { error: removeError } = await supabase.storage
-      .from(PREVIEW_BUCKET)
-      .remove(paths);
-    // Storage and the table are not one transaction. A failed delete must
-    // not clear the paths, or the files would be orphaned with nothing left
-    // pointing at them — leaving the row alone means the next run retries.
-    if (removeError) throw new Error(removeError.message);
-  }
-
-  const { error: anonymiseError } = await supabase
+  // The row is cleared first and the files second.
+  //
+  // Storage and the table are not one transaction, so one of the two has to
+  // go first and the question is which failure is survivable. Deleting first
+  // and failing the update leaves a paid book with a live pointer to bytes
+  // that are gone: the page says the book is fine and the download 404s.
+  // Clearing first and failing the delete leaves files nothing points at,
+  // which costs storage and no customer notices. So: bookkeeping first, and
+  // only rows that actually changed hands get their files removed.
+  const { data: cleared, error: anonymiseError } = await supabase
     .from("book_drafts")
     .update({
       pdf_storage_path: null,
@@ -107,15 +114,35 @@ export async function expireDrafts(): Promise<Record<string, unknown>> {
       "id",
       reapable.map((draft) => draft.id),
     )
-    // Belt and braces with the re-check above: a purchase that lands between
-    // the two must not have its paths cleared.
-    .is("digital_purchased_at", null);
+    // A purchase landing between the re-check above and this write keeps its
+    // book: the row is skipped here, so its files are never queued for
+    // deletion below either.
+    .is("digital_purchased_at", null)
+    .select("id");
 
   if (anonymiseError) throw new Error(anonymiseError.message);
 
+  const clearedIds = (cleared ?? []).map((row) => row.id);
+  const paths = clearedIds.flatMap((id) => allDraftPdfPaths(id));
+
+  // Supabase caps one remove call at a thousand keys, and each draft owns
+  // four, so a batch of two hundred is already close enough to chunk rather
+  // than to hope about.
+  for (let index = 0; index < paths.length; index += REMOVE_CHUNK) {
+    const chunk = paths.slice(index, index + REMOVE_CHUNK);
+    const { error: removeError } = await supabase.storage
+      .from(PREVIEW_BUCKET)
+      .remove(chunk);
+    // The row is already cleared, so a failure here only strands files. Worth
+    // a loud log and not worth failing the run over.
+    if (removeError) {
+      console.error("[ourTailTales] Could not reap draft files", removeError);
+    }
+  }
+
   return {
-      expired: reapable.length,
-      filesDeleted: paths.length,
-      keptForOrders: keep.size,
-    };
+    expired: clearedIds.length,
+    filesDeleted: paths.length,
+    keptForOrders: keep.size,
+  };
 }

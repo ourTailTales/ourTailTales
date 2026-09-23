@@ -1,4 +1,5 @@
 import type Stripe from "stripe";
+import { freezePrintFiles } from "@/lib/order/freeze-print-files";
 
 import { requireEnv, routeError } from "@/lib/env";
 import { sendDigitalPurchaseEmail, sendOrderConfirmationEmail } from "@/lib/email/send";
@@ -110,14 +111,23 @@ async function fulfill(paymentIntent: Stripe.PaymentIntent): Promise<void> {
     },
   );
 
+  // Before anything else reads them. The signed upload URLs the customer used
+  // are still live, so from here on we print from a copy they cannot reach.
+  let frozen = false;
+  try {
+    frozen = await freezePrintFiles(orderId);
+  } catch (error) {
+    console.error("[ourTailTales] Could not freeze print files", orderId, error);
+  }
+  if (!frozen) {
+    await markNeedsReview(orderId, "Print files were missing at payment time.");
+    return;
+  }
+
   const revision = claimed.book_snapshot as FrozenBookRevision | null;
   const videos = revision ? videosEligibleForArchival(revision) : [];
 
   if (videos.length === 0) {
-    if (!claimed.interior_path || !claimed.cover_path) {
-      await markNeedsReview(orderId, "Print files were missing at payment time.");
-      return;
-    }
     try {
       await submitPaidOrderToLulu(orderId);
     } catch (error) {
@@ -135,26 +145,47 @@ async function fulfill(paymentIntent: Stripe.PaymentIntent): Promise<void> {
     return;
   }
 
-  await supabase
+  // The work first, the flag that says the work exists second.
+  //
+  // The other way round is how an order ends up paid, marked as awaiting
+  // archival, and carrying no archival work at all: supabase-js returns its
+  // errors rather than throwing them, so a failed insert here used to pass
+  // silently, and a webhook retry could not put it right because the claim
+  // above had already moved the row out of `pending_payment`. Nothing sweeps
+  // that state. The money is taken and no book is ever made.
+  for (const video of videos) {
+    const { error: queueError } = await supabase
+      .from("order_video_memories")
+      .upsert(
+        {
+          order_id: orderId,
+          video_asset_id: video.videoAssetId,
+          processed_path: video.processedPath,
+          processed_bytes: video.processedBytes,
+          content_sha256: video.contentSha256,
+          duration_ms: video.durationMs,
+          width: video.width,
+          height: video.height,
+          status: "pending",
+        },
+        { onConflict: "order_id,video_asset_id" },
+      );
+
+    if (queueError) {
+      console.error("[ourTailTales] Could not queue a Video Memory", orderId, queueError);
+      await markNeedsReview(orderId, "Video Memory work could not be queued.");
+      return;
+    }
+  }
+
+  const { error: stageError } = await supabase
     .from("orders")
     .update({ fulfillment_stage: "pending_archive" })
     .eq("id", orderId);
 
-  for (const video of videos) {
-    await supabase.from("order_video_memories").upsert(
-      {
-        order_id: orderId,
-        video_asset_id: video.videoAssetId,
-        processed_path: video.processedPath,
-        processed_bytes: video.processedBytes,
-        content_sha256: video.contentSha256,
-        duration_ms: video.durationMs,
-        width: video.width,
-        height: video.height,
-        status: "pending",
-      },
-      { onConflict: "order_id,video_asset_id" },
-    );
+  if (stageError) {
+    console.error("[ourTailTales] Could not stage for archival", orderId, stageError);
+    await markNeedsReview(orderId, "The order could not be staged for archival.");
   }
 }
 

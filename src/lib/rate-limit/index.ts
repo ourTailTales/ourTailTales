@@ -41,6 +41,21 @@ export const LIMITS = {
   lulu: { name: "lulu", limit: 60, windowSeconds: 60 * 10 },
   /** Rows in our database, and the start of every funnel. */
   draft: { name: "draft", limit: 20, windowSeconds: 60 * 10 },
+  /**
+   * Opening an order and asking for somewhere to put its print files.
+   *
+   * Its own namespace rather than sharing the draft budget: an office behind
+   * one address retrying a big upload would otherwise spend the allowance
+   * that lets anyone there start a book at all, and a limiter that closes the
+   * front door is worse than the abuse it was added for.
+   */
+  order: { name: "order", limit: 40, windowSeconds: 60 * 10 },
+  /**
+   * Banking a rendered book. The most expensive thing we run: it downloads a
+   * whole book, stamps every page and uploads it twice, with a sixty second
+   * budget, behind a draft anyone can mint.
+   */
+  bank: { name: "bank", limit: 12, windowSeconds: 60 * 10 },
   /** Email capture. Generous enough for retries, tight enough to bore a bot. */
   lead: { name: "lead", limit: 10, windowSeconds: 60 * 10 },
   /** Outbound calls to the geocoder. One per chapter while editing. */

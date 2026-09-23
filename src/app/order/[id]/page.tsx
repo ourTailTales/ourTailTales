@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 
 import { BrandMark } from "@/components/BrandMark";
 import { readOrder, type OrderView } from "@/lib/order/read";
+import { mintOrderToken } from "@/lib/order/token";
 import { formatUsd } from "@/lib/pricing";
 import {
   VIDEO_MEMORIES_PROCESSING_CUSTOMER,
@@ -126,7 +127,9 @@ function OrderDetail({ order }: { order: OrderView }) {
       {order.status === "pending_payment" && (
         <Callout tone="warn" title="This order hasn't been paid yet">
           <Link
-            href={`/checkout?order=${order.id}`}
+            href={`/checkout?order=${order.id}&t=${encodeURIComponent(
+              mintOrderToken(order.id),
+            )}`}
             className="underline decoration-line underline-offset-4"
           >
             Finish checkout

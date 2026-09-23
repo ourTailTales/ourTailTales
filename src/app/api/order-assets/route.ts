@@ -24,11 +24,12 @@ const requestSchema = z.object({ orderId: z.string().uuid() });
  * after it is minted, so the customer who legitimately owns it can still
  * replace their own print files later, including after paying. That is handled
  * where it has to be, by copying the files to a path no client holds a URL for
- * at the moment payment lands. See `freezePrintFiles`.
+ * at the moment payment lands: `freezePrintFiles`, called from the Stripe
+ * webhook before anything reads these paths.
  */
 export async function POST(request: Request): Promise<Response> {
   try {
-    const limited = await enforceRateLimit(request, LIMITS.draft);
+    const limited = await enforceRateLimit(request, LIMITS.order);
     if (limited) return limited;
 
     const parsed = requestSchema.safeParse(await request.json());

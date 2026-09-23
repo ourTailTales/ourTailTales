@@ -46,7 +46,17 @@ export function orderTokenValid(
   provided: string | null | undefined,
 ): boolean {
   if (!provided) return false;
-  const expected = Buffer.from(mintOrderToken(orderId), "hex");
+
+  // A server with no signing key cannot tell a good token from a bad one, and
+  // the safe answer to that is no. Throwing instead would turn a
+  // configuration gap into a 500 on a page whose job is to explain itself.
+  let expected: Buffer;
+  try {
+    expected = Buffer.from(mintOrderToken(orderId), "hex");
+  } catch (error) {
+    console.error("[ourTailTales] Order tokens are not configured.", error);
+    return false;
+  }
   // A non-hex string yields a short buffer rather than throwing, so the length
   // check below is what rejects it.
   const got = Buffer.from(provided, "hex");
