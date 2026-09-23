@@ -15,6 +15,11 @@ import { LIMITS, enforceRateLimit } from "@/lib/rate-limit";
 
 const requestSchema = z.object({
   petName: z.string().max(80),
+  species: z.string().max(40).optional(),
+  stillHere: z.boolean().optional(),
+  // Capped tight: it is one line about a pet, and anything longer arriving
+  // here is not that.
+  notes: z.string().max(240).optional(),
   lifespan: z.string().max(40).optional().default(""),
   dateLabel: z.string().max(60).optional().default(""),
   photoCount: z.number().int().nonnegative(),

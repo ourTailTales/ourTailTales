@@ -244,7 +244,7 @@ function TitlePanel({ photos }: { photos: PhotoAsset[] }) {
             type="text"
             inputMode="numeric"
             value={meta.birthYear}
-            onChange={(event) => setMeta({ birthYear: event.target.value.slice(0, 4) })}
+            onChange={(event) => setMeta({ birthYear: digitsOnly(event.target.value) })}
             placeholder="2011"
             className={inputClass}
           />
@@ -254,12 +254,53 @@ function TitlePanel({ photos }: { photos: PhotoAsset[] }) {
             type="text"
             inputMode="numeric"
             value={meta.deathYear}
-            onChange={(event) => setMeta({ deathYear: event.target.value.slice(0, 4) })}
+            onChange={(event) => setMeta({ deathYear: digitsOnly(event.target.value) })}
             placeholder="2024"
             className={inputClass}
           />
         </Field>
       </div>
+
+      {/* The three answers that shaped the writing rather than the page.
+          Editable here so nothing collected before the upload is stuck —
+          change one and rewrite a chapter from its own panel to hear it. */}
+      <Field
+        label="What they are"
+        note="Rewrite a chapter after changing this and it will be written again with it."
+      >
+        <input
+          type="text"
+          value={meta.species ?? ""}
+          onChange={(event) => setMeta({ species: event.target.value.slice(0, 40) })}
+          placeholder="Dog"
+          className={inputClass}
+        />
+      </Field>
+
+      <Field label="Still with you">
+        <div className="flex gap-2">
+          <Toggle
+            label="Yes"
+            active={meta.stillHere === true}
+            onClick={() => setMeta({ stillHere: true, deathYear: "" })}
+          />
+          <Toggle
+            label="No"
+            active={meta.stillHere === false}
+            onClick={() => setMeta({ stillHere: false })}
+          />
+        </div>
+      </Field>
+
+      <Field label="What we should know about them">
+        <textarea
+          value={meta.notes ?? ""}
+          onChange={(event) => setMeta({ notes: event.target.value.slice(0, 240) })}
+          rows={3}
+          placeholder="Terrified of the vacuum. Would swim in anything."
+          className={`${inputClass} resize-none leading-relaxed`}
+        />
+      </Field>
 
       <Field
         label="Photo"
@@ -509,6 +550,36 @@ function Panel({
       {children}
     </div>
   );
+}
+
+function Toggle({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`min-h-10 flex-1 rounded-lg border px-3 text-sm font-medium transition-colors ${
+        active
+          ? "border-periwinkle bg-periwinkle text-white"
+          : "border-page-line bg-white text-page-ink-soft hover:border-periwinkle hover:text-periwinkle-deep"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+/** Years only — a date picker for a birth year nobody is certain of is worse. */
+function digitsOnly(value: string): string {
+  return value.replace(/\D/g, "").slice(0, 4);
 }
 
 function Field({

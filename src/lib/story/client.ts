@@ -15,6 +15,9 @@ export type StoryContext = {
   petName: string;
   birthYear: string;
   deathYear: string;
+  species?: string;
+  stillHere?: boolean;
+  notes?: string;
 };
 
 /**
@@ -49,6 +52,9 @@ export async function generateChapterStory(
 
   const body: StoryRequest = {
     petName: context.petName,
+    species: context.species,
+    stillHere: context.stillHere,
+    notes: context.notes,
     lifespan: [context.birthYear, context.deathYear].filter(Boolean).join("–"),
     dateLabel: chapter.dateLabel,
     photoCount: chapter.candidateIds.length,

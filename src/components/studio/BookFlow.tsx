@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 
 import { BookStudio } from "@/components/studio/BookStudio";
+import { PetIntake } from "@/components/studio/PetIntake";
 import { UploadMediaModal } from "@/components/editor/UploadMediaModal";
 import { filesFromDataTransfer } from "@/lib/photo/process";
 import { bookSpec, MIN_PHOTOS_FOR_BOOK } from "@/lib/pricing";
@@ -13,15 +14,18 @@ import {
 } from "@/store/useOurTailTalesStore";
 
 /**
- * Upload, then wait, then read. Three states and nothing in between.
+ * Who, then the album, then the wait, then the book.
  *
- * The old flow asked the customer to name their pet, choose how many chapters
- * they wanted, and press a button to start writing, before they had seen
- * anything at all. None of that has to happen first: the chapter count follows
- * from how many usable photos there are, and every other answer is easier to
- * give while looking at a book than while looking at a form. So this drops
- * the album in and hands back a finished book, and the questions come later,
- * as edits.
+ * The old flow asked the customer to choose how many chapters they wanted and
+ * press a button to start writing. That is gone — the chapter count follows
+ * from how many usable photos there are, and there is no decision left to make
+ * once the album is in.
+ *
+ * What stays is the short intake, because the writer genuinely cannot work
+ * without it. A name, what kind of animal, whether they are still here: none
+ * of that is in the photographs, and a book written without it is about an
+ * anonymous animal in the past tense. Everything the intake collects stays
+ * editable afterwards from the title page.
  */
 export function BookFlow({
   onFiles,
@@ -47,6 +51,7 @@ export function BookFlow({
   notice?: string | null;
 }) {
   const funnelState = useOurTailTalesStore((state) => state.funnelState);
+  const petName = useOurTailTalesStore((state) => state.meta.petName);
   const photos = useOurTailTalesStore((state) => state.photos);
   const albumVideos = useOurTailTalesStore((state) => state.albumVideos);
   const progress = useOurTailTalesStore((state) => state.progress);
@@ -63,10 +68,13 @@ export function BookFlow({
   const [dragOver, setDragOver] = useState(false);
   const [dropping, setDropping] = useState(false);
   const [uploadDismissed, setUploadDismissed] = useState(false);
+  // A restored draft has already been through this, so it never sees it twice.
+  const [intakeDone, setIntakeDone] = useState(() => Boolean(petName.trim()));
 
   const processing = funnelState === "processing" || dropping;
-  const showUploadModal =
-    funnelState === "idle" && mediaCount === 0 && !uploadDismissed;
+  const atStart = funnelState === "idle" && mediaCount === 0;
+  const showIntake = atStart && !intakeDone;
+  const showUploadModal = atStart && intakeDone && !uploadDismissed;
 
   // Build the skeleton as soon as there is enough media. Runs once — later
   // uploads add to the pool photos can be swapped from, they never reset
@@ -136,7 +144,7 @@ export function BookFlow({
       }}
       onDrop={handleDrop}
     >
-      {showUploadModal ? (
+      {showUploadModal && !showIntake ? (
         <UploadMediaModal
           onFiles={onFiles}
           processing={processing}
@@ -147,7 +155,9 @@ export function BookFlow({
       ) : null}
 
       <div className="mx-auto w-full max-w-[90rem] px-5 py-6 sm:px-8 sm:py-8">
-        {reading ? (
+        {showIntake ? (
+          <PetIntake onDone={() => setIntakeDone(true)} />
+        ) : reading ? (
           <>
             <BookStudio
               unlocked={unlocked}
@@ -180,6 +190,7 @@ export function BookFlow({
             chapterCount={chapters.length}
             onOpenUpload={() => setUploadDismissed(false)}
             hasMedia={mediaCount > 0}
+            petName={petName}
           />
         )}
 
@@ -208,6 +219,7 @@ function Waiting({
   chapterCount,
   onOpenUpload,
   hasMedia,
+  petName,
 }: {
   funnelState: string;
   processed: number;
@@ -216,10 +228,12 @@ function Waiting({
   chapterCount: number;
   onOpenUpload: () => void;
   hasMedia: boolean;
+  petName: string;
 }) {
   const writing = funnelState === "ai_generating";
   const reading = funnelState === "processing";
 
+  const name = petName.trim();
   const line = writing
     ? chapterCount > 0
       ? `Writing chapter ${Math.min(chaptersDone + 1, chapterCount)} of ${chapterCount}`
@@ -228,7 +242,9 @@ function Waiting({
       ? total > 0
         ? `Reading your photos — ${processed} of ${total}`
         : "Reading your photos"
-      : "Sorting your album into chapters";
+      : name
+        ? `Sorting ${name}\u2019s life into chapters`
+        : "Sorting your album into chapters";
 
   const done = writing
     ? chapterCount > 0
@@ -242,7 +258,9 @@ function Waiting({
     return (
       <div className="flex min-h-[55dvh] flex-col items-center justify-center gap-4 text-center">
         <h1 className="font-display text-2xl text-page-ink">
-          Start with their photos
+          {petName.trim()
+            ? `Now ${petName.trim()}\u2019s photos`
+            : "Start with their photos"}
         </h1>
         <p className="max-w-sm text-sm leading-6 text-page-ink-soft">
           Drop the album in and we&rsquo;ll write the whole book — chapters,

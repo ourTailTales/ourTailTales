@@ -119,6 +119,25 @@ export type BookMeta = {
   deathYear: string;
   dedication: string;
   coverPhotoId: string | null;
+  /**
+   * What kind of animal they are, in the owner's own word — "dog", "cat",
+   * "rabbit". The writer cannot tell a whippet from a greyhound from four
+   * compressed thumbnails, and guessing wrong in a book about someone's pet is
+   * unforgivable, so it is asked rather than inferred.
+   */
+  species?: string;
+  /**
+   * Whether the pet is alive. Decides whether the book reads as a life being
+   * celebrated or a life being remembered — the single biggest lever on tone,
+   * and not something an empty death year can be trusted to imply.
+   */
+  stillHere?: boolean;
+  /**
+   * One line the owner wanted us to know. The only piece of the book that
+   * comes from them rather than from the photographs, and usually the piece
+   * that makes it sound like their pet.
+   */
+  notes?: string;
   /** Optional — falls back to DEFAULT_COVER_LAYOUT (see lib/book/coverLayouts). */
   coverLayoutId?: CoverLayoutId;
   /** Optional — falls back to DEFAULT_COVER_FONT. */

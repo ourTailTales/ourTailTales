@@ -1,6 +1,6 @@
 import { GoogleGenAI, Type, type Part, type Schema } from "@google/genai";
 
-import { STORY_SYSTEM_PROMPT, buildStoryPrompt } from "@/lib/ai/prompt";
+import { buildStoryPrompt, storySystemPrompt } from "@/lib/ai/prompt";
 import { parseStoryDraft, type StoryProvider } from "@/lib/ai/provider";
 import { readEnv, requireEnv } from "@/lib/env";
 
@@ -70,7 +70,7 @@ export function createGeminiProvider(): StoryProvider {
         ],
         config: {
           // Memorial-writing rules travel with every request — not AI Studio state.
-          systemInstruction: STORY_SYSTEM_PROMPT,
+          systemInstruction: storySystemPrompt({ stillHere: chapter.stillHere }),
           responseMimeType: "application/json",
           responseSchema: RESPONSE_SCHEMA,
           temperature: 0.7,

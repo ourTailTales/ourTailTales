@@ -171,6 +171,9 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
       petName: state.meta.petName,
       birthYear: state.meta.birthYear,
       deathYear: state.meta.deathYear,
+      species: state.meta.species,
+      stillHere: state.meta.stillHere,
+      notes: state.meta.notes,
     };
 
     const queue = [...chapterIds];

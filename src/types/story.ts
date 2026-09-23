@@ -10,6 +10,12 @@ import type { PlaceLabel } from "@/types/book";
 /** What the browser sends for one chapter. */
 export type StoryRequest = {
   petName: string;
+  /** Owner-supplied: "dog", "cat", "rabbit". Never inferred from the photos. */
+  species?: string;
+  /** Owner-supplied. False means the book is a memorial. */
+  stillHere?: boolean;
+  /** One owner-supplied line about the pet. Evidence, like the photographs. */
+  notes?: string;
   /** Owner-supplied years, e.g. "2017–2024". Never inferred. */
   lifespan: string;
   dateLabel: string;
