@@ -61,24 +61,42 @@ without a listener a local test purchase succeeds in Stripe and the book never u
 the page sits on "Payment received, unlocking now" forever. For anything that does not
 finish a checkout — the editor, the landing page, book generation — you do not need it.
 
-One-time setup:
+### One-time setup
 
 ```bash
 brew install stripe/stripe-cli/stripe
 stripe login
+npm run stripe:listen   # prints: Your webhook signing secret is whsec_...
 ```
 
-Then, in a second terminal alongside `npm run dev`:
+Copy that `whsec_` into `STRIPE_WEBHOOK_SECRET` in `.env.local`, then restart `npm run
+dev`. **You do this once.** The CLI generates its signing secret at `stripe login` and
+reuses it for every later `stripe listen`, so there is nothing to re-copy. It only
+changes if you log out and back in, or switch Stripe accounts — and when it does, it
+fails loudly: 400s plus `[ourTailTales] Stripe signature rejected` in the dev console.
+
+### Day to day
+
+Two terminals, no setup:
 
 ```bash
-npm run stripe:listen
+npm run dev            # terminal 1
+npm run stripe:listen  # terminal 2
 ```
 
-**The secret it prints is not the one in `.env.local`.** `stripe listen` signs with its
-own webhook secret, different from the dashboard endpoint's. On first run it prints
-something like `whsec_...` — copy that into `STRIPE_WEBHOOK_SECRET` in `.env.local` once
-and it stays valid for future runs. Skip this and every forwarded event fails signature
-verification with a 400, which looks exactly like a broken webhook.
+### Why there are two different test secrets
+
+`stripe listen` signs with its own secret, which is **not** the dashboard test endpoint's.
+They serve different places and never compete:
+
+| Secret | Belongs in | Verifies |
+| --- | --- | --- |
+| CLI (`stripe listen`) | `.env.local` only | events forwarded to localhost |
+| Dashboard test endpoint | Vercel Preview + Development | events sent to a deployed test-mode URL |
+
+Nothing in the Stripe dashboard can reach `localhost`, so local can only ever receive
+events through the CLI. `.env.local` therefore holds the CLI secret permanently — there
+is no swapping between them.
 
 There is no deployed environment that Stripe can reach with test keys: preview
 deployments are `*.vercel.app`, which Vercel's Deployment Protection puts behind a login
