@@ -6,11 +6,13 @@ import { ArrowRight, BookOpen } from "lucide-react";
 import { formatUsd } from "@/lib/pricing";
 
 /**
- * The two ways out of the free tier.
+ * The two ways to pay, shown under the free account offer rather than instead
+ * of it.
  *
- * The digital button talks to `/api/stripe/checkout-digital`, which Phase 3
- * adds. Until it exists the click surfaces a plain notice instead of a dead
- * button, so shipping that route is all it takes to switch this on.
+ * Buying the clean PDF needs the whole book banked, which happens when the
+ * account is made — so the checkout route may answer with "make your account
+ * first". That answer is surfaced as written rather than flattened into a
+ * generic failure, because it is an instruction, not an error.
  */
 export function UpgradeActions({
   draftId,
@@ -62,13 +64,13 @@ export function UpgradeActions({
           type="button"
           onClick={() => void buyDigital()}
           disabled={busy}
-          className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-periwinkle px-5 py-3 text-sm font-semibold text-white shadow-lift transition-colors hover:bg-periwinkle-deep disabled:opacity-60"
+          className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-page-line bg-white px-5 py-3 text-sm font-semibold text-page-ink transition-colors hover:border-periwinkle hover:text-periwinkle-deep disabled:opacity-60"
         >
           {busy ? "Opening checkout…" : `${formatUsd(digitalPrice)} — keep the full PDF`}
         </button>
         <a
           href="/create"
-          className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-periwinkle bg-white px-5 py-3 text-sm font-semibold text-periwinkle-deep transition-colors hover:bg-periwinkle-wash/10"
+          className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-page-line bg-white px-5 py-3 text-sm font-semibold text-page-ink transition-colors hover:border-periwinkle hover:text-periwinkle-deep"
         >
           <BookOpen aria-hidden className="size-4" />
           Order the hardcover from {formatUsd(hardcoverPrice)}

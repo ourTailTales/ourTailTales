@@ -184,7 +184,7 @@ function FreeBookPreview({
             This preview has expired
           </h1>
           <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-page-ink-soft">
-            Free books are kept for 30 days. This one has passed that, so the
+            Free previews are kept for 30 days. This one has passed that, so the
             file has been deleted. Your photos never left your own device, so
             nothing else was stored.
           </p>
@@ -216,7 +216,7 @@ function FreeBookPreview({
         <div className="flex flex-col gap-5 border-b border-page-line p-5 sm:flex-row sm:items-center sm:justify-between sm:p-7">
           <div>
             <p className="text-xs font-semibold tracking-[0.16em] text-periwinkle uppercase">
-              {draft.purchased ? "Your book" : "Free preview"}
+              {draft.purchased ? "Your book" : "Your first pages"}
             </p>
             <h1 className="mt-1 font-display text-3xl font-bold text-page-ink">
               {title}
@@ -237,7 +237,7 @@ function FreeBookPreview({
             href={draft.pdfUrl}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-periwinkle px-5 py-3 text-sm font-semibold text-white shadow-lift hover:bg-periwinkle-deep"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-page-line bg-white px-5 py-3 text-sm font-semibold text-page-ink shadow-sm hover:border-periwinkle"
           >
             <Download aria-hidden className="size-4" />
             Download PDF
@@ -267,21 +267,34 @@ function FreeBookPreview({
       )}
 
       {!draft.purchased && !settling && (
-        <section className="mt-6 rounded-[1.5rem] border border-page-line bg-white/95 p-5 sm:p-7">
+        <section className="mt-6 rounded-[1.5rem] border border-periwinkle/25 bg-white/95 p-5 sm:p-7">
           <h2 className="font-display text-xl font-bold text-page-ink">
-            Keep it for good
+            Read the whole book
           </h2>
           <p className="mt-1.5 max-w-prose text-sm leading-6 text-page-ink-soft">
-            This copy is watermarked and stays here for 30 days. Buying either
-            version removes the watermark and keeps the book for good.
+            These are the first pages. The rest is already written — make your
+            free account and every page opens, stays in your library, and
+            becomes yours to change.
           </p>
-          <div className="mt-5">
-            <UpgradeActions
-              draftId={draft.draftId}
-              secret={secret}
-              digitalPrice={DIGITAL_PRICE}
-              hardcoverPrice={BASE_PRICE}
-            />
+          <Link
+            href={`/claim/${draft.draftId}?k=${encodeURIComponent(secret)}`}
+            className="mt-5 inline-flex min-h-12 items-center justify-center rounded-xl bg-periwinkle px-6 text-base font-semibold text-white shadow-lift hover:bg-periwinkle-deep"
+          >
+            Open the whole book
+          </Link>
+
+          <div className="mt-6 border-t border-page-line pt-5">
+            <p className="max-w-prose text-sm leading-6 text-page-ink-soft">
+              Or go straight to the printed one.
+            </p>
+            <div className="mt-4">
+              <UpgradeActions
+                draftId={draft.draftId}
+                secret={secret}
+                digitalPrice={DIGITAL_PRICE}
+                hardcoverPrice={BASE_PRICE}
+              />
+            </div>
           </div>
         </section>
       )}

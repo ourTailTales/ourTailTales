@@ -5,17 +5,17 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 import { AuthGate } from "@/components/auth/AuthGate";
 import { EmailSampleModal } from "@/components/EmailSampleModal";
-import { CreateHeaderActions } from "@/components/create/CreateHeaderActions";
 import { SaveStatusIndicator } from "@/components/create/SaveStatusIndicator";
-import { BookEditor } from "@/components/editor/BookEditor";
+import { BookFlow } from "@/components/studio/BookFlow";
 import { SiteHeader } from "@/components/SiteHeader";
 import { captureClientException, identifyLead, track } from "@/lib/analytics";
 import {
   previewFileName,
-  renderFreePreviewPdf,
-  renderSamplePdf,
-  sampleFileName,
+  renderFullPreviewPdf,
+  renderTeaserPdf,
+  teaserFileName,
 } from "@/lib/book/sample-pdf";
+import { summarizeTeaser } from "@/lib/book/teaser";
 import {
   partitionMedia,
   startIngestion,
@@ -24,7 +24,7 @@ import {
 import { makeVideoPreview } from "@/lib/photo/videoPreview";
 import { persistLocalDraft } from "@/lib/drafts/local";
 import { saveBookProject } from "@/lib/books/cloud";
-import { uploadFreePreview } from "@/lib/drafts/upload";
+import { bankBook } from "@/lib/drafts/upload";
 import { generateChapterStory } from "@/lib/story/client";
 import { prepareOrder } from "@/lib/order/prepare";
 import { placedMemoriesReadyForCheckout } from "@/lib/video-memory/checkout-ready";
@@ -42,12 +42,16 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
 
   const searchParams = useSearchParams();
   const ingestion = useRef<Ingestion | null>(null);
-  const [sampleOpen, setSampleOpen] = useState(false);
+  const [askEmail, setAskEmail] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [localReady, setLocalReady] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const isAuthenticated = useIsAuthenticated();
+
+  // Supabase Auth with no keys in this environment means there is nothing to
+  // sign in to, and a wall nobody can climb is worse than no wall.
+  const unlocked = isAuthenticated || !authConfigured();
 
   useEffect(() => {
     track("create_page_viewed");
@@ -133,9 +137,7 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
           const id = crypto.randomUUID();
           try {
             const preview = await makeVideoPreview(id, file);
-            store.addAlbumVideos([
-              { id, fileName: file.name, ...preview },
-            ]);
+            store.addAlbumVideos([{ id, fileName: file.name, ...preview }]);
             store.advanceProcessing();
           } catch {
             store.noteFailures(1);
@@ -207,159 +209,37 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
     );
   }, []);
 
-  const handleCreateStory = useCallback(async () => {
+  /**
+   * Renders the free ten pages, banks them, and mails them.
+   *
+   * Everything here is best effort and none of it is awaited by the customer:
+   * the book is already on their screen by the time this runs, so a failed
+   * upload costs them the email copy, not the book. The email exists for the
+   * person who closes the tab — it is the way back in, not the way through.
+   */
+  const deliverTeaser = useCallback(async (): Promise<void> => {
     const state = useOurTailTalesStore.getState();
-    state.beginStoryGeneration();
-    await runStories(state.chapters.map((chapter) => chapter.id));
-    useOurTailTalesStore.getState().finishStoryGeneration();
-    const completed = useOurTailTalesStore.getState();
-    track("story_generated", { chapters: completed.chapters.length });
-    completed.setSaveStatus("saving");
-    await persistLocalDraft(completed)
-      .catch(() => {
-        setNotice(
-          "This browser could not save the finished draft for later. Keep this tab open to view it.",
-        );
-      })
-      .finally(() => useOurTailTalesStore.getState().setSaveStatus("saved"));
-  }, [runStories]);
+    if (state.pages.length === 0) return;
 
-  /** Uploads the preview and remembers the link it can be reopened from. */
-  const bankPreview = useCallback(async (pdf: Blob): Promise<string> => {
-    const state = useOurTailTalesStore.getState();
-    const { url } = await uploadFreePreview({
+    const teaser = summarizeTeaser(state.pages, state.chapters);
+    const pdf = await renderTeaserPdf({
+      pages: state.pages,
+      chapters: state.chapters,
+      meta: state.meta,
+      photos: photoMapOf(state.photos),
+    });
+
+    const banked = await bankBook({
       pdf,
       petName: state.meta.petName,
       chapterCount: state.chapterCount,
+      kind: "teaser",
     });
-    useOurTailTalesStore.getState().setBookUrl(url);
+    useOurTailTalesStore.getState().setBookUrl(banked.url);
     track("free_pdf_stored", { chapters: state.chapterCount });
-    return url;
-  }, []);
 
-  const runDownloadPdf = useCallback(async () => {
-    const state = useOurTailTalesStore.getState();
-    if (state.pages.length === 0) return;
-    setDownloadingPdf(true);
-    setNotice(null);
-    try {
-      const blob = await renderFreePreviewPdf({
-        pages: state.pages,
-        chapters: state.chapters,
-        meta: state.meta,
-        photos: photoMapOf(state.photos),
-      });
-      downloadBlob(blob, previewFileName(state.meta.petName));
-      track("free_pdf_downloaded", { chapters: state.chapterCount });
-
-      // Hold the rendered preview in the local draft. It is what the account
-      // copy uploads, and what a reload restores from — without it
-      // saveBookProject has nothing to save.
-      await persistLocalDraft(useOurTailTalesStore.getState(), blob).catch(
-        (error: unknown) => captureClientException(error),
-      );
-
-      // Bank a copy so the book can be reopened from a link — another device,
-      // or the email. Deliberately not awaited: the file the customer asked
-      // for is already on its way, and a slow upload must not hold it up.
-      void bankPreview(blob).catch((error: unknown) => {
-        // The customer has their PDF; a failed upload only costs them the
-        // link, so it is reported rather than surfaced as a failure.
-        captureClientException(error);
-      });
-
-      // The copy that lives in their account. Best-effort for the same
-      // reason: they already have the file, so a failure here costs them the
-      // library entry, not the book.
-      const saved = useOurTailTalesStore.getState();
-      void saveBookProject({
-        meta: saved.meta,
-        chapters: saved.chapters,
-        pages: saved.pages,
-        photos: saved.photos,
-      })
-        .then(() => track("free_book_saved", { chapters: saved.chapterCount }))
-        .catch((error: unknown) => captureClientException(error));
-    } catch (error) {
-      captureClientException(error);
-      setNotice("Your PDF could not be prepared. Please try again.");
-    } finally {
-      setDownloadingPdf(false);
-    }
-  }, [bankPreview]);
-
-  /**
-   * The download is the one moment an account is worth asking for.
-   *
-   * By here the customer has a finished book on screen, so the trade is
-   * legible: sign in and it stays in your library rather than in this
-   * browser. Asking any earlier costs more of them than it returns.
-   *
-   * When Supabase Auth has no keys in this environment there is nothing to
-   * sign in to, and blocking the download would be worse than skipping it.
-   */
-  const handleDownloadPdf = useCallback(async () => {
-    if (!isAuthenticated && authConfigured()) {
-      track("auth_gate_viewed");
-      setAuthOpen(true);
-      return;
-    }
-    await runDownloadPdf();
-  }, [isAuthenticated, runDownloadPdf]);
-
-  /**
-   * The shareable link for this book, rendering and banking it first if the
-   * customer has not downloaded the free PDF yet.
-   */
-  const ensureBookUrl = useCallback(async (): Promise<string> => {
-    const existing = useOurTailTalesStore.getState().bookUrl;
-    if (existing) return existing;
-
-    const state = useOurTailTalesStore.getState();
-    const blob = await renderFreePreviewPdf({
-      pages: state.pages,
-      chapters: state.chapters,
-      meta: state.meta,
-      photos: photoMapOf(state.photos),
-    });
-    return bankPreview(blob);
-  }, [bankPreview]);
-
-  const handleSample = useCallback(async (email: string) => {
-    const state = useOurTailTalesStore.getState();
-    state.setLeadEmail(email);
-    identifyLead(email);
-
-    await fetch("/api/leads", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email,
-        petName: state.meta.petName,
-        chapterCount: state.chapterCount,
-        photoCount: state.photos.length,
-      }),
-    }).catch(() => {
-      // Never block the sample on lead capture.
-    });
-
-    const blob = await renderSamplePdf({
-      pages: state.pages,
-      chapters: state.chapters,
-      meta: state.meta,
-      photos: photoMapOf(state.photos),
-      placements: state.placements,
-    });
-
-    downloadBlob(blob, sampleFileName(state.meta.petName));
-    track("sample_email_submitted", { chapters: state.chapterCount });
-
-    // The sample is already on their device; the mail carries a link to the
-    // whole book rather than an attachment, which no mailbox would accept at
-    // this size and which would go stale the moment they bought it.
-    // Awaited for its effect, not its value: the route refuses to mail a link
-    // to a book that has not finished uploading.
-    await ensureBookUrl();
+    const email = useOurTailTalesStore.getState().leadEmail;
+    if (!email) return;
 
     const draft = loadStoredDraft();
     if (!draft) return;
@@ -370,37 +250,188 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
         ...draftHeaders(draft.draftId, draft.secret),
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ email, petName: state.meta.petName }),
+      body: JSON.stringify({
+        email,
+        petName: state.meta.petName,
+        hiddenChapters: teaser.hiddenChapters,
+        hiddenPages: teaser.hiddenPages,
+      }),
     });
     const data = (await response.json().catch(() => ({}))) as {
       sent?: boolean;
       error?: string;
     };
     if (!response.ok || !data.sent) {
-      // Their book exists and is downloadable either way, so this is reported
-      // rather than thrown at someone who just handed over their address.
       captureClientException(
-        new Error(data.error ?? "The book link email was not sent."),
+        new Error(data.error ?? "The book email was not sent."),
       );
+      return;
     }
-  }, [ensureBookUrl]);
+    track("teaser_email_sent", { chapters: state.chapterCount });
+  }, []);
+
+  const handleCreateStory = useCallback(async () => {
+    const state = useOurTailTalesStore.getState();
+    state.beginStoryGeneration();
+    await runStories(state.chapters.map((chapter) => chapter.id));
+    useOurTailTalesStore.getState().finishStoryGeneration();
+    const completed = useOurTailTalesStore.getState();
+    track("story_generated", { chapters: completed.chapters.length });
+
+    completed.setSaveStatus("saving");
+    await persistLocalDraft(completed)
+      .catch(() => {
+        setNotice(
+          "This browser could not save the finished book. Keep this tab open to read it.",
+        );
+      })
+      .finally(() => useOurTailTalesStore.getState().setSaveStatus("saved"));
+
+    void deliverTeaser().catch((error: unknown) =>
+      captureClientException(error),
+    );
+  }, [runStories, deliverTeaser]);
+
+  /**
+   * What the account actually buys.
+   *
+   * The whole book is rendered, kept in the local draft, banked so the emailed
+   * link and a later PDF purchase both resolve to a complete file, and written
+   * into their library. Banking has to happen before anyone can buy the clean
+   * PDF — the checkout route refuses until it has.
+   */
+  const claimBook = useCallback(async (): Promise<void> => {
+    const state = useOurTailTalesStore.getState();
+    if (state.pages.length === 0) return;
+
+    const pdf = await renderFullPreviewPdf({
+      pages: state.pages,
+      chapters: state.chapters,
+      meta: state.meta,
+      photos: photoMapOf(state.photos),
+    });
+
+    await persistLocalDraft(useOurTailTalesStore.getState(), pdf);
+
+    const banked = await bankBook({
+      pdf,
+      petName: state.meta.petName,
+      chapterCount: state.chapterCount,
+      kind: "full",
+    }).catch((error: unknown) => {
+      captureClientException(error);
+      return null;
+    });
+    if (banked) useOurTailTalesStore.getState().setBookUrl(banked.url);
+
+    const saved = useOurTailTalesStore.getState();
+    await saveBookProject({
+      meta: saved.meta,
+      chapters: saved.chapters,
+      pages: saved.pages,
+      photos: saved.photos,
+    });
+    track("free_book_saved", { chapters: saved.chapterCount });
+  }, []);
+
+  const handleAuthenticated = useCallback(() => {
+    setAuthOpen(false);
+    // Every page is readable the instant the session exists. Rendering and
+    // banking the whole book takes longer than that and happens behind them,
+    // so this says what is going on rather than leaving a silent minute.
+    setNotice("Saving the whole book to your library…");
+    void claimBook()
+      .then(() => setNotice(null))
+      .catch((error: unknown) => {
+        captureClientException(error);
+        setNotice(
+          "Your book is open, but saving it to your library did not work. It is still here in this browser — try reloading.",
+        );
+      });
+  }, [claimBook]);
+
+  const handleUnlock = useCallback(() => {
+    if (unlocked) return;
+    track("auth_gate_viewed");
+    setAuthOpen(true);
+  }, [unlocked]);
+
+  /**
+   * The download button. Signed out it hands over the free pages; signed in it
+   * hands over the whole book. Same button, and what it produces matches
+   * exactly what is readable on screen at the time.
+   */
+  const handleDownload = useCallback(async () => {
+    const state = useOurTailTalesStore.getState();
+    if (state.pages.length === 0) return;
+    setDownloadingPdf(true);
+    setNotice(null);
+    try {
+      const photos = photoMapOf(state.photos);
+      const args = {
+        pages: state.pages,
+        chapters: state.chapters,
+        meta: state.meta,
+        photos,
+      };
+      const blob = unlocked
+        ? await renderFullPreviewPdf(args)
+        : await renderTeaserPdf(args);
+
+      downloadBlob(
+        blob,
+        unlocked
+          ? previewFileName(state.meta.petName)
+          : teaserFileName(state.meta.petName),
+      );
+      track("free_pdf_downloaded", {
+        chapters: state.chapterCount,
+        whole: unlocked,
+      });
+    } catch (error) {
+      captureClientException(error);
+      setNotice("Your PDF could not be prepared. Please try again.");
+    } finally {
+      setDownloadingPdf(false);
+    }
+  }, [unlocked]);
+
+  /** Someone reached the book without ever giving us an address. */
+  const handleEmailSubmit = useCallback(
+    async (email: string) => {
+      const state = useOurTailTalesStore.getState();
+      state.setLeadEmail(email);
+      identifyLead(email);
+
+      await fetch("/api/leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          petName: state.meta.petName,
+          chapterCount: state.chapterCount,
+          photoCount: state.photos.length,
+        }),
+      }).catch(() => {
+        // Never block the book on lead capture.
+      });
+
+      await deliverTeaser();
+    },
+    [deliverTeaser],
+  );
 
   const handleCheckout = useCallback(async () => {
     setNotice(null);
     const state = useOurTailTalesStore.getState();
 
     try {
-      if (
-        state.placements.length > 0 &&
-        (!state.draftId || !state.draftSecret)
-      ) {
+      if (state.placements.length > 0 && (!state.draftId || !state.draftSecret)) {
         throw new Error(
           "Your Video Memories could not be saved. Please try again.",
         );
       }
-      if (
-        !placedMemoriesReadyForCheckout(state.placements, state.videoAssets)
-      ) {
+      if (!placedMemoriesReadyForCheckout(state.placements, state.videoAssets)) {
         throw new Error(
           "Every placed Video Memory must be ready before checkout. Unused videos can keep preparing.",
         );
@@ -438,32 +469,32 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
   // rather than stored: the parameter was previously set by the auth callback
   // and read by nothing, so a broken link looked exactly like a working one.
   const authErrorNotice = searchParams.get("authError")
-    ? "That sign-in link did not work — it may have already been used or expired. You can sign in again when you download."
+    ? "That sign-in link did not work — it may have already been used or expired. You can sign in again from your book."
     : null;
 
   const stage = !localReady ? (
-    <div className="quick-create-stage flex min-h-[calc(100dvh-5rem)] items-center justify-center">
+    <div className="flex min-h-[calc(100dvh-5rem)] items-center justify-center">
       <span
         className="size-10 animate-spin rounded-full border-[3px] border-periwinkle/25 border-t-periwinkle"
         aria-label="Restoring your book"
       />
     </div>
   ) : (
-    <div className="w-full pb-16">
-      <BookEditor
-        onFiles={handleFiles}
-        onStartOver={() => {
-          ingestion.current?.cancel();
-          store.reset();
-        }}
-        onCreateStory={() => void handleCreateStory()}
-        onSample={() => setSampleOpen(true)}
-        onCheckout={() => void handleCheckout()}
-        onRegenerate={(chapterId) => void runStories([chapterId])}
-        notice={notice ?? authErrorNotice}
-        enableVideoMemories={false}
-      />
-    </div>
+    <BookFlow
+      onFiles={handleFiles}
+      onStartOver={() => {
+        ingestion.current?.cancel();
+        store.reset();
+      }}
+      onCreateStory={() => void handleCreateStory()}
+      onRegenerate={(chapterId) => void runStories([chapterId])}
+      onUnlock={handleUnlock}
+      onDownload={() => void handleDownload()}
+      onCheckout={() => void handleCheckout()}
+      unlocked={unlocked}
+      downloading={downloadingPdf}
+      notice={notice ?? authErrorNotice}
+    />
   );
 
   return (
@@ -479,14 +510,19 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
       ) : (
         <main id="create-free-book" className="w-full flex-1 pb-0">
           <div className="brand-atmosphere py-5">
-            <div className="mx-auto w-full max-w-[100rem] px-5 sm:px-8 lg:pl-8 lg:pr-14">
+            <div className="mx-auto w-full max-w-[90rem] px-5 sm:px-8">
               <SiteHeader
                 status={<SaveStatusIndicator />}
                 right={
-                  <CreateHeaderActions
-                    onDownloadPdf={() => void handleDownloadPdf()}
-                    downloading={downloadingPdf}
-                  />
+                  store.leadEmail ? null : (
+                    <button
+                      type="button"
+                      onClick={() => setAskEmail(true)}
+                      className="rounded-full border border-page-line bg-white px-4 py-2 text-sm font-semibold text-page-ink shadow-sm hover:border-periwinkle"
+                    >
+                      Email me my book
+                    </button>
+                  )
                 }
               />
             </div>
@@ -497,18 +533,16 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
 
       {authOpen && (
         <AuthGate
+          initialEmail={store.leadEmail}
           onClose={() => setAuthOpen(false)}
-          onAuthenticated={() => {
-            setAuthOpen(false);
-            void runDownloadPdf();
-          }}
+          onAuthenticated={handleAuthenticated}
         />
       )}
 
-      {sampleOpen && (
+      {askEmail && (
         <EmailSampleModal
-          onClose={() => setSampleOpen(false)}
-          onSubmit={handleSample}
+          onClose={() => setAskEmail(false)}
+          onSubmit={handleEmailSubmit}
           initialEmail={store.leadEmail}
         />
       )}

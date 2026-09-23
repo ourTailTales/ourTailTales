@@ -2,54 +2,80 @@ import { describe, expect, it } from "vitest";
 
 import {
   digitalPurchaseEmailHtml,
-  freePdfEmailHtml,
   orderConfirmationEmailHtml,
   shippingNotificationEmailHtml,
+  teaserEmailHtml,
 } from "@/lib/email/templates";
 
 const bookUrl = "https://ourtailtales.com/book/abc?k=secret";
+const claimUrl = "https://ourtailtales.com/claim/abc?k=secret";
+const teaser = { claimUrl, hiddenChapters: 4, hiddenPages: 44 };
 
-describe("freePdfEmailHtml", () => {
-  it("links to the book rather than mentioning an attachment", () => {
-    const html = freePdfEmailHtml({ petName: "Bailey", bookUrl });
-    expect(html).toContain(bookUrl);
-    expect(html).toContain("View your book");
-    expect(html.toLowerCase()).not.toContain("attach");
+describe("teaserEmailHtml", () => {
+  it("links to the claim page and says how much is still to come", () => {
+    const html = teaserEmailHtml({ petName: "Bailey", ...teaser });
+    expect(html).toContain(claimUrl);
+    expect(html).toContain("Open the whole book");
+    expect(html).toContain("4 chapters");
+    expect(html).toContain("44 pages");
+  });
+
+  it("says the first ten pages are attached, cover included", () => {
+    const html = teaserEmailHtml({ petName: "Bailey", ...teaser });
+    expect(html).toContain("attached to this email");
+    expect(html).toContain("cover included");
+  });
+
+  it("does not promise more pages when the teaser is the whole book", () => {
+    const html = teaserEmailHtml({
+      petName: "Bailey",
+      claimUrl,
+      hiddenChapters: 0,
+      hiddenPages: 0,
+    });
+    expect(html).toContain("saved to your library");
+    expect(html).not.toContain("already written");
+  });
+
+  it("uses the singular for a single remaining chapter", () => {
+    const html = teaserEmailHtml({
+      petName: "Bailey",
+      claimUrl,
+      hiddenChapters: 1,
+      hiddenPages: 1,
+    });
+    expect(html).toContain("1 chapter");
+    expect(html).toContain("1 page");
+    expect(html).not.toContain("1 chapters");
   });
 
   it("uses the right possessive for a name ending in s", () => {
-    expect(freePdfEmailHtml({ petName: "Gus", bookUrl })).toContain("Gus’ story");
-    expect(freePdfEmailHtml({ petName: "Bailey", bookUrl })).toContain(
-      "Bailey’s story",
+    expect(teaserEmailHtml({ petName: "Gus", ...teaser })).toContain("Gus\u2019 book");
+    expect(teaserEmailHtml({ petName: "Bailey", ...teaser })).toContain(
+      "Bailey\u2019s book",
     );
   });
 
   it("still reads properly when no pet name was given", () => {
-    const html = freePdfEmailHtml({ petName: "  ", bookUrl });
-    expect(html).toContain("Your book is ready");
-    expect(html).not.toContain("’s story");
+    const html = teaserEmailHtml({ petName: "  ", ...teaser });
+    expect(html).toContain("Your book is written");
+    expect(html).not.toContain("\u2019s book");
   });
 
   it("escapes a pet name so it cannot inject markup", () => {
-    const html = freePdfEmailHtml({
+    const html = teaserEmailHtml({
       petName: '<script>alert("x")</script>',
-      bookUrl,
+      ...teaser,
     });
     expect(html).not.toContain("<script>");
     expect(html).toContain("&lt;script&gt;");
   });
-
-  it("says how long the free copy lasts without manufacturing urgency", () => {
-    const html = freePdfEmailHtml({ petName: "Bailey", bookUrl });
-    expect(html).toContain("30 days");
-    expect(html.toLowerCase()).not.toContain("hurry");
-    expect(html.toLowerCase()).not.toContain("act now");
-  });
 });
+
 
 describe("brand voice", () => {
   const all = [
-    freePdfEmailHtml({ petName: "Bailey", bookUrl }),
+    teaserEmailHtml({ petName: "Bailey", ...teaser }),
     digitalPurchaseEmailHtml({ petName: "Bailey", bookUrl }),
     orderConfirmationEmailHtml({
       petName: "Bailey",

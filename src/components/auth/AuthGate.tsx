@@ -7,33 +7,43 @@ import { authConfigured, createAuthBrowserClient } from "@/lib/supabase/auth-bro
 type Mode = "signIn" | "signUp";
 
 /**
- * Email/password gate, shown at the moment the customer asks for their PDF.
+ * The account, asked for at the one moment it is worth something.
  *
- * Deliberately the last step rather than the first: someone who has not yet
- * seen their book has no reason to make an account, and asking up front costs
- * more of them than it is worth. By the time this appears they have a finished
- * book on screen and the account is what keeps it.
+ * By the time this appears the customer has read the opening of their own
+ * pet's book and wants the rest, so the trade is legible: an address they
+ * already gave us and a password, in exchange for the whole book, kept
+ * somewhere that is not one browser tab.
+ *
+ * One password field, no confirmation field, no name — every extra box here is
+ * a person who does not finish. The address is prefilled from the one they
+ * gave before uploading, and is theirs to correct.
  *
  * Mounted only while open, so every visit starts from a clean state.
  */
 export function AuthGate({
+  initialEmail,
   onClose,
   onAuthenticated,
 }: {
+  initialEmail?: string | null;
   onClose: () => void;
   onAuthenticated: () => void;
 }) {
   const [mode, setMode] = useState<Mode>("signUp");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(initialEmail?.trim() ?? "");
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState<"idle" | "working">("idle");
   const [message, setMessage] = useState<string | null>(null);
   const [isError, setIsError] = useState(false);
   const emailRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
 
+  // With the address already known, the only thing left to type is the
+  // password — so that is where the cursor goes.
   useEffect(() => {
-    emailRef.current?.focus();
-  }, []);
+    if (initialEmail?.trim()) passwordRef.current?.focus();
+    else emailRef.current?.focus();
+  }, [initialEmail]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
@@ -68,10 +78,28 @@ export function AuthGate({
 
     try {
       const supabase = createAuthBrowserClient();
-      const { data, error } =
-        mode === "signIn"
-          ? await supabase.auth.signInWithPassword({ email: trimmed, password })
-          : await supabase.auth.signUp({ email: trimmed, password });
+      const attempt = async (which: Mode) =>
+        which === "signIn"
+          ? supabase.auth.signInWithPassword({ email: trimmed, password })
+          : supabase.auth.signUp({ email: trimmed, password });
+
+      let { data, error } = await attempt(mode);
+
+      // Someone who made a book here before is signing up again with the same
+      // address. They meant "let me in", so let them in rather than making
+      // them read an error and press a different button.
+      if (error && mode === "signUp" && looksRegistered(error.message)) {
+        setMode("signIn");
+        ({ data, error } = await attempt("signIn"));
+        if (error) {
+          setStatus("idle");
+          setIsError(true);
+          setMessage(
+            "You already have an account with this address — that password did not match it.",
+          );
+          return;
+        }
+      }
 
       if (error) {
         setStatus("idle");
@@ -80,9 +108,10 @@ export function AuthGate({
         return;
       }
 
-      // A sign-up returns no session when the project requires email
-      // confirmation. The customer cannot finish here, so say exactly that
-      // rather than appearing to succeed and then doing nothing.
+      // A sign-up returns no session only when the Supabase project requires
+      // email confirmation. This product deliberately does not — clicking the
+      // link in the book email already proves the address — so if it ever
+      // does, say exactly what is happening instead of appearing to succeed.
       if (!data.session) {
         setStatus("idle");
         setIsError(false);
@@ -121,12 +150,12 @@ export function AuthGate({
 
       <div className="relative w-full max-w-md rounded-2xl border border-line bg-white p-6 shadow-book">
         <h2 id="authGateTitle" className="font-display text-2xl text-ink">
-          {mode === "signUp" ? "Keep your book" : "Welcome back"}
+          {mode === "signUp" ? "Open the whole book" : "Welcome back"}
         </h2>
         <p className="mt-2 text-sm leading-6 text-ink-soft">
           {mode === "signUp"
-            ? "Your book is ready. Make an account and it stays in your library — open it again from any device, not just this browser."
-            : "Sign in and your download will start straight away."}
+            ? "Pick a password and every page opens. Your book is saved to your library, and you can change any of it from there."
+            : "Sign in and your book opens where you left it."}
         </p>
 
         <form
@@ -154,10 +183,11 @@ export function AuthGate({
 
           <div>
             <label htmlFor="authPassword" className="block text-sm font-medium text-ink">
-              Password
+              {mode === "signUp" ? "Choose a password" : "Password"}
             </label>
             <input
               id="authPassword"
+              ref={passwordRef}
               type="password"
               autoComplete={mode === "signUp" ? "new-password" : "current-password"}
               value={password}
@@ -165,6 +195,9 @@ export function AuthGate({
               disabled={working}
               className="mt-1 min-h-11 w-full rounded-xl border border-line px-3 text-sm text-ink outline-none focus:border-periwinkle disabled:opacity-60"
             />
+            {mode === "signUp" ? (
+              <p className="mt-1.5 text-xs text-ink-faint">At least 6 characters.</p>
+            ) : null}
           </div>
 
           {message && (
@@ -184,8 +217,8 @@ export function AuthGate({
             {working
               ? "One moment…"
               : mode === "signUp"
-                ? "Create account and download"
-                : "Sign in and download"}
+                ? "Open my book"
+                : "Sign in"}
           </button>
         </form>
 
@@ -205,4 +238,9 @@ export function AuthGate({
       </div>
     </div>
   );
+}
+
+/** Supabase has worded this several ways across versions. */
+function looksRegistered(message: string): boolean {
+  return /already registered|already exists|user already/i.test(message);
 }

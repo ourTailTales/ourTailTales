@@ -21,6 +21,8 @@ export type FunnelEvent =
   | "book_size_confirmed"
   | "story_generated"
   | "sample_email_submitted"
+  | "teaser_email_sent"
+  | "teaser_wall_reached"
   | "lead_captured"
   | "free_pdf_downloaded"
   | "free_pdf_stored"

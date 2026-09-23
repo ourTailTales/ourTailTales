@@ -2,27 +2,30 @@ import { z } from "zod";
 
 import { draftSecretFromRequest } from "@/lib/drafts/token";
 import { resolveDraft } from "@/lib/drafts/resolve";
-import { bookUrl } from "@/lib/drafts/storage";
+import { claimUrl, draftPdfPath } from "@/lib/drafts/storage";
 import { routeError } from "@/lib/env";
-import { sendFreePdfEmail } from "@/lib/email/send";
-import { supabaseAdmin } from "@/lib/supabase/server";
+import { sendTeaserEmail } from "@/lib/email/send";
+import { PREVIEW_BUCKET, supabaseAdmin } from "@/lib/supabase/server";
 
 /**
- * Emails the customer a link to their free book.
+ * Emails the customer their first ten pages, with the PDF attached, plus the
+ * link that opens the rest.
  *
  * Authenticated with the draft credentials rather than a bare draft id: the
- * link it sends carries the draft secret, so whoever asks for that mail has to
- * already hold the secret. Otherwise anyone who learned a draft id could have
+ * link it sends carries the draft secret, so whoever asks for this mail has to
+ * already hold that secret. Otherwise anyone who learned a draft id could have
  * a working link posted to an address of their choosing.
  *
- * The PDF is never attached. A full book at preview resolution is past what
- * mailboxes will take, and a link keeps showing the current copy after a
- * purchase removes the watermark.
+ * The bytes are read from storage rather than accepted from the request. The
+ * teaser is banked the moment the book is written, and a route handler's body
+ * cap is below what a ten-page photo book weighs anyway.
  */
 
 const requestSchema = z.object({
   email: z.email().max(200),
   petName: z.string().max(80).optional().default(""),
+  hiddenChapters: z.number().int().min(0).max(200).optional().default(0),
+  hiddenPages: z.number().int().min(0).max(2000).optional().default(0),
 });
 
 export async function POST(request: Request): Promise<Response> {
@@ -41,31 +44,72 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
 
-    // Only send once there is something to open. Mailing a link to a book that
-    // has not finished uploading is worse than not mailing at all.
-    const { data: row } = await supabaseAdmin()
+    const supabase = supabaseAdmin();
+    const { data: row } = await supabase
       .from("book_drafts")
-      .select("pdf_storage_path, pet_name")
+      .select("pdf_stored_at, pet_name")
       .eq("id", draft.id)
       .maybeSingle();
 
-    if (!row?.pdf_storage_path) {
+    // Only send once there is something to attach. Mailing an empty welcome
+    // is worse than not mailing at all.
+    if (!row?.pdf_stored_at) {
       return Response.json(
         { error: "Your book is still being prepared. Please try again shortly." },
         { status: 409 },
       );
     }
 
-    const result = await sendFreePdfEmail({
+    const { data: file, error: downloadError } = await supabase.storage
+      .from(PREVIEW_BUCKET)
+      .download(draftPdfPath(draft.id, "teaser"));
+
+    if (downloadError || !file) {
+      return Response.json(
+        { error: "Your book is still being prepared. Please try again shortly." },
+        { status: 409 },
+      );
+    }
+
+    const petName = parsed.data.petName || (row.pet_name ?? "");
+    const result = await sendTeaserEmail({
       to: parsed.data.email,
-      petName: parsed.data.petName || (row.pet_name ?? ""),
-      bookUrl: bookUrl(draft.id, secret),
+      petName,
+      claimUrl: claimUrl(draft.id, secret),
+      hiddenChapters: parsed.data.hiddenChapters,
+      hiddenPages: parsed.data.hiddenPages,
+      pdf: new Uint8Array(await file.arrayBuffer()),
+      fileName: `ourtailtales-${slug(petName)}-first-pages.pdf`,
     });
 
+    // Remembered so the claim link can prefill it rather than asking for an
+    // address they have already given. Best effort — failing to record it
+    // costs one prefilled field, never the email itself.
+    if (result.sent) {
+      await supabase
+        .from("book_drafts")
+        .update({ lead_email: parsed.data.email })
+        .eq("id", draft.id)
+        .then(
+          () => undefined,
+          () => undefined,
+        );
+    }
+
     // A missing API key is a deployment gap, not a customer error: the book
-    // itself is fine and already downloadable.
+    // itself is fine and already on their screen.
     return Response.json({ sent: result.sent, reason: result.reason });
   } catch (error) {
     return routeError(error, "That email could not be sent.");
   }
+}
+
+function slug(petName: string): string {
+  return (
+    petName
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "") || "pet"
+  );
 }

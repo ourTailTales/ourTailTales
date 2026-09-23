@@ -23,13 +23,26 @@ export async function POST(request: Request): Promise<Response> {
 
     const { data: row } = await supabaseAdmin()
       .from("book_drafts")
-      .select("pet_name, pdf_storage_path, digital_purchased_at")
+      .select("pet_name, pdf_storage_path, clean_pdf_storage_path, digital_purchased_at")
       .eq("id", draft.id)
       .maybeSingle();
 
     if (!row?.pdf_storage_path) {
       return Response.json(
         { error: "This book is still being prepared." },
+        { status: 409 },
+      );
+    }
+    // Until the whole book has been banked, the only file here is the free
+    // ten-page teaser — and selling someone a "complete book" that turns out
+    // to be the sample they already had would be the worst thing this product
+    // could do. Banking happens when the account is made, so that is the ask.
+    if (!row.clean_pdf_storage_path) {
+      return Response.json(
+        {
+          error:
+            "Make your free account first — that is what opens the whole book, and then you can buy the clean PDF.",
+        },
         { status: 409 },
       );
     }

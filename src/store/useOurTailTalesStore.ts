@@ -68,6 +68,19 @@ type State = {
   saveStatus: "saved" | "saving";
   /** Customer-uploaded print-ready cover, used instead of the designed one when set. */
   customCover: CustomCoverMeta | null;
+  /**
+   * The book exactly as it was written, kept so every edit is undoable in one
+   * step. The fear of ruining something they already love is the main reason
+   * people back out of an editor; a way back makes the whole thing safe to
+   * touch. Captured once, when generation finishes, and never overwritten.
+   */
+  originalBook: BookSnapshot | null;
+};
+
+export type BookSnapshot = {
+  meta: BookMeta;
+  chapters: Chapter[];
+  pages: BookPage[];
 };
 
 export type AlbumVideoPreview = {
@@ -117,6 +130,7 @@ type Actions = {
     toIndex: number,
   ) => void;
   setCoverPhoto: (photoId: string) => void;
+  setChapterHero: (chapterId: string, photoId: string) => void;
 
   setLeadEmail: (email: string) => void;
   setExporting: (message: string | null) => void;
@@ -136,6 +150,8 @@ type Actions = {
   setFreePreviewReady: (ready: boolean) => void;
   setSaveStatus: (status: "saved" | "saving") => void;
   setCustomCover: (customCover: CustomCoverMeta | null) => void;
+  setOriginalBook: (snapshot: BookSnapshot | null) => void;
+  resetToOriginal: () => void;
   reset: () => void;
 };
 
@@ -199,6 +215,7 @@ const initialState: State = {
   freePreviewReady: false,
   saveStatus: "saved",
   customCover: null,
+  originalBook: null,
 };
 
 export const useOurTailTalesStore = create<OurTailTalesStore>((set) => ({
@@ -350,7 +367,17 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set) => ({
       ),
     })),
 
-  finishStoryGeneration: () => set({ funnelState: "editing" }),
+  finishStoryGeneration: () =>
+    set((state) => ({
+      funnelState: "editing",
+      // The way back. Taken here because this is the last moment the book is
+      // purely what we wrote — everything after it is the customer's own.
+      originalBook: {
+        meta: structuredClone(state.meta),
+        chapters: structuredClone(state.chapters),
+        pages: structuredClone(state.pages),
+      },
+    })),
 
   updateChapterText: (chapterId, patch) =>
     set((state) => ({
@@ -400,6 +427,24 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set) => ({
       return {
         meta,
         pages: paginateBook(meta, state.chapters, orientationsOf(state.photos)),
+      };
+    }),
+
+  /**
+   * Which of a chapter's photos opens it. Distinct from swapping a photo: the
+   * picture is already in the chapter, it just moves to the opener's full-page
+   * slot, so the page list has to be rebuilt around it.
+   */
+  setChapterHero: (chapterId, photoId) =>
+    set((state) => {
+      const chapters = state.chapters.map((chapter) =>
+        chapter.id === chapterId && chapter.photoIds.includes(photoId)
+          ? { ...chapter, heroPhotoId: photoId }
+          : chapter,
+      );
+      return {
+        chapters,
+        pages: paginateBook(state.meta, chapters, orientationsOf(state.photos)),
       };
     }),
 
@@ -480,6 +525,7 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set) => ({
       freePreviewReady: Boolean(restored.previewPdf),
       saveStatus: "saved",
       customCover: restored.customCover ?? null,
+      originalBook: restored.originalBook ?? null,
     });
     return true;
   },
@@ -489,6 +535,18 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set) => ({
   setSaveStatus: (saveStatus) => set({ saveStatus }),
 
   setCustomCover: (customCover) => set({ customCover }),
+
+  setOriginalBook: (originalBook) => set({ originalBook }),
+
+  resetToOriginal: () =>
+    set((state) => {
+      if (!state.originalBook) return {};
+      return {
+        meta: structuredClone(state.originalBook.meta),
+        chapters: structuredClone(state.originalBook.chapters),
+        pages: structuredClone(state.originalBook.pages),
+      };
+    }),
 
   reset: () => {
     assetStore.releaseAll();

@@ -7,7 +7,8 @@ import {
   type PDFPage,
 } from "pdf-lib";
 
-import { FIXED_SLOTS, LAYOUTS, PAGE_INCHES } from "@/lib/book/layouts";
+import { drawFrontCoverPage } from "@/lib/book/cover-pdf";
+import { BLEED_INCHES, FIXED_SLOTS, LAYOUTS, PAGE_INCHES, TRIM_INCHES } from "@/lib/book/layouts";
 import { CLOSING_LINE, possessivePetName } from "@/lib/book/pagination";
 import { brand, hexToRgb01 } from "@/lib/brand";
 import * as assetStore from "@/lib/photo/assetStore";
@@ -18,6 +19,8 @@ import type { VideoMemoryPlacement } from "@/types/video-memory";
 
 const PT_PER_INCH = 72;
 const PAGE_PT = PAGE_INCHES * PT_PER_INCH; // 630pt for an 8.75in bleed page
+const TRIM_PT = TRIM_INCHES * PT_PER_INCH; // 612pt — the finished 8.5in page
+const BLEED_PT = BLEED_INCHES * PT_PER_INCH; // 9pt trimmed off each edge
 
 function brandRgb(hex: string) {
   const { r, g, b } = hexToRgb01(hex);
@@ -54,8 +57,28 @@ export type InteriorRenderOptions = {
   watermark?: string;
   /** Render only the first N pages, used only for the free sample. */
   pageLimit?: number;
+  /**
+   * Crop every page to the 8.5in trim.
+   *
+   * The print file carries 0.125in of bleed on each edge that the binder cuts
+   * away. On a screen nothing cuts it, so an uncropped preview shows a ragged
+   * extra margin the finished book does not have. Set for anything a customer
+   * reads rather than anything a printer receives.
+   */
+  cropToTrim?: boolean;
+  /** Open on the front cover, drawn from `meta`, before the first interior page. */
+  frontCover?: boolean;
+  /** Close on a page saying what the rest of the book holds. */
+  lockedNotice?: LockedNotice;
   placements?: VideoMemoryPlacement[];
   onProgress?: (completed: number, total: number) => void;
+};
+
+export type LockedNotice = {
+  /** Interior pages this file leaves out. */
+  hiddenPages: number;
+  /** Chapters this file leaves out. */
+  hiddenChapters: number;
 };
 
 export type InteriorRenderResult = {
@@ -83,6 +106,9 @@ export async function renderInteriorPdf(
     jpegQuality = 0.9,
     watermark,
     pageLimit,
+    cropToTrim = false,
+    frontCover = false,
+    lockedNotice,
     placements = [],
     onProgress,
   } = options;
@@ -102,8 +128,21 @@ export async function renderInteriorPdf(
   const selected = pageLimit ? pages.slice(0, pageLimit) : pages;
   const lowResWarnings: LowResWarning[] = [];
 
-  for (const [index, bookPage] of selected.entries()) {
+  /** Every page is laid out on the full bleed page; cropping only changes what a reader sees. */
+  const addPage = (): PDFPage => {
     const page = pdf.addPage([PAGE_PT, PAGE_PT]);
+    if (cropToTrim) page.setCropBox(BLEED_PT, BLEED_PT, TRIM_PT, TRIM_PT);
+    return page;
+  };
+
+  if (frontCover) {
+    const page = addPage();
+    await drawFrontCoverPage(pdf, page, { meta, targetPpi });
+    await nextTick();
+  }
+
+  for (const [index, bookPage] of selected.entries()) {
+    const page = addPage();
     page.drawRectangle({
       x: 0,
       y: 0,
@@ -140,11 +179,79 @@ export async function renderInteriorPdf(
     await nextTick();
   }
 
+  if (lockedNotice) {
+    drawLockedPage(addPage(), fonts, meta, lockedNotice);
+  }
+
   return {
     bytes: await pdf.save(),
-    pageCount: selected.length,
+    pageCount: pdf.getPageCount(),
     lowResWarnings,
   };
+}
+
+/**
+ * The last page of the teaser: what is still behind the account.
+ *
+ * Deliberately a page of the book rather than an advert — same paper, same
+ * type — so closing the file feels like reaching a door, not an ad break.
+ */
+function drawLockedPage(
+  page: PDFPage,
+  fonts: Fonts,
+  meta: BookMeta,
+  notice: LockedNotice,
+): void {
+  const name = meta.petName.trim();
+
+  drawCentered(page, name ? `${possessivePetName(name)} story` : "Their story", {
+    font: fonts.display,
+    size: 30,
+    color: INK,
+    baseline: PAGE_PT * 0.62,
+  });
+
+  drawCentered(page, "continues", {
+    font: fonts.displayItalic,
+    size: 30,
+    color: INK,
+    baseline: PAGE_PT * 0.555,
+  });
+
+  page.drawRectangle({
+    x: PAGE_PT * 0.42,
+    y: PAGE_PT * 0.5,
+    width: PAGE_PT * 0.16,
+    height: 1,
+    color: ACCENT,
+    opacity: 0.5,
+  });
+
+  const chapters =
+    notice.hiddenChapters === 1 ? "1 more chapter" : `${notice.hiddenChapters} more chapters`;
+  const pagesLine =
+    notice.hiddenPages === 1 ? "1 more page" : `${notice.hiddenPages} more pages`;
+
+  drawCentered(page, `${chapters} — ${pagesLine} — are written and waiting.`, {
+    font: fonts.sans,
+    size: 12,
+    color: INK_SOFT,
+    baseline: PAGE_PT * 0.44,
+  });
+
+  drawCentered(page, "Open the link in your email to read the rest.", {
+    font: fonts.sans,
+    size: 12,
+    color: INK_SOFT,
+    baseline: PAGE_PT * 0.405,
+  });
+
+  drawCentered(page, brand.domain, {
+    font: fonts.sans,
+    size: 9,
+    color: INK_FAINT,
+    baseline: PAGE_PT * 0.16,
+  });
 }
 
 type Fonts = { display: PDFFont; displayItalic: PDFFont; sans: PDFFont };

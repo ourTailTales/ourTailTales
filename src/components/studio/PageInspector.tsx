@@ -1,0 +1,535 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { Info, RefreshCw } from "lucide-react";
+
+import { AddMediaControl } from "@/components/editor/AddMediaControl";
+import { CustomCoverPanel } from "@/components/editor/CustomCoverPanel";
+import { LayoutThumbnail } from "@/components/editor/LayoutThumbnail";
+import { NamePositionPicker } from "@/components/studio/controls/NamePositionPicker";
+import { PhotoPicker } from "@/components/studio/controls/PhotoPicker";
+import {
+  COVER_FONTS,
+  COVER_LAYOUTS,
+  DEFAULT_COVER_FONT,
+  DEFAULT_COVER_LAYOUT,
+  DEFAULT_COVER_NAME_SIZE,
+  defaultNameAnchor,
+} from "@/lib/book/coverLayouts";
+import type { StudioSlide } from "@/lib/book/studio";
+import { useOurTailTalesStore } from "@/store/useOurTailTalesStore";
+import type { CoverFontId } from "@/types/book";
+import type { PhotoAsset } from "@/types/photo";
+
+const NAME_SIZES = [
+  1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3, 3.25, 3.5, 3.75, 4, 4.5, 5,
+] as const;
+
+const inputClass =
+  "w-full rounded-lg border border-page-line bg-white px-3.5 py-2.5 text-sm text-page-ink outline-none transition-colors placeholder:text-page-ink-faint focus:border-periwinkle focus:ring-2 focus:ring-periwinkle/20";
+
+const selectClass =
+  "h-10 w-full rounded-lg border border-page-line bg-white px-2.5 text-sm text-page-ink outline-none transition-colors hover:border-periwinkle focus:border-periwinkle focus:ring-2 focus:ring-periwinkle/20";
+
+/**
+ * The tools for whichever page is selected — and only those.
+ *
+ * A single toolbar carrying every control the book might need is unreadable by
+ * the third chapter; a panel that shows the four things this page actually has
+ * is not. Which page is selected changes on a tap, never on a scroll, so this
+ * panel is stable while someone is hunting for a page.
+ */
+export function PageInspector({
+  slide,
+  photos,
+  onRegenerate,
+  onFiles,
+  processing,
+}: {
+  slide: StudioSlide;
+  photos: PhotoAsset[];
+  onRegenerate: (chapterId: string) => void;
+  onFiles: (files: File[]) => void;
+  processing: boolean;
+}) {
+  if (!slide.editable) {
+    return (
+      <Panel
+        title={slide.label}
+        hint="This page is part of the binding rather than the story, so there is nothing to change here."
+      />
+    );
+  }
+
+  if (!slide.page) {
+    return <CoverPanel photos={photos} onFiles={onFiles} processing={processing} />;
+  }
+
+  switch (slide.page.kind) {
+    case "title":
+      return <TitlePanel photos={photos} />;
+    case "dedication":
+      return <DedicationPanel />;
+    case "chapter-opener":
+      return (
+        <ChapterPanel
+          chapterId={slide.chapterId!}
+          photos={photos}
+          onRegenerate={onRegenerate}
+        />
+      );
+    case "closing":
+      return (
+        <Panel
+          title="Closing"
+          hint="The last page carries a photo from the final chapter and the closing line. Change the last chapter's photos and this follows."
+        />
+      );
+    default:
+      return <PhotoPagePanel slide={slide} photos={photos} />;
+  }
+}
+
+/* ---------------------------------- cover --------------------------------- */
+
+function CoverPanel({
+  photos,
+  onFiles,
+  processing,
+}: {
+  photos: PhotoAsset[];
+  onFiles: (files: File[]) => void;
+  processing: boolean;
+}) {
+  const meta = useOurTailTalesStore((state) => state.meta);
+  const setMeta = useOurTailTalesStore((state) => state.setMeta);
+  const setCoverPhoto = useOurTailTalesStore((state) => state.setCoverPhoto);
+  const customCover = useOurTailTalesStore((state) => state.customCover);
+  const [showUpload, setShowUpload] = useState(false);
+
+  const layoutId = meta.coverLayoutId ?? DEFAULT_COVER_LAYOUT;
+  const fontId = meta.coverFontId ?? DEFAULT_COVER_FONT;
+  const anchor = meta.coverNameAnchor ?? defaultNameAnchor(layoutId);
+  const nameSize = meta.coverNameSize ?? DEFAULT_COVER_NAME_SIZE;
+
+  return (
+    <Panel title="Cover" hint="The first thing anyone sees, including you.">
+      <Field label="Pet's name">
+        <input
+          type="text"
+          value={meta.petName}
+          onChange={(event) => setMeta({ petName: event.target.value.slice(0, 60) })}
+          placeholder="Type name here"
+          className={inputClass}
+        />
+      </Field>
+
+      <Field label="Style">
+        <div className="grid grid-cols-3 gap-2">
+          {COVER_LAYOUTS.map((layout) => (
+            <LayoutThumbnail
+              key={layout.id}
+              layoutId={layout.id}
+              petName={meta.petName || "Type name here"}
+              active={layoutId === layout.id}
+              onClick={() => setMeta({ coverLayoutId: layout.id })}
+            />
+          ))}
+        </div>
+      </Field>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Font">
+          <select
+            value={fontId}
+            onChange={(event) =>
+              setMeta({ coverFontId: event.target.value as CoverFontId })
+            }
+            className={selectClass}
+            aria-label="Name font"
+          >
+            {COVER_FONTS.map((font) => (
+              <option key={font.id} value={font.id}>
+                {font.label}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Size">
+          <select
+            value={nameSize}
+            onChange={(event) => setMeta({ coverNameSize: Number(event.target.value) })}
+            className={selectClass}
+            aria-label="Name size"
+          >
+            {NAME_SIZES.map((size) => (
+              <option key={size} value={size}>
+                {size}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </div>
+
+      <Field label="Name position">
+        <NamePositionPicker
+          value={anchor}
+          onChange={(next) => setMeta({ coverNameAnchor: next })}
+        />
+      </Field>
+
+      <Field label="Cover photo">
+        <PhotoPicker
+          photos={photos}
+          selectedId={meta.coverPhotoId}
+          onPick={setCoverPhoto}
+          badge="Cover"
+        />
+        <div className="mt-3">
+          <AddMediaControl
+            onFiles={onFiles}
+            processing={processing}
+            readyCount={photos.length}
+            videoCount={0}
+          />
+        </div>
+      </Field>
+
+      {/* The customer's own print-ready wrap, if they have one. Kept behind a
+          disclosure because almost nobody does, and an upload field sitting
+          open next to a finished cover reads as though one is expected. */}
+      <div className="border-t border-page-line pt-4">
+        <button
+          type="button"
+          onClick={() => setShowUpload((open) => !open)}
+          aria-expanded={showUpload}
+          className="text-xs font-medium text-page-ink-soft underline decoration-page-line underline-offset-4 hover:text-periwinkle-deep"
+        >
+          {customCover
+            ? "Your uploaded cover is in use — manage it"
+            : "I have my own print-ready cover"}
+        </button>
+        {showUpload || customCover ? (
+          <div className="mt-3">
+            <CustomCoverPanel />
+          </div>
+        ) : null}
+      </div>
+    </Panel>
+  );
+}
+
+/* ---------------------------------- title --------------------------------- */
+
+function TitlePanel({ photos }: { photos: PhotoAsset[] }) {
+  const meta = useOurTailTalesStore((state) => state.meta);
+  const setMeta = useOurTailTalesStore((state) => state.setMeta);
+  const setCoverPhoto = useOurTailTalesStore((state) => state.setCoverPhoto);
+
+  return (
+    <Panel title="Title page" hint="The first page inside the book.">
+      <Field label="Pet's name">
+        <input
+          type="text"
+          value={meta.petName}
+          onChange={(event) => setMeta({ petName: event.target.value.slice(0, 60) })}
+          placeholder="Type name here"
+          className={inputClass}
+        />
+      </Field>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="From">
+          <input
+            type="text"
+            inputMode="numeric"
+            value={meta.birthYear}
+            onChange={(event) => setMeta({ birthYear: event.target.value.slice(0, 4) })}
+            placeholder="2011"
+            className={inputClass}
+          />
+        </Field>
+        <Field label="Until">
+          <input
+            type="text"
+            inputMode="numeric"
+            value={meta.deathYear}
+            onChange={(event) => setMeta({ deathYear: event.target.value.slice(0, 4) })}
+            placeholder="2024"
+            className={inputClass}
+          />
+        </Field>
+      </div>
+
+      <Field
+        label="Photo"
+        note="The title page shares the cover photo, so changing it here changes both."
+      >
+        <PhotoPicker
+          photos={photos}
+          selectedId={meta.coverPhotoId}
+          onPick={setCoverPhoto}
+          badge="In use"
+        />
+      </Field>
+    </Panel>
+  );
+}
+
+/* -------------------------------- dedication ------------------------------ */
+
+function DedicationPanel() {
+  const meta = useOurTailTalesStore((state) => state.meta);
+  const setMeta = useOurTailTalesStore((state) => state.setMeta);
+
+  return (
+    <Panel
+      title="Dedication"
+      hint="A line or two of your own. It also appears on the back cover."
+    >
+      <Field label={`Dedication · ${meta.dedication.length}/320`}>
+        <textarea
+          value={meta.dedication}
+          onChange={(event) => setMeta({ dedication: event.target.value.slice(0, 320) })}
+          rows={6}
+          placeholder="For the best copilot a family could ask for."
+          className={`${inputClass} resize-none leading-relaxed`}
+        />
+      </Field>
+    </Panel>
+  );
+}
+
+/* --------------------------------- chapter -------------------------------- */
+
+function ChapterPanel({
+  chapterId,
+  photos,
+  onRegenerate,
+}: {
+  chapterId: string;
+  photos: PhotoAsset[];
+  onRegenerate: (chapterId: string) => void;
+}) {
+  const chapter = useOurTailTalesStore((state) =>
+    state.chapters.find((entry) => entry.id === chapterId),
+  );
+  const updateChapterText = useOurTailTalesStore((state) => state.updateChapterText);
+  const setChapterHero = useOurTailTalesStore((state) => state.setChapterHero);
+
+  const chapterPhotos = useMemo(
+    () =>
+      chapter
+        ? chapter.photoIds
+            .map((id) => photos.find((photo) => photo.id === id))
+            .filter((photo): photo is PhotoAsset => Boolean(photo))
+        : [],
+    [chapter, photos],
+  );
+
+  if (!chapter) return null;
+  const writing = chapter.aiStatus === "pending";
+
+  return (
+    <Panel title="Chapter" hint="Everything we wrote here is yours to change.">
+      {chapter.aiStatus === "error" ? (
+        <p className="rounded-lg border border-page-line bg-lavender/40 px-3 py-2 text-xs text-page-ink-soft">
+          {chapter.aiError ?? "This chapter could not be written."}
+        </p>
+      ) : null}
+
+      <Field label="Title">
+        <input
+          type="text"
+          value={chapter.title}
+          onChange={(event) =>
+            updateChapterText(chapter.id, { title: event.target.value.slice(0, 90) })
+          }
+          className={inputClass}
+        />
+      </Field>
+
+      <Field label="Date line">
+        <input
+          type="text"
+          value={chapter.dateLabel}
+          onChange={(event) =>
+            updateChapterText(chapter.id, { dateLabel: event.target.value.slice(0, 60) })
+          }
+          placeholder="Summer 2019"
+          className={inputClass}
+        />
+      </Field>
+
+      <Field label="Story">
+        <textarea
+          value={chapter.blurb}
+          onChange={(event) =>
+            updateChapterText(chapter.id, { blurb: event.target.value.slice(0, 1200) })
+          }
+          rows={7}
+          className={`${inputClass} resize-none leading-relaxed`}
+        />
+      </Field>
+
+      <button
+        type="button"
+        onClick={() => onRegenerate(chapter.id)}
+        disabled={writing}
+        className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-page-line bg-white px-3.5 text-sm font-medium text-page-ink-soft transition-colors hover:border-periwinkle hover:text-periwinkle-deep disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        <RefreshCw
+          aria-hidden
+          className={`size-4 ${writing ? "animate-spin" : ""}`}
+        />
+        {writing ? "Writing…" : "Write this chapter again"}
+      </button>
+
+      <Field label="Opening photo">
+        <PhotoPicker
+          photos={chapterPhotos}
+          selectedId={chapter.heroPhotoId}
+          onPick={(photoId) => setChapterHero(chapter.id, photoId)}
+          badge="Opens"
+          emptyLabel="This chapter has no photos yet."
+        />
+      </Field>
+    </Panel>
+  );
+}
+
+/* ------------------------------- photo pages ------------------------------ */
+
+function PhotoPagePanel({
+  slide,
+  photos,
+}: {
+  slide: StudioSlide;
+  photos: PhotoAsset[];
+}) {
+  const chapters = useOurTailTalesStore((state) => state.chapters);
+  const swapChapterPhoto = useOurTailTalesStore((state) => state.swapChapterPhoto);
+
+  const page = slide.page!;
+  const chapter = chapters.find((entry) => entry.id === slide.chapterId);
+  const [slotIndex, setSlotIndex] = useState(0);
+
+  const onPage = useMemo(
+    () =>
+      page.photoIds
+        .map((id) => photos.find((photo) => photo.id === id))
+        .filter((photo): photo is PhotoAsset => Boolean(photo)),
+    [page.photoIds, photos],
+  );
+
+  // Anything from this chapter's date range that is not already on a page.
+  const available = useMemo(() => {
+    if (!chapter) return [];
+    const used = new Set(chapter.photoIds);
+    const pool = chapter.candidateIds.filter((id) => !used.has(id));
+    const current = page.photoIds[slotIndex];
+    return [current, ...pool]
+      .filter((id): id is string => Boolean(id))
+      .map((id) => photos.find((photo) => photo.id === id))
+      .filter((photo): photo is PhotoAsset => Boolean(photo));
+  }, [chapter, page.photoIds, photos, slotIndex]);
+
+  if (onPage.length === 0) {
+    return (
+      <Panel
+        title={slide.label}
+        hint="This page has no photos on it — the chapter ran out before reaching it."
+      />
+    );
+  }
+
+  const active = page.photoIds[slotIndex];
+
+  return (
+    <Panel title={slide.label} hint="Swap any photo on this page.">
+      <Field label="Photo on this page">
+        <ol className="flex gap-2">
+          {onPage.map((photo, index) => (
+            <li key={photo.id}>
+              <button
+                type="button"
+                onClick={() => setSlotIndex(index)}
+                aria-pressed={index === slotIndex}
+                className={`block size-14 overflow-hidden rounded-md ring-1 transition-all ${
+                  index === slotIndex
+                    ? "ring-2 ring-periwinkle"
+                    : "ring-page-ink/10 hover:ring-periwinkle/60"
+                }`}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element -- local object URL */}
+                <img
+                  src={photo.thumbUrl}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
+              </button>
+            </li>
+          ))}
+        </ol>
+      </Field>
+
+      <Field label="Replace it with">
+        <PhotoPicker
+          photos={available}
+          selectedId={active ?? null}
+          onPick={(incoming) => {
+            if (!chapter || !active || incoming === active) return;
+            swapChapterPhoto(chapter.id, active, incoming);
+          }}
+          badge="On page"
+          emptyLabel="Every photo from this part of the album is already in the book."
+        />
+      </Field>
+    </Panel>
+  );
+}
+
+/* --------------------------------- pieces --------------------------------- */
+
+function Panel({
+  title,
+  hint,
+  children,
+}: {
+  title: string;
+  hint?: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="font-display text-lg text-page-ink">{title}</h2>
+        {hint ? <p className="mt-1 text-xs leading-5 text-page-ink-faint">{hint}</p> : null}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function Field({
+  label,
+  note,
+  children,
+}: {
+  label: string;
+  note?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <span className="mb-1.5 block text-sm font-medium text-page-ink-soft">{label}</span>
+      {children}
+      {note ? (
+        <p className="mt-1.5 flex items-start gap-1.5 text-[0.7rem] leading-4 text-page-ink-faint">
+          <Info aria-hidden className="mt-px size-3 shrink-0" />
+          {note}
+        </p>
+      ) : null}
+    </div>
+  );
+}

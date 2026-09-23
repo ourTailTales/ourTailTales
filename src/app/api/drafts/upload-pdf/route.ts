@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { resolveDraft } from "@/lib/drafts/resolve";
 import { routeError } from "@/lib/env";
-import { draftPdfPath } from "@/lib/drafts/storage";
+import { draftPdfPath, type DraftPdfKind } from "@/lib/drafts/storage";
 import { watermarkPdf } from "@/lib/book/watermark";
 import { BASE_CHAPTERS, MAX_CHAPTERS } from "@/lib/pricing";
 import { PREVIEW_BUCKET, supabaseAdmin } from "@/lib/supabase/server";
@@ -36,12 +36,28 @@ export const maxDuration = 60;
 
 const DAYS_UNTIL_EXPIRY = 30;
 
+/**
+ * Which book is being banked.
+ *
+ * `teaser` is the free ten pages, banked as soon as the book is written so the
+ * welcome email has something to attach. It is deliberately not watermarked —
+ * it is the thing that has to make someone want the book.
+ *
+ * `full` is the whole book, banked once the customer has an account. It lands
+ * clean and is watermarked here, server-side: the renderer can stamp one too,
+ * but a flag the browser controls is a flag the browser can drop.
+ */
+const bankKindSchema = z.enum(["teaser", "full"]).optional().default("full");
+
 const finalizeSchema = z.object({
   petName: z.string().max(80).optional().default(""),
   chapterCount: z.number().int().min(BASE_CHAPTERS).max(MAX_CHAPTERS).optional(),
+  kind: bankKindSchema,
 });
 
-/** Step one: where should the browser put the clean PDF? */
+const signSchema = z.object({ kind: bankKindSchema });
+
+/** Step one: where should the browser put the bytes? */
 export async function POST(request: Request): Promise<Response> {
   try {
     const draft = await resolveDraft(request);
@@ -49,7 +65,11 @@ export async function POST(request: Request): Promise<Response> {
       return Response.json({ error: "Unknown draft." }, { status: 401 });
     }
 
-    const path = draftPdfPath(draft.id, "clean");
+    // Sent as a body on the teaser path and omitted by older callers, so an
+    // unreadable body means "full" rather than an error.
+    const body = await request.json().catch(() => ({}));
+    const kind = signSchema.safeParse(body).data?.kind ?? "full";
+    const path = draftPdfPath(draft.id, kind === "teaser" ? "teaser" : "clean");
     const { data, error } = await supabaseAdmin()
       .storage.from(PREVIEW_BUCKET)
       .createSignedUploadUrl(path, { upsert: true });
@@ -81,32 +101,36 @@ export async function PUT(request: Request): Promise<Response> {
     }
 
     const supabase = supabaseAdmin();
-    const cleanPath = draftPdfPath(draft.id, "clean");
-    const previewPath = draftPdfPath(draft.id, "preview");
+    const teaser = parsed.data.kind === "teaser";
+    const sourcePath = draftPdfPath(draft.id, teaser ? "teaser" : "clean");
 
-    const { data: cleanFile, error: downloadError } = await supabase.storage
+    const { data: uploaded, error: downloadError } = await supabase.storage
       .from(PREVIEW_BUCKET)
-      .download(cleanPath);
+      .download(sourcePath);
 
-    if (downloadError || !cleanFile) {
+    if (downloadError || !uploaded) {
       return Response.json(
         { error: "Your book has not finished uploading yet." },
         { status: 409 },
       );
     }
 
-    const watermarked = await watermarkPdf(
-      new Uint8Array(await cleanFile.arrayBuffer()),
-    );
-
-    const { error: uploadError } = await supabase.storage
-      .from(PREVIEW_BUCKET)
-      .upload(previewPath, watermarked, {
-        upsert: true,
-        contentType: "application/pdf",
-        cacheControl: "3600",
-      });
-    if (uploadError) throw new Error(uploadError.message);
+    // The teaser is read as it was rendered. Only the full book is stamped.
+    let readablePath: DraftPdfKind = "teaser";
+    if (!teaser) {
+      const watermarked = await watermarkPdf(
+        new Uint8Array(await uploaded.arrayBuffer()),
+      );
+      const { error: uploadError } = await supabase.storage
+        .from(PREVIEW_BUCKET)
+        .upload(draftPdfPath(draft.id, "preview"), watermarked, {
+          upsert: true,
+          contentType: "application/pdf",
+          cacheControl: "3600",
+        });
+      if (uploadError) throw new Error(uploadError.message);
+      readablePath = "preview";
+    }
 
     const now = new Date();
     const expiresAt = new Date(now);
@@ -124,11 +148,15 @@ export async function PUT(request: Request): Promise<Response> {
     const { error: updateError } = await supabase
       .from("book_drafts")
       .update({
-        pdf_storage_path: previewPath,
-        clean_pdf_storage_path: cleanPath,
+        pdf_storage_path: draftPdfPath(draft.id, readablePath),
+        // Only set once the whole book is here. Pointing a buyer's download at
+        // a ten-page teaser would be the worst bug in the product.
+        ...(teaser
+          ? {}
+          : { clean_pdf_storage_path: draftPdfPath(draft.id, "clean") }),
         pdf_stored_at: now.toISOString(),
         expires_at: purchased ? null : expiresAt.toISOString(),
-        watermarked: !purchased,
+        watermarked: !purchased && !teaser,
         pet_name: parsed.data.petName.trim(),
         chapter_count: parsed.data.chapterCount ?? null,
         updated_at: now.toISOString(),

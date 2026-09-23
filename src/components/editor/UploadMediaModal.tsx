@@ -1,7 +1,7 @@
 "use client";
 
 import { FolderUp, X } from "lucide-react";
-import { useEffect, useRef, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 
 import { isLikelyMedia } from "@/lib/photo/process";
 import { MIN_PHOTOS_FOR_BOOK } from "@/lib/pricing";
@@ -12,18 +12,29 @@ import { MIN_PHOTOS_FOR_BOOK } from "@/lib/pricing";
  * making them notice the small "Add photos" control tucked into the Cover
  * panel. Dropping files anywhere on the page still works: this is mounted
  * inside BookEditor's full-page dropzone, so drops just bubble past it.
+ *
+ * The address is asked for here, beside the upload, rather than before it or
+ * after the book exists. Before it, there is nothing to have an address for
+ * yet; after it, the book has already been made for someone we cannot reach if
+ * they close the tab. Typing it while the photos are being read costs nothing,
+ * and it is what the finished book gets sent to.
  */
 export function UploadMediaModal({
   onFiles,
   onClose,
   processing,
+  email,
+  onEmailChange,
 }: {
   onFiles: (files: File[]) => void;
   onClose: () => void;
   processing: boolean;
+  email: string | null;
+  onEmailChange: (email: string) => void;
 }) {
   const photosRef = useRef<HTMLInputElement>(null);
   const folderRef = useRef<HTMLInputElement>(null);
+  const [draftEmail, setDraftEmail] = useState(email ?? "");
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
@@ -119,6 +130,28 @@ export function UploadMediaModal({
             or choose a whole folder
           </button>
         </div>
+
+        <label className="mt-6 block border-t border-line pt-5">
+          <span className="block text-sm font-medium text-ink">
+            Where should we send the finished book?
+          </span>
+          <input
+            type="email"
+            inputMode="email"
+            autoComplete="email"
+            value={draftEmail}
+            onChange={(event) => setDraftEmail(event.target.value)}
+            onBlur={() => {
+              const trimmed = draftEmail.trim();
+              if (trimmed && trimmed !== email) onEmailChange(trimmed);
+            }}
+            placeholder="you@example.com"
+            className="mt-1.5 min-h-11 w-full rounded-xl border border-line px-3 text-sm text-ink outline-none focus:border-periwinkle"
+          />
+          <span className="mt-1.5 block text-xs text-ink-faint">
+            Your photos stay on this device — only the finished book is sent.
+          </span>
+        </label>
       </div>
     </div>
   );

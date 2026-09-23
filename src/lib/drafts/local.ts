@@ -8,7 +8,7 @@ import {
   getStoredVideoPreview,
   restoreVideoPreview,
 } from "@/lib/photo/videoPreview";
-import type { OurTailTalesStore } from "@/store/useOurTailTalesStore";
+import type { BookSnapshot, OurTailTalesStore } from "@/store/useOurTailTalesStore";
 import type { BookMeta, BookPage, Chapter, CustomCoverMeta } from "@/types/book";
 import type { PhotoAsset, ProcessingProgressState } from "@/types/photo";
 
@@ -63,6 +63,8 @@ type StoredDraft = {
   videos: StoredVideo[];
   customCover?: StoredCustomCover;
   previewPdf?: Blob;
+  /** The book as generated, so "reset to original" survives a reload. */
+  originalBook?: BookSnapshot;
 };
 
 export type RestoredLocalDraft = Pick<
@@ -86,6 +88,7 @@ export type RestoredLocalDraft = Pick<
   }[];
   customCover: CustomCoverMeta | null;
   previewPdf?: Blob;
+  originalBook: BookSnapshot | null;
 };
 
 let activeDraftId: string | null = null;
@@ -150,6 +153,7 @@ export async function persistLocalDraft(
     videos,
     customCover,
     previewPdf: previewPdf ?? activePreviewPdf ?? undefined,
+    originalBook: state.originalBook ?? undefined,
   };
 
   const database = await openDatabase();
@@ -225,6 +229,7 @@ export async function restoreLocalDraft(
     albumVideos,
     customCover,
     previewPdf: stored.previewPdf,
+    originalBook: stored.originalBook ?? null,
   };
 }
 

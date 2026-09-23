@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { MAX_CHAPTERS } from "@/lib/pricing";
 import { supabaseAdmin, supabaseConfigured } from "@/lib/supabase/server";
 
 /**
@@ -26,8 +27,16 @@ export type RateLimit = {
  * A human making one book will not notice any of these.
  */
 export const LIMITS = {
-  /** A Gemini generation per call, with images attached. The expensive one. */
-  story: { name: "story", limit: 20, windowSeconds: 60 * 10 },
+  /**
+   * A Gemini generation per call, with images attached. The expensive one.
+   *
+   * Derived from `MAX_CHAPTERS` rather than picked: writing the largest book
+   * we sell costs exactly one call per chapter, in a burst, so any fixed
+   * number below that rate-limits a paying customer halfway through their own
+   * book. The headroom covers failed chapters retried and single chapters
+   * regenerated from the editor afterwards.
+   */
+  story: { name: "story", limit: MAX_CHAPTERS + 30, windowSeconds: 60 * 10 },
   /** Lulu API calls against our quota. */
   lulu: { name: "lulu", limit: 60, windowSeconds: 60 * 10 },
   /** Rows in our database, and the start of every funnel. */

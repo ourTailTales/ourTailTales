@@ -12,31 +12,48 @@ import { SITE_URL } from "@/lib/env";
 
 const { colors } = brand;
 
-export function freePdfEmailHtml(args: {
+/**
+ * The welcome mail: the first ten pages attached, and the one link that opens
+ * the rest.
+ *
+ * The PDF is attached rather than linked because the customer asked for their
+ * book, not for a errand — an attachment is theirs immediately, works offline,
+ * and cannot expire. The link is for the rest of it.
+ */
+export function teaserEmailHtml(args: {
   petName: string;
-  bookUrl: string;
+  claimUrl: string;
+  hiddenChapters: number;
+  hiddenPages: number;
 }): string {
   const name = args.petName.trim();
-  const title = name ? `${possessive(name)} story is ready` : "Your book is ready";
+  const title = name ? `${possessive(name)} book is written` : "Your book is written";
   const opening = name
-    ? `You turned your photos of ${name} into a book. Here it is.`
-    : "You turned your photos into a book. Here it is.";
+    ? `Your photos of ${name} are a book now. The first ten pages are attached to this email — cover included.`
+    : "Your photos are a book now. The first ten pages are attached to this email — cover included.";
+
+  const rest =
+    args.hiddenChapters > 0
+      ? `The rest is already written: ${plural(args.hiddenChapters, "chapter")} and ${plural(args.hiddenPages, "page")} more. Make your account and the whole book opens — and you can change any of it, from the cover to every photo on every page.`
+      : "Make your account and the whole book is saved to your library, where you can change any of it — the cover, the chapters, every photo.";
 
   return layout({
     preheader: title,
     heading: title,
     body: `
       ${paragraph(opening)}
+      ${paragraph(rest)}
+      ${button("Open the whole book", args.claimUrl)}
       ${paragraph(
-        "This preview is watermarked and stays on this link for 30 days. You can read it in your browser or download the PDF from the same page.",
-      )}
-      ${button("View your book", args.bookUrl)}
-      ${paragraph(
-        "If you want to keep it — without the watermark or the deadline — you can buy the full PDF or order the hardcover from that page.",
+        "Your photos never left your own device. They were turned into a book right there in your browser.",
         colors.inkSoft,
       )}
     `,
   });
+}
+
+function plural(count: number, noun: string): string {
+  return count === 1 ? `1 ${noun}` : `${count} ${noun}s`;
 }
 
 export function digitalPurchaseEmailHtml(args: {

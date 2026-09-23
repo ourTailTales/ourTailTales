@@ -120,37 +120,20 @@ export async function renderCoverPdf(args: {
     nameBold,
   );
 
-  const petName = meta.petName || "Type name here";
-  const anchor = meta.coverNameAnchor ?? defaultNameAnchor(layoutId);
-  const nameSize = (meta.coverNameSize ?? DEFAULT_COVER_NAME_SIZE) * 15;
-  const nameColor = coverTextTone(layoutId) === "dark" ? INK : PAPER;
-
-  const [row, col] = anchor.split("-") as [string, string];
-  const yPct = row === "top" ? 14 : row === "bottom" ? 86 : 50;
-  const EDGE_INSET_PCT = 8;
-
-  if (col === "left") {
-    drawLeftText(page, petName, nameFont, nameSize, nameColor, {
-      x: artLeft + (EDGE_INSET_PCT / 100) * artWidth,
-      y: artHeight - (yPct / 100) * artHeight,
-    });
-  } else if (col === "right") {
-    drawRightText(page, petName, nameFont, nameSize, nameColor, {
-      x: artLeft + ((100 - EDGE_INSET_PCT) / 100) * artWidth,
-      y: artHeight - (yPct / 100) * artHeight,
-    });
-  } else {
-    drawCenteredText(page, petName, nameFont, nameSize, nameColor, {
-      x: artLeft + 0.5 * artWidth,
-      y: artHeight - (yPct / 100) * artHeight,
-    });
-  }
+  drawCoverName(page, {
+    meta,
+    layoutId,
+    nameFont,
+    artLeft,
+    artWidth,
+    artHeight,
+  });
 
   /* --------------------------------- spine --------------------------------- */
 
-  if (spineWidth >= MIN_SPINE_TEXT_PT) {
+  const spineText = meta.petName.trim();
+  if (spineWidth >= MIN_SPINE_TEXT_PT && spineText) {
     const spineCenter = BLEED_PT + TRIM_PT + spineWidth / 2;
-    const spineText = petName;
     const spineSize = Math.min(13, spineWidth * 0.42);
     const textWidth = fonts.serif.widthOfTextAtSize(spineText, spineSize);
 
@@ -237,6 +220,111 @@ export async function wrapImageAsCoverPdf(args: {
 
   const out = await pdf.save();
   return new Blob([out as unknown as BlobPart], { type: "application/pdf" });
+}
+
+/**
+ * Draws the pet's name where the cover editor put it, in the chosen font and
+ * size, within the rectangle the front cover occupies on this page.
+ *
+ * Shared by the print wrap (where the front is the right-hand third of a wide
+ * page) and the teaser's standalone cover page (where it is the whole page),
+ * so both put the name in exactly the same place relative to the artwork.
+ */
+function drawCoverName(
+  page: PDFPage,
+  args: {
+    meta: BookMeta;
+    layoutId: CoverLayoutId;
+    nameFont: PDFFont;
+    artLeft: number;
+    artWidth: number;
+    artHeight: number;
+  },
+): void {
+  const { meta, layoutId, nameFont, artLeft, artWidth, artHeight } = args;
+
+  const petName = meta.petName || "Type name here";
+  const anchor = meta.coverNameAnchor ?? defaultNameAnchor(layoutId);
+  const nameSize = (meta.coverNameSize ?? DEFAULT_COVER_NAME_SIZE) * 15;
+  const nameColor = coverTextTone(layoutId) === "dark" ? INK : PAPER;
+
+  const [row, col] = anchor.split("-") as [string, string];
+  const yPct = row === "top" ? 14 : row === "bottom" ? 86 : 50;
+  const EDGE_INSET_PCT = 8;
+  const y = artHeight - (yPct / 100) * artHeight;
+
+  if (col === "left") {
+    drawLeftText(page, petName, nameFont, nameSize, nameColor, {
+      x: artLeft + (EDGE_INSET_PCT / 100) * artWidth,
+      y,
+    });
+  } else if (col === "right") {
+    drawRightText(page, petName, nameFont, nameSize, nameColor, {
+      x: artLeft + ((100 - EDGE_INSET_PCT) / 100) * artWidth,
+      y,
+    });
+  } else {
+    drawCenteredText(page, petName, nameFont, nameSize, nameColor, {
+      x: artLeft + 0.5 * artWidth,
+      y,
+    });
+  }
+}
+
+/**
+ * Draws the front cover alone, filling an existing page.
+ *
+ * The teaser PDF opens on the cover rather than the title page, because the
+ * cover is the one page with the customer's pet looking back at them — it is
+ * the most persuasive thing in the file and belongs first. The print wrap
+ * cannot be reused for that: it is one wide page carrying front, spine, and
+ * back together.
+ */
+export async function drawFrontCoverPage(
+  pdf: PDFDocument,
+  page: PDFPage,
+  args: { meta: BookMeta; targetPpi?: number },
+): Promise<void> {
+  const { meta, targetPpi = 150 } = args;
+  const { width, height } = page.getSize();
+
+  const fonts: CoverFontSet = {
+    serif: await pdf.embedFont(StandardFonts.TimesRoman),
+    serifBold: await pdf.embedFont(StandardFonts.TimesRomanBold),
+    serifItalic: await pdf.embedFont(StandardFonts.TimesRomanItalic),
+    sans: await pdf.embedFont(StandardFonts.Helvetica),
+    sansBold: await pdf.embedFont(StandardFonts.HelveticaBold),
+  };
+
+  const layoutId: CoverLayoutId = meta.coverLayoutId ?? DEFAULT_COVER_LAYOUT;
+  const fontId: CoverFontId = meta.coverFontId ?? DEFAULT_COVER_FONT;
+  const coverFile = meta.coverPhotoId
+    ? assetStore.getFile(meta.coverPhotoId)
+    : undefined;
+
+  await drawCoverLayout(pdf, page, {
+    layoutId,
+    artLeft: 0,
+    artWidth: width,
+    artHeight: height,
+    coverFile,
+    targetPpi,
+  });
+
+  const { name: nameFont } = pdfFontsForCoverFont(
+    fontId,
+    fonts,
+    meta.coverNameBold ?? true,
+  );
+
+  drawCoverName(page, {
+    meta,
+    layoutId,
+    nameFont,
+    artLeft: 0,
+    artWidth: width,
+    artHeight: height,
+  });
 }
 
 /**
