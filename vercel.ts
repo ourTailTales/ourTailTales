@@ -3,13 +3,10 @@ import type { VercelConfig } from "@vercel/config/v1";
 export const config: VercelConfig = {
   framework: "nextjs",
   crons: [
-    // Delete temporary print PDFs older than a week.
-    { path: "/api/cron/cleanup-assets", schedule: "0 4 * * *" },
-    // Catch missed Lulu PRINT_JOB_STATUS_CHANGED webhooks.
-    { path: "/api/cron/reconcile-lulu", schedule: "0 7 * * *" },
-    // Transcode uploaded Video Memories as durable jobs.
-    { path: "/api/cron/process-videos", schedule: "0 5 * * *" },
-    // Encrypt, archive, stamp QR, then send video orders to Lulu.
-    { path: "/api/cron/fulfill-orders", schedule: "0 6 * * *" },
+    // One entry, every job. The Hobby plan allows two cron jobs at one run per
+    // day, so `api/cron/daily` runs all five in sequence rather than each
+    // needing a schedule of its own. The individual routes still exist and can
+    // be called by hand while debugging.
+    { path: "/api/cron/daily", schedule: "0 3 * * *" },
   ],
 };

@@ -62,6 +62,8 @@ type State = {
   videoNotice: string | null;
   albumVideos: AlbumVideoPreview[];
   freePreviewReady: boolean;
+  /** Shareable link to the banked free preview, once it has been uploaded. */
+  bookUrl: string | null;
   /** Local-draft save state, shown in the header as a saved/saving indicator. */
   saveStatus: "saved" | "saving";
   /** Customer-uploaded print-ready cover, used instead of the designed one when set. */
@@ -120,6 +122,7 @@ type Actions = {
   setExporting: (message: string | null) => void;
   goToEditing: () => void;
   setDraft: (draftId: string, draftSecret: string) => void;
+  setBookUrl: (bookUrl: string | null) => void;
   setVideoLibrary: (
     assets: VideoAsset[],
     placements: VideoMemoryPlacement[],
@@ -188,6 +191,7 @@ const initialState: State = {
   exportMessage: null,
   draftId: null,
   draftSecret: null,
+  bookUrl: null,
   videoAssets: [],
   placements: [],
   videoNotice: null,
@@ -411,6 +415,8 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set) => ({
 
   setDraft: (draftId, draftSecret) => set({ draftId, draftSecret }),
 
+  setBookUrl: (bookUrl) => set({ bookUrl }),
+
   setVideoLibrary: (videoAssets, placements) =>
     set({ videoAssets, placements }),
 
@@ -544,10 +550,6 @@ export function photoMapOf(photos: PhotoAsset[]): Map<string, PhotoAsset> {
 }
 
 /** True once the customer has work that closing the tab would destroy. */
-export function selectHasUnsavedWork(state: OurTailTalesStore): boolean {
-  return state.funnelState !== "idle" && state.photos.length > 0;
-}
-
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }

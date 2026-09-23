@@ -1,23 +1,18 @@
-import { readEnv, routeError } from "@/lib/env";
-import {
-  processNextVideoAsset,
-  recoverStaleProcessing,
-} from "@/lib/video-memory/process-job";
+import { authorizeCron } from "@/lib/cron/auth";
+import { processVideos } from "@/lib/cron/process-videos";
+import { routeError } from "@/lib/env";
 
+/**
+ * Kept as its own endpoint so this job can be run on demand while debugging.
+ * The daily schedule no longer calls it: `api/cron/daily` runs every job in one
+ * invocation, because the Vercel Hobby plan allows only two cron entries.
+ */
 export async function GET(request: Request): Promise<Response> {
-  try {
-    const cronSecret = readEnv("CRON_SECRET");
-    if (cronSecret) {
-      const authorized =
-        request.headers.get("authorization") === `Bearer ${cronSecret}`;
-      if (!authorized) {
-        return Response.json({ error: "Unauthorized." }, { status: 401 });
-      }
-    }
+  const denied = authorizeCron(request);
+  if (denied) return denied;
 
-    const recovered = await recoverStaleProcessing();
-    const processed = await processNextVideoAsset();
-    return Response.json({ recovered, processed });
+  try {
+    return Response.json(await processVideos());
   } catch (error) {
     return routeError(error, "Video processing tick failed.");
   }

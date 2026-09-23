@@ -5,6 +5,12 @@
  * chosen chapter count only.
  */
 
+/**
+ * The clean, unwatermarked PDF of the whole book. Authoritative here rather
+ * than in the checkout route, so no browser-supplied amount is ever charged.
+ */
+export const DIGITAL_PRICE = 4.99;
+
 /** The base book contains five ten-page story chapters (50 story pages). */
 export const BASE_CHAPTERS = 5;
 export const BASE_PRICE = 49.99;

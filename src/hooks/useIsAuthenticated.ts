@@ -1,28 +1,59 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
+import {
+  authConfigured,
+  createAuthBrowserClient,
+} from "@/lib/supabase/auth-browser";
+
 /**
- * Returns whether the current user is authenticated via Supabase.
+ * Whether the visitor has a Supabase session.
  *
- * TODO: Implement Supabase session check using createAuthBrowserClient().
- *       Per @supabase/ssr docs for Next.js App Router client components:
+ * Was a stub returning a hardcoded `false`, which meant every signed-in
+ * customer still saw the signed-out call to action on the landing page and was
+ * asked for an email address they had already given.
  *
- *       import { createAuthBrowserClient } from "@/lib/supabase/auth-browser";
- *
- *       const [isAuthenticated, setIsAuthenticated] = useState(false);
- *       useEffect(() => {
- *         const client = createAuthBrowserClient();
- *         client.auth.getSession().then(({ data }) => {
- *           setIsAuthenticated(!!data.session);
- *         });
- *         const { data: { subscription } } = client.auth.onAuthStateChange((_event, session) => {
- *           setIsAuthenticated(!!session);
- *         });
- *         return () => subscription.unsubscribe();
- *       }, []);
- *
- *       return isAuthenticated;
+ * Starts false and resolves on mount, so the signed-out form is what renders
+ * during the first paint — the safe way round, since showing a signed-in
+ * shortcut to a signed-out visitor would dead-end them at the auth gate.
  */
 export function useIsAuthenticated(): boolean {
-  // TODO: replace with real Supabase session check (see above)
-  return false;
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  useEffect(() => {
+    // Nothing to ask when Supabase Auth has no keys in this environment.
+    if (!authConfigured()) return;
+
+    let active = true;
+    let unsubscribe: (() => void) | undefined;
+
+    try {
+      const client = createAuthBrowserClient();
+
+      client.auth
+        .getSession()
+        .then(({ data }) => {
+          if (active) setIsAuthenticated(Boolean(data.session));
+        })
+        .catch(() => {
+          // Treated as signed out: the landing page must render either way.
+        });
+
+      const { data } = client.auth.onAuthStateChange((_event, session) => {
+        if (active) setIsAuthenticated(Boolean(session));
+      });
+      unsubscribe = () => data.subscription.unsubscribe();
+    } catch {
+      // Any auth failure leaves the visitor on the signed-out path, which is
+      // the safe default: it works whether or not they have a session.
+    }
+
+    return () => {
+      active = false;
+      unsubscribe?.();
+    };
+  }, []);
+
+  return isAuthenticated;
 }

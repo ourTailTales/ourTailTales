@@ -1,5 +1,5 @@
 import { authorizeCron } from "@/lib/cron/auth";
-import { reconcileLulu } from "@/lib/cron/reconcile-lulu";
+import { expireDrafts } from "@/lib/cron/expire-drafts";
 import { routeError } from "@/lib/env";
 
 /**
@@ -12,8 +12,8 @@ export async function GET(request: Request): Promise<Response> {
   if (denied) return denied;
 
   try {
-    return Response.json(await reconcileLulu());
+    return Response.json(await expireDrafts());
   } catch (error) {
-    return routeError(error, "Lulu reconciliation failed.");
+    return routeError(error, "Draft expiry failed.");
   }
 }

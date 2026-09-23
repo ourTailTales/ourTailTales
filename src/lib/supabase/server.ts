@@ -13,6 +13,12 @@ import { isConfigured, readEnv, requireEnv } from "@/lib/env";
 export const STORAGE_BUCKET =
   readEnv("SUPABASE_STORAGE_BUCKET") ?? "ourtailtales-orders";
 
+/**
+ * Preview books — free drafts and saved book projects alike. Private, like
+ * every other bucket; readers only ever get signed URLs.
+ */
+export const PREVIEW_BUCKET = "book-previews";
+
 let cached: SupabaseClient | null = null;
 
 export function supabaseAdmin(): SupabaseClient {

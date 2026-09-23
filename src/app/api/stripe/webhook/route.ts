@@ -1,6 +1,8 @@
 import type Stripe from "stripe";
 
 import { requireEnv, routeError } from "@/lib/env";
+import { sendDigitalPurchaseEmail, sendOrderConfirmationEmail } from "@/lib/email/send";
+import { bookUrl } from "@/lib/drafts/storage";
 import { markNeedsReview, submitPaidOrderToLulu } from "@/lib/order/submit-print";
 import {
   captureServerEvent,
@@ -42,7 +44,9 @@ export async function POST(request: Request): Promise<Response> {
       return Response.json({ error: "Invalid signature." }, { status: 400 });
     }
 
-    if (event.type === "payment_intent.succeeded") {
+    if (event.type === "checkout.session.completed") {
+      await grantDigitalAccess(event.data.object);
+    } else if (event.type === "payment_intent.succeeded") {
       await fulfill(event.data.object);
     } else if (event.type === "payment_intent.payment_failed") {
       const paymentIntent = event.data.object;
@@ -90,6 +94,11 @@ async function fulfill(paymentIntent: Stripe.PaymentIntent): Promise<void> {
 
   if (claimError) throw new Error(claimError.message);
   if (!claimed) return;
+
+  // Claiming the row is what makes this run once, so the confirmation cannot
+  // be duplicated by a webhook retry. Not awaited as a precondition of
+  // fulfilment: a mail outage must never stop a paid book reaching the printer.
+  void confirmByEmail(orderId);
 
   await captureServerEvent(
     paymentIntent.metadata?.posthogDistinctId || orderId,
@@ -146,5 +155,88 @@ async function fulfill(paymentIntent: Stripe.PaymentIntent): Promise<void> {
       },
       { onConflict: "order_id,video_asset_id" },
     );
+  }
+}
+
+/** Best-effort order confirmation. Never throws into the webhook path. */
+async function confirmByEmail(orderId: string): Promise<void> {
+  try {
+    const { data: order } = await supabaseAdmin()
+      .from("orders")
+      .select("id, email, pet_name, book_price, shipping_price")
+      .eq("id", orderId)
+      .maybeSingle();
+
+    if (!order?.email) return;
+
+    const total =
+      Number(order.book_price ?? 0) + Number(order.shipping_price ?? 0);
+
+    await sendOrderConfirmationEmail({
+      to: order.email,
+      petName: order.pet_name ?? "",
+      orderId: order.id,
+      total: new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+      }).format(total),
+    });
+  } catch (error) {
+    console.error("[ourTailTales] Order confirmation email failed", orderId, error);
+  }
+}
+
+/**
+ * Releases the clean PDF after a $4.99 digital purchase.
+ *
+ * This is the only place that grant happens. Clearing `expires_at` is what
+ * makes the book permanent, so the Phase 4 sweep will no longer touch it.
+ */
+async function grantDigitalAccess(
+  session: Stripe.Checkout.Session,
+): Promise<void> {
+  if (session.payment_status !== "paid") return;
+
+  const draftId = session.metadata?.draftId;
+  if (!draftId) return;
+
+  const supabase = supabaseAdmin();
+
+  // Conditional on not already being purchased, so a redelivered webhook
+  // cannot re-grant or send a second confirmation.
+  const { data: claimed, error } = await supabase
+    .from("book_drafts")
+    .update({
+      digital_purchased_at: new Date().toISOString(),
+      watermarked: false,
+      expires_at: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", draftId)
+    .is("digital_purchased_at", null)
+    .select("id, pet_name")
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!claimed) return;
+
+  await captureServerEvent(
+    session.metadata?.posthogDistinctId || draftId,
+    "digital_purchase_completed",
+    { amount: (session.amount_total ?? 0) / 100 },
+  );
+
+  const email = session.customer_details?.email ?? session.customer_email;
+  const secret = session.metadata?.draftSecret;
+  if (!email || !secret) return;
+
+  try {
+    await sendDigitalPurchaseEmail({
+      to: email,
+      petName: claimed.pet_name ?? "",
+      bookUrl: bookUrl(draftId, secret),
+    });
+  } catch (sendError) {
+    console.error("[ourTailTales] Digital purchase email failed", draftId, sendError);
   }
 }

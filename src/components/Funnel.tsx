@@ -22,9 +22,11 @@ import {
 } from "@/lib/photo/process";
 import { makeVideoPreview } from "@/lib/photo/videoPreview";
 import { persistLocalDraft } from "@/lib/drafts/local";
+import { uploadFreePreview } from "@/lib/drafts/upload";
 import { generateChapterStory } from "@/lib/story/client";
 import { prepareOrder } from "@/lib/order/prepare";
 import { placedMemoriesReadyForCheckout } from "@/lib/video-memory/checkout-ready";
+import { draftHeaders, loadStoredDraft } from "@/lib/video-memory/client";
 import { photoMapOf, useOurTailTalesStore } from "@/store/useOurTailTalesStore";
 
 /** Chapters written at once. Keeps the AI endpoint from being hammered. */
@@ -216,6 +218,19 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
       .finally(() => useOurTailTalesStore.getState().setSaveStatus("saved"));
   }, [runStories]);
 
+  /** Uploads the preview and remembers the link it can be reopened from. */
+  const bankPreview = useCallback(async (pdf: Blob): Promise<string> => {
+    const state = useOurTailTalesStore.getState();
+    const { url } = await uploadFreePreview({
+      pdf,
+      petName: state.meta.petName,
+      chapterCount: state.chapterCount,
+    });
+    useOurTailTalesStore.getState().setBookUrl(url);
+    track("free_pdf_stored", { chapters: state.chapterCount });
+    return url;
+  }, []);
+
   const handleDownloadPdf = useCallback(async () => {
     const state = useOurTailTalesStore.getState();
     if (state.pages.length === 0) return;
@@ -230,13 +245,40 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
       });
       downloadBlob(blob, previewFileName(state.meta.petName));
       track("free_pdf_downloaded", { chapters: state.chapterCount });
+
+      // Bank a copy so the book can be reopened from a link — another device,
+      // or the email. Deliberately not awaited: the file the customer asked
+      // for is already on its way, and a slow upload must not hold it up.
+      void bankPreview(blob).catch((error: unknown) => {
+        // The customer has their PDF; a failed upload only costs them the
+        // link, so it is reported rather than surfaced as a failure.
+        captureClientException(error);
+      });
     } catch (error) {
       captureClientException(error);
       setNotice("Your PDF could not be prepared. Please try again.");
     } finally {
       setDownloadingPdf(false);
     }
-  }, []);
+  }, [bankPreview]);
+
+  /**
+   * The shareable link for this book, rendering and banking it first if the
+   * customer has not downloaded the free PDF yet.
+   */
+  const ensureBookUrl = useCallback(async (): Promise<string> => {
+    const existing = useOurTailTalesStore.getState().bookUrl;
+    if (existing) return existing;
+
+    const state = useOurTailTalesStore.getState();
+    const blob = await renderFreePreviewPdf({
+      pages: state.pages,
+      chapters: state.chapters,
+      meta: state.meta,
+      photos: photoMapOf(state.photos),
+    });
+    return bankPreview(blob);
+  }, [bankPreview]);
 
   const handleSample = useCallback(async (email: string) => {
     const state = useOurTailTalesStore.getState();
@@ -266,7 +308,37 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
 
     downloadBlob(blob, sampleFileName(state.meta.petName));
     track("sample_email_submitted", { chapters: state.chapterCount });
-  }, []);
+
+    // The sample is already on their device; the mail carries a link to the
+    // whole book rather than an attachment, which no mailbox would accept at
+    // this size and which would go stale the moment they bought it.
+    // Awaited for its effect, not its value: the route refuses to mail a link
+    // to a book that has not finished uploading.
+    await ensureBookUrl();
+
+    const draft = loadStoredDraft();
+    if (!draft) return;
+
+    const response = await fetch("/api/email/send-sample", {
+      method: "POST",
+      headers: {
+        ...draftHeaders(draft.draftId, draft.secret),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email, petName: state.meta.petName }),
+    });
+    const data = (await response.json().catch(() => ({}))) as {
+      sent?: boolean;
+      error?: string;
+    };
+    if (!response.ok || !data.sent) {
+      // Their book exists and is downloadable either way, so this is reported
+      // rather than thrown at someone who just handed over their address.
+      captureClientException(
+        new Error(data.error ?? "The book link email was not sent."),
+      );
+    }
+  }, [ensureBookUrl]);
 
   const handleCheckout = useCallback(async () => {
     setNotice(null);

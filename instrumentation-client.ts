@@ -1,5 +1,7 @@
 import posthog from "posthog-js";
 
+import { redactProperties } from "@/lib/analytics-redact";
+
 const token = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN;
 const host = process.env.NEXT_PUBLIC_POSTHOG_HOST;
 
@@ -21,5 +23,8 @@ if (token && host) {
     defaults: "2026-01-30",
     capture_exceptions: true,
     debug: process.env.NODE_ENV === "development",
+    // A free book opens at /book/<id>?k=<secret>, and autocaptured pageviews
+    // would otherwise carry that secret into analytics as $current_url.
+    sanitize_properties: redactProperties,
   });
 }

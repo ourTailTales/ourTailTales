@@ -37,10 +37,10 @@ export function EmailSampleModal({
     }
 
     setStatus("working");
-    setMessage("Building your 5-page sample…");
+    setMessage("Building your sample and sending your link…");
     try {
       await onSubmit(email.trim());
-      setMessage("Your sample has downloaded.");
+      setMessage("Your sample has downloaded, and your book link is on its way.");
       setStatus("idle");
     } catch (error) {
       setStatus("error");
@@ -72,7 +72,8 @@ export function EmailSampleModal({
         </h2>
         <p className="mt-2 text-sm leading-6 text-ink-soft">
           We&rsquo;ll build a watermarked 5-page PDF from your real book, right
-          here in your browser, and download it immediately.
+          here in your browser, and download it immediately. We&rsquo;ll also
+          email you a link to the whole book, so you can open it anywhere.
         </p>
 
         <label className="mt-5 block">
@@ -94,8 +95,8 @@ export function EmailSampleModal({
         </label>
 
         <p className="mt-2 text-xs text-ink-faint">
-          We use your address to send your sample and order updates. Your photos
-          are not uploaded to make it.
+          We use your address to send your book link and order updates. Your
+          photos never leave your device — only the finished PDF is stored.
         </p>
 
         {message && (

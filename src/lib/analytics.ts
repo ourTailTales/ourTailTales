@@ -23,6 +23,7 @@ export type FunnelEvent =
   | "sample_email_submitted"
   | "lead_captured"
   | "free_pdf_downloaded"
+  | "free_pdf_stored"
   | "checkout_started"
   | "payment_succeeded";
 

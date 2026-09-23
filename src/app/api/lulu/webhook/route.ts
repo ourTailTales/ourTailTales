@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { readEnv, routeError } from "@/lib/env";
+import { sendShippingNotificationEmail } from "@/lib/email/send";
 import { mapLuluStatus } from "@/lib/lulu/client";
 import { supabaseAdmin } from "@/lib/supabase/server";
 
@@ -78,12 +79,28 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
 
-    const { error } = await supabaseAdmin()
+    const { data: updated, error } = await supabaseAdmin()
       .from("orders")
       .update(update)
-      .eq("lulu_print_job_id", String(printJobId));
+      .eq("lulu_print_job_id", String(printJobId))
+      // Only a row that was not already shipped comes back, so a repeated
+      // webhook cannot send the notification twice.
+      .neq("status", "shipped")
+      .select("id, email, pet_name")
+      .maybeSingle();
 
     if (error) throw new Error(error.message);
+
+    if (status === "shipped" && updated?.email) {
+      void sendShippingNotificationEmail({
+        to: updated.email,
+        petName: updated.pet_name ?? "",
+        orderId: updated.id,
+        trackingUrl: payload.data?.tracking_urls?.[0] ?? null,
+      }).catch((sendError: unknown) => {
+        console.error("[ourTailTales] Shipping email failed", updated.id, sendError);
+      });
+    }
 
     return Response.json({ received: true });
   } catch (error) {

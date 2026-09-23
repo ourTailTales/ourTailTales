@@ -1,7 +1,5 @@
 "use client";
 
-import type { ReactNode } from "react";
-
 import { CoverLayoutChrome } from "@/components/book-viewer/CoverLayoutChrome";
 import { CLOSING_LINE } from "@/lib/book/pagination";
 import {
@@ -84,29 +82,6 @@ export function CoverFrontArt({
         >
           {petName}
         </p>
-      ) : null}
-    </div>
-  );
-}
-
-export function CoverInsideArt({
-  children,
-  bleed = false,
-}: {
-  children?: ReactNode;
-  bleed?: boolean;
-}) {
-  return (
-    <div className="relative z-[1] h-full w-full bg-transparent">
-      <div aria-hidden className="absolute inset-y-0 right-0 w-[5%] bg-ink/[0.05]" />
-      {children ? (
-        <div
-          className={`relative flex h-full flex-col ${
-            bleed ? "overflow-hidden" : "overflow-auto px-[1.35rem] py-[1.25rem]"
-          }`}
-        >
-          {children}
-        </div>
       ) : null}
     </div>
   );

@@ -65,8 +65,7 @@ export function EmailCaptureCta({
 
   const isDark = theme === "dark";
 
-  // Auth-aware: signed-in users go straight to /create
-  // TODO: useIsAuthenticated() returns false until Supabase session check is implemented
+  // Signed-in visitors skip the email capture and go straight to /create.
   if (isAuthenticated) {
     return (
       <div className={className}>
