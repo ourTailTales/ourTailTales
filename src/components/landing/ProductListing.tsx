@@ -1,5 +1,6 @@
 import Image from "next/image";
 
+import { EmailCaptureCta } from "@/components/landing/EmailCaptureCta";
 import { BASE_PRICE, MIN_PHOTOS_FOR_BOOK, formatUsd } from "@/lib/pricing";
 
 const hardcoverFeatures = [
@@ -73,6 +74,16 @@ export function ProductListing() {
               className="object-cover object-[center_58%]"
             />
           </figure>
+        </div>
+
+        <div className="mt-10 flex flex-col items-center gap-2">
+          <EmailCaptureCta
+            source="product_listing"
+            inputId="product-listing-email"
+            buttonLabel="Get their Free Story"
+            inputWidthClassName="flex-[4]"
+            theme="light"
+          />
         </div>
       </div>
     </section>

@@ -1,18 +1,18 @@
 const placeholderReviews = [
   {
-    name: "[Customer name]",
-    location: "[City, State]",
-    quote: "[Placeholder — replace with a real customer quote before this section ships.]",
+    name: "Sarah A.",
+    location: "Boston, MA",
+    quote: "The book is high quality, and they got my Leila's memories drawn in such a nice way!",
   },
   {
-    name: "[Customer name]",
-    location: "[City, State]",
-    quote: "[Placeholder — replace with a real customer quote before this section ships.]",
+    name: "Emma L.",
+    location: "Boston, MA",
+    quote: "I love the idea of this book! It's a great way to capture your pet's personality and memories.",
   },
   {
-    name: "[Customer name]",
-    location: "[City, State]",
-    quote: "[Placeholder — replace with a real customer quote before this section ships.]",
+    name: "John D.",
+    location: "Boston, MA",
+    quote: "This is a great way to capture your pet's personality and memories.",
   },
 ] as const;
 
@@ -38,10 +38,10 @@ export function Testimonials() {
           {placeholderReviews.map((review, i) => (
             <figure
               key={i}
-              className="rounded-2xl border-2 border-page-line bg-white p-6 shadow-sm"
+              className="rounded-2xl border-2 border-page-line bg-white p-6 shadow-sm italic"
             >
               <blockquote className="text-sm leading-6 text-page-ink-soft">
-                {review.quote}
+                &quot;{review.quote}&quot;
               </blockquote>
               <figcaption className="mt-4 text-sm font-semibold text-page-ink">
                 {review.name}

@@ -1,3 +1,4 @@
+import { EmailCaptureCta } from "@/components/landing/EmailCaptureCta";
 import {
   BASE_PRICE,
   BASE_CHAPTERS,
@@ -84,6 +85,16 @@ export function Faq() {
               </p>
             </details>
           ))}
+        </div>
+
+        <div className="mt-14 flex flex-col items-center gap-2">
+          <EmailCaptureCta
+            source="faq"
+            inputId="faq-email"
+            buttonLabel="Get their Free Story"
+            inputWidthClassName="flex-[4]"
+            theme="light"
+          />
         </div>
       </div>
     </section>
