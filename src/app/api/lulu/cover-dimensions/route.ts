@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { routeError } from "@/lib/env";
 import { fetchCoverDimensions } from "@/lib/lulu/client";
+import { LIMITS, enforceRateLimit } from "@/lib/rate-limit";
 import {
   BASE_CHAPTERS,
   FIXED_INTERIOR_PAGES,
@@ -24,6 +25,9 @@ const requestSchema = z.object({
  */
 export async function POST(request: Request): Promise<Response> {
   try {
+    const limited = await enforceRateLimit(request, LIMITS.lulu);
+    if (limited) return limited;
+
     const parsed = requestSchema.safeParse(await request.json());
     if (!parsed.success) {
       return Response.json(

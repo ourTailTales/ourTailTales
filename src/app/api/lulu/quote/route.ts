@@ -12,6 +12,7 @@ import {
 } from "@/lib/lulu/client";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import type { ShippingAddress, ShippingOption } from "@/types/order";
+import { LIMITS, enforceRateLimit } from "@/lib/rate-limit";
 
 /**
  * Shipping quote for one order.
@@ -39,6 +40,9 @@ const requestSchema = z.object({
 
 export async function POST(request: Request): Promise<Response> {
   try {
+    const limited = await enforceRateLimit(request, LIMITS.lulu);
+    if (limited) return limited;
+
     const parsed = requestSchema.safeParse(await request.json());
     if (!parsed.success) {
       return Response.json(

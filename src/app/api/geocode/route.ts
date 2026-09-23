@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { CENTROID_PRECISION } from "@/lib/geo";
 import { SITE_URL, readEnv, routeError } from "@/lib/env";
+import { LIMITS, enforceRateLimit } from "@/lib/rate-limit";
 
 /**
  * Reverse geocoding for chapter place labels.
@@ -22,6 +23,9 @@ const PROVIDER_URL =
 
 export async function POST(request: Request): Promise<Response> {
   try {
+    const limited = await enforceRateLimit(request, LIMITS.geocode);
+    if (limited) return limited;
+
     const parsed = requestSchema.safeParse(await request.json());
     if (!parsed.success) {
       return Response.json({ error: "Invalid coordinates." }, { status: 400 });

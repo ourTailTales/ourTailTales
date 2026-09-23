@@ -25,7 +25,7 @@ export function LandingPage() {
       {/* 5. Hardcover upgrade — natural next step after free PDF */}
       <ProductListing />
 
-      {/* 5.5. Social proof — placeholder content, see Testimonials.tsx TODO */}
+      {/* 5.5. Social proof — empty slots plus a review CTA until real reviews land. */}
       <Testimonials />
 
       {/* 6. FAQ + footer */}

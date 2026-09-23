@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { resolveStoryProvider } from "@/lib/ai/provider";
 import { routeError } from "@/lib/env";
+import { LIMITS, enforceRateLimit } from "@/lib/rate-limit";
 
 /**
  * Chapter title and blurb generation.
@@ -35,6 +36,9 @@ const requestSchema = z.object({
 
 export async function POST(request: Request): Promise<Response> {
   try {
+    const limited = await enforceRateLimit(request, LIMITS.story);
+    if (limited) return limited;
+
     const parsed = requestSchema.safeParse(await request.json());
     if (!parsed.success) {
       return Response.json(

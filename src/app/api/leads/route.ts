@@ -3,6 +3,7 @@ import { z } from "zod";
 import { routeError } from "@/lib/env";
 import { BASE_CHAPTERS, MAX_CHAPTERS, bookPrice } from "@/lib/pricing";
 import { supabaseAdmin, supabaseConfigured } from "@/lib/supabase/server";
+import { LIMITS, enforceRateLimit } from "@/lib/rate-limit";
 
 // Only the address is required. The book context is useful for follow-up but a
 // lead is worth keeping without it, so it must never be a reason to reject.
@@ -20,6 +21,9 @@ const requestSchema = z.object({
 
 export async function POST(request: Request): Promise<Response> {
   try {
+    const limited = await enforceRateLimit(request, LIMITS.lead);
+    if (limited) return limited;
+
     const parsed = requestSchema.safeParse(await request.json());
     if (!parsed.success) {
       const badEmail = parsed.error.issues.some(
