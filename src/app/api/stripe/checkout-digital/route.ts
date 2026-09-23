@@ -23,7 +23,9 @@ export async function POST(request: Request): Promise<Response> {
 
     const { data: row } = await supabaseAdmin()
       .from("book_drafts")
-      .select("pet_name, pdf_storage_path, clean_pdf_storage_path, digital_purchased_at")
+      .select(
+        "pet_name, pdf_storage_path, clean_pdf_storage_path, digital_purchased_at, expires_at",
+      )
       .eq("id", draft.id)
       .maybeSingle();
 
@@ -44,6 +46,22 @@ export async function POST(request: Request): Promise<Response> {
             "Make your free account first — that is what opens the whole book, and then you can buy the clean PDF.",
         },
         { status: 409 },
+      );
+    }
+    // Past its date and simply not reaped yet. Selling it here means taking
+    // money for a file the nightly sweep is about to delete, and the buyer
+    // gets a signed URL to nothing.
+    if (
+      !row.digital_purchased_at &&
+      row.expires_at &&
+      new Date(row.expires_at).getTime() <= Date.now()
+    ) {
+      return Response.json(
+        {
+          error:
+            "This book has expired. Make a new one and we will keep it for you.",
+        },
+        { status: 410 },
       );
     }
     if (row.digital_purchased_at) {

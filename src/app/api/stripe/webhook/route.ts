@@ -5,6 +5,7 @@ import { requireEnv, routeError } from "@/lib/env";
 import { sendDigitalPurchaseEmail, sendOrderConfirmationEmail } from "@/lib/email/send";
 import { bookUrl } from "@/lib/drafts/storage";
 import { markNeedsReview, submitPaidOrderToLulu } from "@/lib/order/submit-print";
+import { alertOps } from "@/lib/ops/alert";
 import {
   captureServerEvent,
   captureServerException,
@@ -49,6 +50,10 @@ export async function POST(request: Request): Promise<Response> {
       await grantDigitalAccess(event.data.object);
     } else if (event.type === "payment_intent.succeeded") {
       await fulfill(event.data.object);
+    } else if (event.type === "charge.refunded") {
+      await moneyGoingBack(event.data.object.payment_intent, "refunded");
+    } else if (event.type === "charge.dispute.created") {
+      await moneyGoingBack(event.data.object.payment_intent, "disputed");
     } else if (event.type === "payment_intent.payment_failed") {
       const paymentIntent = event.data.object;
       const orderId = paymentIntent.metadata?.orderId;
@@ -223,6 +228,68 @@ async function confirmByEmail(orderId: string): Promise<void> {
  * This is the only place that grant happens. Clearing `expires_at` is what
  * makes the book permanent, so the Phase 4 sweep will no longer touch it.
  */
+/**
+ * A refund or a dispute stops the book.
+ *
+ * Neither event was handled at all, so a refunded order carried on to the
+ * printer and shipped: the money went back and the hardcover went out. An
+ * order that has not reached Lulu yet is simply cancelled. One that has is
+ * beyond our reach — the press does not un-print — so it is flagged and a
+ * person is told, because there may still be time to cancel it at Lulu.
+ */
+async function moneyGoingBack(
+  paymentIntent: string | { id: string } | null | undefined,
+  kind: "refunded" | "disputed",
+): Promise<void> {
+  const paymentIntentId =
+    typeof paymentIntent === "string" ? paymentIntent : paymentIntent?.id;
+  if (!paymentIntentId) return;
+
+  const supabase = supabaseAdmin();
+  const { data: order, error } = await supabase
+    .from("orders")
+    .select("id, status, lulu_print_job_id")
+    .eq("stripe_payment_intent_id", paymentIntentId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+
+  if (!order) {
+    // The $4.99 PDF goes through Checkout rather than a PaymentIntent we
+    // record, so there is nothing here to match it against. Worth saying out
+    // loud rather than passing over in silence.
+    await alertOps(`A ${kind} payment matched no order`, {
+      paymentIntent: paymentIntentId,
+      kind,
+    });
+    return;
+  }
+
+  if (order.lulu_print_job_id) {
+    await markNeedsReview(
+      order.id,
+      kind === "refunded"
+        ? "Refunded after the print job was submitted. Cancel it at Lulu if it has not shipped."
+        : "Payment disputed after the print job was submitted. Cancel it at Lulu if it has not shipped.",
+    );
+    return;
+  }
+
+  await supabase
+    .from("orders")
+    .update({
+      status: "canceled",
+      review_reason: `Payment ${kind}.`,
+    })
+    .eq("id", order.id)
+    .not("status", "in", "(shipped,delivered,canceled)");
+
+  await alertOps(`An order was ${kind}`, {
+    order: order.id,
+    previousStatus: order.status,
+  });
+}
+
 async function grantDigitalAccess(
   session: Stripe.Checkout.Session,
 ): Promise<void> {

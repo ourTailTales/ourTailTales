@@ -240,6 +240,11 @@ export async function calculatePrintJobCost(args: {
       ],
       shipping_address: toLuluAddress(args.address, args.email),
       shipping_option: args.shippingLevel,
+      // Stated, as `fetchShippingOptions` already states it. Left out, Lulu
+      // answers in the account's default currency and the number is charged
+      // as US cents regardless, which on a non-USD account is an FX-sized
+      // error on every shipping charge and nothing anywhere says so.
+      currency: "USD",
     }),
   });
 }

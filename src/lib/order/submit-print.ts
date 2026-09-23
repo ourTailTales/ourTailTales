@@ -1,4 +1,5 @@
-import { createPrintJob } from "@/lib/lulu/client";
+import { createPrintJob, findPrintJobByExternalId } from "@/lib/lulu/client";
+import { alertOps } from "@/lib/ops/alert";
 import { fulfilmentModeMismatch } from "@/lib/stripe";
 import { STORAGE_BUCKET, supabaseAdmin } from "@/lib/supabase/server";
 import type { ShippingAddress } from "@/types/order";
@@ -21,6 +22,10 @@ export async function markNeedsReview(orderId: string, reason: string): Promise<
     .from("orders")
     .update({ status: "needs_review", review_reason: reason })
     .eq("id", orderId);
+
+  // Every one of these is a customer who has paid and whose book has stopped.
+  // Writing a column and nothing else meant nobody found out until they asked.
+  await alertOps("An order needs review", { order: orderId, reason });
 }
 
 export async function submitPaidOrderToLulu(orderId: string): Promise<void> {
@@ -66,6 +71,25 @@ export async function submitPaidOrderToLulu(orderId: string): Promise<void> {
     return;
   }
 
+  // Ask Lulu whether it already has this order before sending it again.
+  //
+  // `createPrintJob` carries no idempotency key, and a POST that succeeds
+  // while its response is lost leaves the job sitting at Lulu with nothing on
+  // our side pointing at it. The retry then prints and ships a second book at
+  // full cost, to the same address, and the first anyone knows is when the
+  // customer says two arrived. The order id is already sent as Lulu's
+  // `external_id`, so it is the thing to ask about.
+  const existing = await findPrintJobByExternalId(orderId).catch(() => null);
+  if (existing) {
+    console.warn(
+      "[ourTailTales] Adopting an existing Lulu job rather than printing twice",
+      orderId,
+      existing.id,
+    );
+    await recordPrintJob(orderId, existing);
+    return;
+  }
+
   const [interiorUrl, coverUrl] = await Promise.all([
     signDownload(order.interior_path),
     signDownload(order.cover_path),
@@ -91,7 +115,15 @@ export async function submitPaidOrderToLulu(orderId: string): Promise<void> {
     shippingLevel: shipping.shipping_level,
   });
 
-  const { error: saveError } = await supabase
+  await recordPrintJob(orderId, printJob);
+}
+
+/** Attaches a Lulu job to the order, whether we just made it or found it. */
+async function recordPrintJob(
+  orderId: string,
+  printJob: { id: number | string; status?: { name?: string } | null; tracking_urls?: string[] | null },
+): Promise<void> {
+  const { error } = await supabaseAdmin()
     .from("orders")
     .update({
       lulu_print_job_id: String(printJob.id),
@@ -104,5 +136,5 @@ export async function submitPaidOrderToLulu(orderId: string): Promise<void> {
     .eq("id", orderId)
     .is("lulu_print_job_id", null);
 
-  if (saveError) throw new Error(saveError.message);
+  if (error) throw new Error(error.message);
 }
