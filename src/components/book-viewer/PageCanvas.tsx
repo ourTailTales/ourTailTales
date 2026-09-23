@@ -339,7 +339,7 @@ function ImprintPage({ meta }: { meta: BookMeta }) {
       className="absolute inset-x-0 flex flex-col items-center text-center text-page-ink-faint"
       style={{ bottom: pt(PAGE_PT * 0.13) }}
     >
-      <p className="uppercase" style={{ fontSize: pt(9), letterSpacing: pt(3.4) }}>
+      <p style={{ fontSize: pt(9), letterSpacing: pt(3.4) }}>
         ourTailTales
       </p>
       <p style={{ fontSize: pt(9), marginTop: pt(14) }}>

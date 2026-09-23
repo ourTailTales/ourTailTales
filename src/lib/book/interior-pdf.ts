@@ -114,7 +114,7 @@ export async function renderInteriorPdf(
   } = options;
 
   const pdf = await PDFDocument.create();
-  pdf.setTitle(meta.petName ? `${meta.petName} — ourTailTales` : "ourTailTales");
+  pdf.setTitle(meta.petName ? `${meta.petName}, ourTailTales` : "ourTailTales");
   pdf.setProducer("ourTailTales");
   pdf.setCreator("ourTailTales");
 
@@ -309,7 +309,7 @@ async function drawTitlePage(context: DrawContext): Promise<void> {
 
   await drawSlotPhoto(context, FIXED_SLOTS.titleHero, context.bookPage.photoIds[0]);
 
-  drawCenteredTracked(page, "OURTAILTALES", {
+  drawCenteredTracked(page, "ourTailTales", {
     font: fonts.sans,
     size: 8.5,
     color: INK_FAINT,
@@ -432,7 +432,7 @@ async function drawClosingPage(context: DrawContext): Promise<void> {
 async function drawImprintPage(context: DrawContext): Promise<void> {
   const { page, meta, fonts } = context;
 
-  drawCenteredTracked(page, "OURTAILTALES", {
+  drawCenteredTracked(page, "ourTailTales", {
     font: fonts.sans,
     size: 9,
     color: INK_FAINT,

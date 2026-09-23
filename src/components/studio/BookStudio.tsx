@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { track } from "@/lib/analytics";
 
 import { CoverCanvas, PageCanvas } from "@/components/book-viewer/PageCanvas";
+import { PageTurn } from "@/components/book-viewer/PageTurn";
 import { LockedWall } from "@/components/studio/LockedWall";
 import { PageFilmstrip } from "@/components/studio/PageFilmstrip";
 import { PageInspector } from "@/components/studio/PageInspector";
@@ -73,6 +74,35 @@ export function BookStudio({
   const position = Math.min(selected, Math.max(0, slides.length - 1));
   const slide = slides[position];
 
+  /**
+   * One slide, drawn for whichever side of a page turn needs it.
+   *
+   * The turn renders two pages at once — the sheet and what is under it — so
+   * this has to be callable for any index, not just the selected one.
+   */
+  const renderSlide = useCallback(
+    (index: number) => {
+      const target = slides[index];
+      if (!target) return null;
+      return (
+        <div className={target.locked ? "blur-[7px] saturate-50" : undefined}>
+          {target.page ? (
+            <PageCanvas
+              page={target.page}
+              meta={meta}
+              chapters={chapters}
+              photos={photoMap}
+              placeholder={target.locked}
+            />
+          ) : (
+            <CoverCanvas meta={meta} photos={photoList} />
+          )}
+        </div>
+      );
+    },
+    [slides, meta, chapters, photoMap, photoList],
+  );
+
   const move = useCallback(
     (delta: number) => {
       setSelected((current) =>
@@ -115,7 +145,7 @@ export function BookStudio({
           <h1 className="truncate font-display text-xl text-page-ink sm:text-2xl">
             {meta.petName.trim() || "Your book"}
           </h1>
-          <p className="mt-0.5 text-xs text-page-ink-faint">
+          <p aria-live="polite" className="mt-0.5 text-xs text-page-ink-faint">
             {slide.label} · page {position + 1} of {slides.length}
             {unlocked ? "" : ` · ${readableCount} readable for now`}
           </p>
@@ -190,19 +220,12 @@ export function BookStudio({
         <div className="lg:col-start-1 lg:row-start-1">
           <div className="relative mx-auto w-full max-w-[34rem]">
             <div className="overflow-hidden rounded-xl bg-white shadow-[0_18px_50px_-24px_rgb(25_32_58/0.5)] ring-1 ring-page-line">
-              <div className={slide.locked ? "blur-[7px] saturate-50" : ""}>
-                {slide.page ? (
-                  <PageCanvas
-                    page={slide.page}
-                    meta={meta}
-                    chapters={chapters}
-                    photos={photoMap}
-                    placeholder={slide.locked}
-                  />
-                ) : (
-                  <CoverCanvas meta={meta} photos={photoList} />
-                )}
-              </div>
+              <PageTurn
+                position={position}
+                count={slides.length}
+                onTurn={setSelected}
+                renderPage={renderSlide}
+              />
 
               {slide.locked ? (
                 <div className="absolute inset-0 flex items-center justify-center bg-white/45 p-5">

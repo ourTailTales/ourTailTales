@@ -195,6 +195,16 @@ body {
   overscroll-behavior-x: contain;
   /* The drag handler moves scrollLeft directly; smooth scrolling would fight it. */
   scroll-behavior: auto;
+  /* A finger pans the strip natively and scrolls the page vertically; the JS
+     handler sits out touch entirely so the two never double up. */
+  touch-action: pan-x pan-y;
+}
+
+/* The page turn needs depth, and the sheet must not paint outside the page. */
+.book-scene {
+  perspective: 1700px;
+  perspective-origin: 28% 50%;
+  transform-style: preserve-3d;
 }
 
 .filmstrip::-webkit-scrollbar {

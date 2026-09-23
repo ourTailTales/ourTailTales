@@ -66,7 +66,7 @@ export async function renderCoverPdf(args: {
   const { meta, dimensions, targetPpi = 300 } = args;
 
   const pdf = await PDFDocument.create();
-  pdf.setTitle(meta.petName ? `${meta.petName} — cover` : "ourTailTales cover");
+  pdf.setTitle(meta.petName ? `${meta.petName}, cover` : "ourTailTales cover");
   pdf.setProducer("ourTailTales");
 
   const fonts: CoverFontSet = {

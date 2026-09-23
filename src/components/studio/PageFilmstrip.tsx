@@ -72,6 +72,11 @@ export function PageFilmstrip({
   const startPan = (event: React.PointerEvent<HTMLDivElement>): void => {
     // Leave the middle and right buttons, and anything with its own gesture.
     if (event.button !== 0) return;
+    // A finger already pans this strip natively. Driving scrollLeft as well
+    // moves it twice as far as the finger and fights the momentum, so touch is
+    // left to the browser and this handler exists for pointers that have no
+    // drag-to-scroll of their own.
+    if (event.pointerType === "touch") return;
     const strip = stripRef.current;
     if (!strip) return;
     panning.current = true;
@@ -100,8 +105,11 @@ export function PageFilmstrip({
       strip.releasePointerCapture(event.pointerId);
     }
     panning.current = false;
-    // Let the click that follows know whether it was a drag.
-    dragged.current = origin.current.moved > DRAG_THRESHOLD;
+    // Let the click that follows know whether it was a drag. A touch that
+    // scrolled the strip never reaches a thumbnail's click in the first place,
+    // so this only has to speak for pointers we tracked ourselves.
+    dragged.current =
+      event.pointerType !== "touch" && origin.current.moved > DRAG_THRESHOLD;
   };
 
   /** True when the pointer that just went up had been dragging the strip. */
