@@ -1,6 +1,4 @@
 import posthog from "posthog-js";
-import { redactProperties } from "@/lib/analytics-redact";
-
 
 const token = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN;
 const host = process.env.NEXT_PUBLIC_POSTHOG_HOST;
@@ -39,7 +37,6 @@ if (token && host) {
     defaults: "2026-01-30",
     capture_exceptions: true,
     debug: process.env.NODE_ENV === "development",
-    sanitize_properties: redactProperties,
     before_send: (event) => (isLocalhost() ? null : event),
   });
 }
