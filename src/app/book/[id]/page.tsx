@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { CalendarClock, Download, ExternalLink, LockKeyhole } from "lucide-react";
 
 import { BrandMark } from "@/components/BrandMark";
+import { SavedBookSignIn } from "@/components/auth/SavedBookSignIn";
 import { BookViewAnalytics } from "@/components/create/BookViewAnalytics";
 import { UpgradeActions } from "./UpgradeActions";
 import { loadDraftPreview, type DraftPreview } from "@/lib/drafts/preview";
@@ -59,7 +60,14 @@ export default async function BookPage({
 async function SavedBookProject({ id }: { id: string }) {
   const supabase = await createAuthServerClient();
   const { data: authData } = await supabase.auth.getUser();
-  if (!authData.user) redirect(`/create?book=${encodeURIComponent(id)}`);
+  if (!authData.user) {
+    return (
+      <main className="mx-auto w-full max-w-2xl flex-1 px-5 pb-16 pt-6 sm:px-8">
+        <BrandMark href="/" size="md" />
+        <SavedBookSignIn />
+      </main>
+    );
+  }
 
   const { data, error } = await supabase
     .from("book_projects")

@@ -6,9 +6,12 @@ import { useOurTailTalesStore } from "@/store/useOurTailTalesStore";
 
 /**
  * Right-hand content of the site header on /create: the email already
- * captured on the landing page (no re-asking, no account) and a one-click
- * PDF download that renders straight from the current draft — no sign-in
- * required. Meant to sit inline with the logo via SiteHeader's `right` slot.
+ * captured on the landing page (no re-asking here) and a one-click PDF
+ * download that renders straight from the current draft.
+ *
+ * The account gate opens on that click, never before — an account is only
+ * worth asking for once there is a finished book to keep. Meant to sit inline
+ * with the logo via SiteHeader's `right` slot.
  */
 export function CreateHeaderActions({
   onDownloadPdf,

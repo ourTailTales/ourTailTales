@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
+import { AuthGate } from "@/components/auth/AuthGate";
 import { EmailSampleModal } from "@/components/EmailSampleModal";
 import { CreateHeaderActions } from "@/components/create/CreateHeaderActions";
 import { SaveStatusIndicator } from "@/components/create/SaveStatusIndicator";
@@ -22,12 +23,15 @@ import {
 } from "@/lib/photo/process";
 import { makeVideoPreview } from "@/lib/photo/videoPreview";
 import { persistLocalDraft } from "@/lib/drafts/local";
+import { saveBookProject } from "@/lib/books/cloud";
 import { uploadFreePreview } from "@/lib/drafts/upload";
 import { generateChapterStory } from "@/lib/story/client";
 import { prepareOrder } from "@/lib/order/prepare";
 import { placedMemoriesReadyForCheckout } from "@/lib/video-memory/checkout-ready";
 import { draftHeaders, loadStoredDraft } from "@/lib/video-memory/client";
 import { photoMapOf, useOurTailTalesStore } from "@/store/useOurTailTalesStore";
+import { useIsAuthenticated } from "@/hooks/useIsAuthenticated";
+import { authConfigured } from "@/lib/supabase/auth-browser";
 
 /** Chapters written at once. Keeps the AI endpoint from being hammered. */
 const STORY_CONCURRENCY = 2;
@@ -42,6 +46,8 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
   const [notice, setNotice] = useState<string | null>(null);
   const [localReady, setLocalReady] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
+  const isAuthenticated = useIsAuthenticated();
 
   useEffect(() => {
     track("create_page_viewed");
@@ -231,7 +237,7 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
     return url;
   }, []);
 
-  const handleDownloadPdf = useCallback(async () => {
+  const runDownloadPdf = useCallback(async () => {
     const state = useOurTailTalesStore.getState();
     if (state.pages.length === 0) return;
     setDownloadingPdf(true);
@@ -246,6 +252,13 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
       downloadBlob(blob, previewFileName(state.meta.petName));
       track("free_pdf_downloaded", { chapters: state.chapterCount });
 
+      // Hold the rendered preview in the local draft. It is what the account
+      // copy uploads, and what a reload restores from — without it
+      // saveBookProject has nothing to save.
+      await persistLocalDraft(useOurTailTalesStore.getState(), blob).catch(
+        (error: unknown) => captureClientException(error),
+      );
+
       // Bank a copy so the book can be reopened from a link — another device,
       // or the email. Deliberately not awaited: the file the customer asked
       // for is already on its way, and a slow upload must not hold it up.
@@ -254,6 +267,19 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
         // link, so it is reported rather than surfaced as a failure.
         captureClientException(error);
       });
+
+      // The copy that lives in their account. Best-effort for the same
+      // reason: they already have the file, so a failure here costs them the
+      // library entry, not the book.
+      const saved = useOurTailTalesStore.getState();
+      void saveBookProject({
+        meta: saved.meta,
+        chapters: saved.chapters,
+        pages: saved.pages,
+        photos: saved.photos,
+      })
+        .then(() => track("free_book_saved", { chapters: saved.chapterCount }))
+        .catch((error: unknown) => captureClientException(error));
     } catch (error) {
       captureClientException(error);
       setNotice("Your PDF could not be prepared. Please try again.");
@@ -261,6 +287,25 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
       setDownloadingPdf(false);
     }
   }, [bankPreview]);
+
+  /**
+   * The download is the one moment an account is worth asking for.
+   *
+   * By here the customer has a finished book on screen, so the trade is
+   * legible: sign in and it stays in your library rather than in this
+   * browser. Asking any earlier costs more of them than it returns.
+   *
+   * When Supabase Auth has no keys in this environment there is nothing to
+   * sign in to, and blocking the download would be worse than skipping it.
+   */
+  const handleDownloadPdf = useCallback(async () => {
+    if (!isAuthenticated && authConfigured()) {
+      track("auth_gate_viewed");
+      setAuthOpen(true);
+      return;
+    }
+    await runDownloadPdf();
+  }, [isAuthenticated, runDownloadPdf]);
 
   /**
    * The shareable link for this book, rendering and banking it first if the
@@ -389,6 +434,13 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
     }
   }, [router]);
 
+  // A failed confirmation link lands back here with ?authError=. Derived
+  // rather than stored: the parameter was previously set by the auth callback
+  // and read by nothing, so a broken link looked exactly like a working one.
+  const authErrorNotice = searchParams.get("authError")
+    ? "That sign-in link did not work — it may have already been used or expired. You can sign in again when you download."
+    : null;
+
   const stage = !localReady ? (
     <div className="quick-create-stage flex min-h-[calc(100dvh-5rem)] items-center justify-center">
       <span
@@ -408,7 +460,7 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
         onSample={() => setSampleOpen(true)}
         onCheckout={() => void handleCheckout()}
         onRegenerate={(chapterId) => void runStories([chapterId])}
-        notice={notice}
+        notice={notice ?? authErrorNotice}
         enableVideoMemories={false}
       />
     </div>
@@ -441,6 +493,16 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
           </div>
           {stage}
         </main>
+      )}
+
+      {authOpen && (
+        <AuthGate
+          onClose={() => setAuthOpen(false)}
+          onAuthenticated={() => {
+            setAuthOpen(false);
+            void runDownloadPdf();
+          }}
+        />
       )}
 
       {sampleOpen && (
