@@ -40,6 +40,22 @@ export function isLiveKey(key: string): boolean {
 }
 
 /**
+ * True when real money is being taken while print fulfilment still points at
+ * Lulu's sandbox.
+ *
+ * This is the one mismatch that looks healthy from every dashboard at once:
+ * Stripe shows a successful live charge, Lulu's sandbox shows an accepted print
+ * job, and the customer is waiting on a book that no printer will ever see.
+ * Nothing else in the system notices, because each half is behaving correctly.
+ */
+export function fulfilmentModeMismatch(
+  secretKey: string = readEnv("STRIPE_SECRET_KEY") ?? "",
+): boolean {
+  if (!isLiveKey(secretKey)) return false;
+  return readEnv("LULU_ENV") !== "production";
+}
+
+/**
  * Throws when live keys are loaded anywhere but production, and warns when
  * production is still on test keys.
  *
@@ -64,6 +80,17 @@ export function assertStripeKeyMatchesEnvironment(
   if (!live && environment === "production") {
     console.warn(
       "[ourTailTales] Production is running on Stripe TEST keys — no real payment will be taken.",
+    );
+  }
+
+  if (fulfilmentModeMismatch(secretKey)) {
+    // A warning, not a throw. Digital books fulfil correctly in this state and
+    // breaking their checkout would be the larger harm; the hardcover path
+    // refuses on its own in `submitPaidOrderToLulu`.
+    console.error(
+      "[ourTailTales] Stripe is LIVE but LULU_ENV is not \"production\". " +
+        "Hardcover orders will be flagged for review instead of printed. " +
+        "Set LULU_ENV=production with production Lulu credentials to fulfil them.",
     );
   }
 

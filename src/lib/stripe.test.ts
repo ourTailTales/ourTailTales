@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   assertStripeKeyMatchesEnvironment,
   deploymentEnvironment,
+  fulfilmentModeMismatch,
   isLiveKey,
 } from "@/lib/stripe";
 
@@ -12,6 +13,8 @@ const LIVE_SECRET = "sk_live_abc123";
 afterEach(() => {
   delete process.env.VERCEL_ENV;
   delete process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
+  delete process.env.LULU_ENV;
+  delete process.env.STRIPE_SECRET_KEY;
   vi.restoreAllMocks();
 });
 
@@ -95,5 +98,33 @@ describe("isLiveKey", () => {
     expect(isLiveKey("pk_live_x")).toBe(true);
     expect(isLiveKey("sk_test_x")).toBe(false);
     expect(isLiveKey("pk_test_x")).toBe(false);
+  });
+});
+
+describe("fulfilmentModeMismatch", () => {
+  it("flags a live charge pointed at the Lulu sandbox", () => {
+    process.env.LULU_ENV = "sandbox";
+    expect(fulfilmentModeMismatch(LIVE_SECRET)).toBe(true);
+  });
+
+  it("flags a live charge with LULU_ENV unset, which also means sandbox", () => {
+    delete process.env.LULU_ENV;
+    expect(fulfilmentModeMismatch(LIVE_SECRET)).toBe(true);
+  });
+
+  it("is quiet once both halves are live", () => {
+    process.env.LULU_ENV = "production";
+    expect(fulfilmentModeMismatch(LIVE_SECRET)).toBe(false);
+  });
+
+  it("is quiet in test mode, where a sandbox printer is the point", () => {
+    process.env.LULU_ENV = "sandbox";
+    expect(fulfilmentModeMismatch(TEST_SECRET)).toBe(false);
+  });
+
+  it("reads STRIPE_SECRET_KEY when no key is passed", () => {
+    process.env.STRIPE_SECRET_KEY = LIVE_SECRET;
+    process.env.LULU_ENV = "sandbox";
+    expect(fulfilmentModeMismatch()).toBe(true);
   });
 });

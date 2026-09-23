@@ -26,6 +26,14 @@ import { PREVIEW_BUCKET, supabaseAdmin } from "@/lib/supabase/server";
  * the browser can drop.
  */
 
+/**
+ * Watermarking downloads the whole book, stamps every page with pdf-lib and
+ * re-uploads it. That comfortably outruns the default function budget on a long
+ * book, and a timeout here leaves `pdf_storage_path` unset — which the book page
+ * reads as "not a book" and redirects. 60s is the Hobby ceiling.
+ */
+export const maxDuration = 60;
+
 const DAYS_UNTIL_EXPIRY = 30;
 
 const finalizeSchema = z.object({

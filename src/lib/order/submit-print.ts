@@ -1,4 +1,5 @@
 import { createPrintJob } from "@/lib/lulu/client";
+import { fulfilmentModeMismatch } from "@/lib/stripe";
 import { STORAGE_BUCKET, supabaseAdmin } from "@/lib/supabase/server";
 import type { ShippingAddress } from "@/types/order";
 
@@ -40,6 +41,16 @@ export async function submitPaidOrderToLulu(orderId: string): Promise<void> {
   }
   if (!order.email) {
     await markNeedsReview(orderId, "No customer email was recorded.");
+    return;
+  }
+  // Checked before anything is signed or sent. A live charge whose print job
+  // goes to the sandbox is indistinguishable from success on both dashboards,
+  // so the order stops here and waits for a human rather than disappearing.
+  if (fulfilmentModeMismatch()) {
+    await markNeedsReview(
+      orderId,
+      "Stripe is in live mode but LULU_ENV is not production — refused to send a paid order to the Lulu sandbox.",
+    );
     return;
   }
 

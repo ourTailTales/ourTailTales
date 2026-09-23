@@ -45,5 +45,29 @@ export function routeError(error: unknown, fallback: string): Response {
   return Response.json({ error: message || fallback }, { status: 500 });
 }
 
-export const SITE_URL =
-  readEnv("NEXT_PUBLIC_SITE_URL") ?? "http://localhost:3000";
+/**
+ * Base URL for links this server builds: book links in email, Stripe
+ * success/cancel URLs.
+ *
+ * Every preview deployment gets its own hostname, so a fixed
+ * NEXT_PUBLIC_SITE_URL scoped to Preview would send each rehearsal's emails and
+ * Stripe redirects back to production. Leave it unset outside production and
+ * this falls through to the per-branch alias Vercel exposes, which is stable
+ * across redeploys of the same branch.
+ *
+ * Server-side only. `VERCEL_BRANCH_URL` is not inlined into the client bundle,
+ * so anything running in the browser must use `window.location.origin`.
+ */
+export function resolveSiteUrl(): string {
+  const explicit = readEnv("NEXT_PUBLIC_SITE_URL");
+  if (explicit) return explicit;
+
+  // VERCEL_BRANCH_URL is the branch alias; VERCEL_URL is the per-deployment
+  // hostname. Both require "Automatically expose System Environment Variables".
+  const vercelHost = readEnv("VERCEL_BRANCH_URL") ?? readEnv("VERCEL_URL");
+  if (vercelHost) return `https://${vercelHost}`;
+
+  return "http://localhost:3000";
+}
+
+export const SITE_URL = resolveSiteUrl();
