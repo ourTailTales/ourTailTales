@@ -95,6 +95,7 @@ export function BookFlow({
     chapterCount: chapters.length,
     unwritten,
     mediaCount,
+    photoCount: summary.placeable,
   });
   const shortOfPhotos = step === "needPhotos";
 
@@ -113,7 +114,7 @@ export function BookFlow({
    * nothing written means write them, everything written means open the book.
    * Any state that is recoverable now recovers on its own, on the next render.
    */
-  const writingStarted = useRef(false);
+  const writingFor = useRef<string | null>(null);
   useEffect(() => {
     if (step === "build") {
       confirmBookSize();
@@ -132,19 +133,32 @@ export function BookFlow({
 
     if (step !== "write") return;
 
-    // Latched: generation costs a model call per chapter, and an effect that
-    // runs twice — which React does on purpose in development — would pay for
-    // the whole book twice.
-    if (writingStarted.current) return;
-    writingStarted.current = true;
+    // Generation costs a model call per chapter, so this must not fire twice
+    // for the same work — which React does on purpose in development.
+    //
+    // It used to latch on a plain boolean, which stopped it firing twice and
+    // also stopped it ever firing again. Adding photos from inside the editor
+    // sends the book back through here, and with one earlier chapter left
+    // unwritten the latch was already closed: nothing advanced, the book
+    // never reopened, and the only way out was Start over, which destroys it.
+    // Latching on the work instead means the same work is refused and new
+    // work is not.
+    const work = `${chapters.length}:${unwritten}`;
+    if (writingFor.current === work) return;
+    writingFor.current = work;
     onCreateStory();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- driven by the book's condition, not by callback identity
-  }, [step, chapterCount, confirmBookSize, goToEditing]);
+  }, [step, chapterCount, chapters.length, unwritten, confirmBookSize, goToEditing]);
 
   const handleDrop = (event: DragEvent<HTMLElement>): void => {
     event.preventDefault();
     event.stopPropagation();
     setDragOver(false);
+    // A second album dropped while the first is still being read used to
+    // overwrite the first run without cancelling it, and whichever batch
+    // finished first declared the whole album ready. Chapters were then built
+    // from half of it and never rebuilt.
+    if (processing) return;
     void (async () => {
       setDropping(true);
       try {
@@ -227,21 +241,18 @@ export function BookFlow({
             funnelState={funnelState}
             shortOfPhotos={shortOfPhotos}
             mediaCount={mediaCount}
+            photoCount={summary.placeable}
             processed={progress.processed}
             total={progress.total}
             chaptersDone={chapters.filter((chapter) => chapter.aiStatus === "done").length}
             chapterCount={chapters.length}
             onOpenUpload={() => setUploadOpen(true)}
+            onStartOver={onStartOver}
             hasMedia={mediaCount > 0}
             petName={petName}
+            error={processingError}
           />
         )}
-
-        {processingError ? (
-          <p role="alert" className="mt-4 text-center text-sm text-periwinkle-deep">
-            {processingError}
-          </p>
-        ) : null}
       </div>
     </section>
   );
@@ -258,6 +269,9 @@ function Waiting({
   funnelState,
   shortOfPhotos,
   mediaCount,
+  photoCount,
+  onStartOver,
+  error,
   processed,
   total,
   chaptersDone,
@@ -269,6 +283,11 @@ function Waiting({
   funnelState: string;
   shortOfPhotos: boolean;
   mediaCount: number;
+  /** Usable photographs on their own. */
+  photoCount: number;
+  onStartOver: () => void;
+  /** Reading the album failed. */
+  error: string | null;
   processed: number;
   total: number;
   chaptersDone: number;
@@ -301,6 +320,44 @@ function Waiting({
       ? processed / total
       : 0;
 
+  // Reading the album failed. This used to be a line of text printed under a
+  // spinner that carried on turning at four percent forever, because the
+  // failure left the funnel idle with photos already in, which no branch
+  // below claims. A dead end with an explanation is still a dead end.
+  if (error) {
+    return (
+      <div className="flex min-h-[55dvh] flex-col items-center justify-center gap-4 text-center">
+        <h1 className="font-display text-2xl text-page-ink">
+          Something went wrong reading your photos
+        </h1>
+        <p role="alert" className="max-w-sm text-sm leading-6 text-page-ink-soft">
+          {error}
+        </p>
+        <div className="mt-1 flex flex-wrap items-center justify-center gap-3">
+          <button
+            type="button"
+            onClick={onOpenUpload}
+            className="inline-flex min-h-12 items-center rounded-xl bg-periwinkle px-6 text-base font-semibold text-white shadow-lift hover:bg-periwinkle-deep"
+          >
+            Choose photos again
+          </button>
+          <button
+            type="button"
+            onClick={onStartOver}
+            className="text-xs text-page-ink-faint underline decoration-page-line underline-offset-4 hover:text-periwinkle-deep"
+          >
+            Start over
+          </button>
+        </div>
+        {mediaCount > 0 ? (
+          <p className="text-xs text-page-ink-faint">
+            The {mediaCount} we did read are still here.
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+
   // Enough photos arrived to start, but not enough to fill a book. Says how
   // many are missing and opens the picker — the alternative was a spinner that
   // never resolved, for a reason nobody could see.
@@ -309,13 +366,25 @@ function Waiting({
     return (
       <div className="flex min-h-[55dvh] flex-col items-center justify-center gap-4 text-center">
         <h1 className="font-display text-2xl text-page-ink">
-          {missing === 1
-            ? "One more photo and we can start"
-            : `${missing} more photos and we can start`}
+          {photoCount === 0
+            ? "We need photographs to make the book"
+            : missing === 1
+              ? "One more photo and we can start"
+              : `${missing} more photos and we can start`}
         </h1>
         <p className="max-w-sm text-sm leading-6 text-page-ink-soft">
-          A book needs at least {MIN_PHOTOS_FOR_BOOK} photos to fill five
-          chapters. You have {mediaCount}.
+          {photoCount === 0 ? (
+            <>
+              The chapters are written from pictures, so an album of videos
+              alone has nothing to build from. Add some photographs and the
+              videos will still be there.
+            </>
+          ) : (
+            <>
+              A book needs at least {MIN_PHOTOS_FOR_BOOK} photos to fill five
+              chapters. You have {mediaCount}.
+            </>
+          )}
         </p>
         <button
           type="button"

@@ -34,8 +34,15 @@ export function nextBookStep(book: {
   unwritten: number;
   /** Usable photos plus videos. */
   mediaCount: number;
+  /**
+   * Usable photographs on their own.
+   *
+   * Videos count towards the album but cannot become chapters, so this is the
+   * number that decides whether there is a book to build at all.
+   */
+  photoCount: number;
 }): BookStep {
-  const { funnelState, chapterCount, unwritten, mediaCount } = book;
+  const { funnelState, chapterCount, unwritten, mediaCount, photoCount } = book;
 
   // Work already in flight, or a book already open. Nothing to decide.
   if (
@@ -49,7 +56,11 @@ export function nextBookStep(book: {
   }
 
   if (chapterCount === 0) {
-    return mediaCount >= MIN_PHOTOS_FOR_BOOK ? "build" : "needPhotos";
+    // Both conditions, not just the first. An album of twenty-five videos and
+    // no photographs clears the size gate and then proposes nothing, and the
+    // screen sits waiting for chapters that can never arrive.
+    const enough = mediaCount >= MIN_PHOTOS_FOR_BOOK && photoCount > 0;
+    return enough ? "build" : "needPhotos";
   }
 
   return unwritten === 0 ? "open" : "write";

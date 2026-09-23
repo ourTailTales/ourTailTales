@@ -101,6 +101,32 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
   // after restore, since that's a read, not an edit.
   const autosaveHydrated = useRef(false);
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /**
+   * Writes the draft and says what actually happened.
+   *
+   * This used to swallow every rejection and then flip the pill to "Saved"
+   * regardless. A hundred-photo album plus a whole-book PDF rewritten on
+   * every pause is exactly the shape that makes a browser refuse, so the one
+   * case the indicator existed for was the one it lied about: the customer
+   * read "Saved", closed the tab, and the book was gone.
+   */
+  const save = useCallback(async () => {
+    const state = useOurTailTalesStore.getState();
+    try {
+      const result = await persistLocalDraft(state);
+      state.setSaveStatus("saved");
+      if (result && result.missingPhotos > 0) {
+        captureClientException(
+          new Error(`Saved without ${result.missingPhotos} photo(s).`),
+        );
+      }
+    } catch (error) {
+      useOurTailTalesStore.getState().setSaveStatus("error");
+      captureClientException(error);
+    }
+  }, []);
+
   useEffect(() => {
     if (!localReady) return;
     if (!autosaveHydrated.current) {
@@ -110,19 +136,70 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
     useOurTailTalesStore.getState().setSaveStatus("saving");
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     autosaveTimer.current = setTimeout(() => {
-      void persistLocalDraft(useOurTailTalesStore.getState())
-        .catch(() => {})
-        .finally(() => useOurTailTalesStore.getState().setSaveStatus("saved"));
+      autosaveTimer.current = null;
+      void save();
     }, 800);
     return () => {
       if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     };
-  }, [localReady, store.meta, store.chapters, store.pages, store.customCover]);
+    // The album belongs in here as much as the text does. Without it, adding
+    // photos or capturing an address did not re-key the draft until some
+    // unrelated edit happened to come along.
+  }, [
+    localReady,
+    save,
+    store.meta,
+    store.chapters,
+    store.pages,
+    store.customCover,
+    store.photos,
+    store.albumVideos,
+    store.leadEmail,
+  ]);
+
+  // An edit followed by a close inside the debounce window was simply lost,
+  // with the pill still reading "Saved". `visibilitychange` is the one that
+  // actually fires when a phone browser is dismissed; `beforeunload` does not.
+  useEffect(() => {
+    const flush = (): void => {
+      if (!autosaveTimer.current) return;
+      clearTimeout(autosaveTimer.current);
+      autosaveTimer.current = null;
+      void save();
+    };
+    const onHide = (): void => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("pagehide", flush);
+    return () => {
+      document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("pagehide", flush);
+    };
+  }, [save]);
 
   const handleFiles = useCallback(
     (files: File[]) => {
       const { images, videos } = partitionMedia(files);
-      if (images.length === 0 && videos.length === 0) return;
+      if (images.length === 0 && videos.length === 0) {
+        // Dropping a folder of PDFs or raw files used to do nothing at all,
+        // silently, which looks exactly like a broken page.
+        if (files.length > 0) {
+          setNotice(
+            "Those files are not photos or videos, so there was nothing to add.",
+          );
+        }
+        return;
+      }
+
+      // One album at a time. A second batch started while the first is still
+      // being read overwrote the running ingestion without cancelling it, and
+      // whichever finished first declared the album ready: chapters were built
+      // from half of it and the rest were never placed.
+      if (useOurTailTalesStore.getState().funnelState === "processing") {
+        setNotice("Still reading the last batch. Try again in a moment.");
+        return;
+      }
 
       track("album_selected", { count: images.length + videos.length });
       store.startProcessing(images.length + videos.length);

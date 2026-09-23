@@ -67,6 +67,15 @@ type StoredDraft = {
   originalBook?: BookSnapshot;
 };
 
+export type LocalSaveResult = {
+  localDraftId: string;
+  /**
+   * Photos whose binary was not in the asset store when this ran, and so are
+   * not in the saved record. Their references are pruned on the way back out.
+   */
+  missingPhotos: number;
+};
+
 export type RestoredLocalDraft = Pick<
   StoredDraft,
   | "localDraftId"
@@ -89,16 +98,73 @@ export type RestoredLocalDraft = Pick<
   customCover: CustomCoverMeta | null;
   previewPdf?: Blob;
   originalBook: BookSnapshot | null;
+  /** Photos the record referred to but did not contain. */
+  missingPhotos: number;
 };
 
 let activeDraftId: string | null = null;
 let activeDraftKey: string | null = null;
 let activePreviewPdf: Blob | null = null;
 
+/**
+ * One queue for every read and write, because the three variables above are
+ * module state and two callers can be in here at once.
+ *
+ * The landing page navigates client side, so submitting a second address, or
+ * going back and forward between two of them, starts a second restore while
+ * the first is still running. Interleaved, they could leave the store holding
+ * one address's book while the pointer named the other's, and the next save
+ * would then write this content into that person's bucket and delete the
+ * bucket it came from. Running them in order makes the last one asked for the
+ * one that wins, which is what the caller meant.
+ */
+let queue: Promise<unknown> = Promise.resolve();
+
+function serialize<T>(work: () => Promise<T>): Promise<T> {
+  const next = queue.then(work, work);
+  // The queue must not inherit a rejection, or every later operation fails.
+  queue = next.then(
+    () => undefined,
+    () => undefined,
+  );
+  return next;
+}
+
+async function withDatabase<T>(
+  work: (database: IDBDatabase) => Promise<T>,
+): Promise<T> {
+  const database = await openDatabase();
+  try {
+    return await work(database);
+  } finally {
+    // Missing on the failure paths before, so a browser under storage
+    // pressure — exactly when these fail — accumulated open connections.
+    database.close();
+  }
+}
+
+/**
+ * Resolves when the data is actually on disk.
+ *
+ * A request's `onsuccess` fires while the transaction is still open; the
+ * commit can still abort afterwards, and on quota pressure it does. Waiting
+ * on the request alone is what let the interface say "Saved" over a write
+ * that never landed.
+ */
+function committed(transaction: IDBTransaction): Promise<void> {
+  return new Promise((resolve, reject) => {
+    transaction.oncomplete = () => resolve();
+    transaction.onabort = () =>
+      reject(transaction.error ?? new Error("Local draft storage is full."));
+    transaction.onerror = () =>
+      reject(transaction.error ?? new Error("Local draft storage failed."));
+  });
+}
+
 export async function persistLocalDraft(
   state: OurTailTalesStore,
   previewPdf?: Blob,
-): Promise<string | null> {
+): Promise<LocalSaveResult | null> {
   if (
     typeof indexedDB === "undefined" ||
     (state.photos.length === 0 && state.albumVideos.length === 0)
@@ -107,10 +173,17 @@ export async function persistLocalDraft(
   }
 
   const photos: StoredPhoto[] = [];
+  let missingPhotos = 0;
   for (const photo of state.photos) {
     const file = assetStore.getFile(photo.id);
     const thumbBlob = assetStore.getThumbBlob(photo.id);
-    if (!file || !thumbBlob) continue;
+    // Counted rather than passed over in silence. The chapters and pages
+    // still name this photo, so a record saved without it restores a book
+    // with a hole in it and a PDF that cannot resolve what it points at.
+    if (!file || !thumbBlob) {
+      missingPhotos += 1;
+      continue;
+    }
     const { thumbUrl: _thumbUrl, ...metadata } = photo;
     void _thumbUrl;
     photos.push({ ...metadata, file, thumbBlob });
@@ -156,41 +229,50 @@ export async function persistLocalDraft(
     originalBook: state.originalBook ?? undefined,
   };
 
-  const database = await openDatabase();
-  await requestPromise(
-    database.transaction(STORE, "readwrite").objectStore(STORE).put(draft),
+  const previousKey = activeDraftKey;
+
+  await serialize(() =>
+    withDatabase(async (database) => {
+      const transaction = database.transaction(STORE, "readwrite");
+      const objectStore = transaction.objectStore(STORE);
+      objectStore.put(draft);
+
+      // Moving from one identity to another (anonymous → email, or one email
+      // to another) — drop the old bucket so a subsequent visitor under the
+      // previous identity doesn't inherit this session's content. In the same
+      // transaction as the put, so a failure can never take the old book away
+      // without having written the new one.
+      if (previousKey && previousKey !== key) objectStore.delete(previousKey);
+
+      await committed(transaction);
+    }),
   );
 
-  // Moving from one identity to another (anonymous → email, or one email to
-  // another) — drop the old bucket so a subsequent visitor under the
-  // previous identity doesn't inherit this session's content.
-  if (activeDraftKey && activeDraftKey !== key) {
-    await requestPromise(
-      database.transaction(STORE, "readwrite").objectStore(STORE).delete(activeDraftKey),
-    ).catch(() => {
-      // Best effort — leaving a stale bucket behind is harmless.
-    });
-  }
-
-  database.close();
   activeDraftId = localDraftId;
   activeDraftKey = key;
-  return localDraftId;
+  return { localDraftId, missingPhotos };
 }
 
 export async function restoreLocalDraft(
   knownEmail?: string | null,
 ): Promise<RestoredLocalDraft | null> {
   if (typeof indexedDB === "undefined") return null;
-  const database = await openDatabase();
-
-  await migrateLegacyRecord(database);
 
   const key = keyForEmail(knownEmail);
-  const stored = (await requestPromise(
-    database.transaction(STORE, "readonly").objectStore(STORE).get(key),
-  )) as StoredDraft | undefined;
-  database.close();
+
+  // Throws rather than returning null when storage itself fails. The two mean
+  // completely different things to the caller: nothing saved under this
+  // address is a reason to clear the screen, and "the database would not open
+  // just now" is a reason to leave the book exactly where it is. Treating the
+  // second as the first is how an intact record gets written straight over.
+  const stored = await serialize(() =>
+    withDatabase(async (database) => {
+      await migrateLegacyRecord(database);
+      return (await requestPromise(
+        database.transaction(STORE, "readonly").objectStore(STORE).get(key),
+      )) as StoredDraft | undefined;
+    }),
+  );
 
   // Point at this bucket either way. A miss that left the pointer on the
   // previous address meant the next save deleted *that* person's book, on the
@@ -225,6 +307,27 @@ export async function restoreLocalDraft(
     clearCustomCoverFile();
   }
 
+  // A record can name photos it does not contain: the binary was missing from
+  // the asset store when it was written. Left in place, those names are
+  // blank slots in the book and a print render that cannot resolve what it
+  // points at, so they come out here rather than being discovered later.
+  const present = new Set(photos.map((photo) => photo.id));
+  const named = new Set<string>();
+  for (const chapter of stored.chapters) {
+    for (const id of chapter.photoIds) named.add(id);
+  }
+  for (const page of stored.pages) {
+    for (const id of page.photoIds) named.add(id);
+  }
+  const missingPhotos = [...named].filter((id) => !present.has(id)).length;
+  const keep = (ids: string[]): string[] => ids.filter((id) => present.has(id));
+
+  if (missingPhotos > 0) {
+    console.warn(
+      `[ourTailTales] ${missingPhotos} photo(s) were missing from the saved book.`,
+    );
+  }
+
   return {
     localDraftId: stored.localDraftId,
     savedAt: stored.savedAt,
@@ -232,14 +335,27 @@ export async function restoreLocalDraft(
     progress: stored.progress,
     meta: stored.meta,
     chapterCount: stored.chapterCount,
-    chapters: stored.chapters,
-    pages: stored.pages,
+    chapters:
+      missingPhotos === 0
+        ? stored.chapters
+        : stored.chapters.map((chapter) => ({
+            ...chapter,
+            photoIds: keep(chapter.photoIds),
+          })),
+    pages:
+      missingPhotos === 0
+        ? stored.pages
+        : stored.pages.map((page) => ({
+            ...page,
+            photoIds: keep(page.photoIds),
+          })),
     leadEmail: stored.leadEmail,
     photos,
     albumVideos,
     customCover,
     previewPdf: stored.previewPdf,
     originalBook: stored.originalBook ?? null,
+    missingPhotos,
   };
 }
 
@@ -264,20 +380,28 @@ async function migrateLegacyRecord(database: IDBDatabase): Promise<void> {
   ).catch(() => undefined)) as StoredDraft | undefined;
 
   if (!existingTarget) {
-    await requestPromise(
-      database
-        .transaction(STORE, "readwrite")
-        .objectStore(STORE)
-        .put({ ...legacy, key: targetKey }),
-    ).catch(() => {});
+    // The delete only runs if the copy actually committed. It used to run
+    // either way, so a browser that refused the write — out of space, which
+    // is the likeliest reason it refused — lost the record instead of moving
+    // it, and that was somebody's only copy of their book.
+    try {
+      const transaction = database.transaction(STORE, "readwrite");
+      transaction.objectStore(STORE).put({ ...legacy, key: targetKey });
+      await committed(transaction);
+    } catch (error) {
+      console.error("[ourTailTales] Could not move the legacy draft", error);
+      return;
+    }
   }
 
-  await requestPromise(
-    database
-      .transaction(STORE, "readwrite")
-      .objectStore(STORE)
-      .delete(LEGACY_ACTIVE_KEY),
-  ).catch(() => {});
+  try {
+    const transaction = database.transaction(STORE, "readwrite");
+    transaction.objectStore(STORE).delete(LEGACY_ACTIVE_KEY);
+    await committed(transaction);
+  } catch {
+    // Harmless: the record now exists in both places and the next read finds
+    // the bucketed one.
+  }
 }
 
 export function getLocalPreviewPdf(): Blob | null {
@@ -294,11 +418,13 @@ export async function clearLocalDraft(): Promise<void> {
   activeDraftKey = null;
   activePreviewPdf = null;
   if (typeof indexedDB === "undefined") return;
-  const database = await openDatabase();
-  await requestPromise(
-    database.transaction(STORE, "readwrite").objectStore(STORE).delete(key),
+  await serialize(() =>
+    withDatabase(async (database) => {
+      const transaction = database.transaction(STORE, "readwrite");
+      transaction.objectStore(STORE).delete(key);
+      await committed(transaction);
+    }),
   );
-  database.close();
 }
 
 function openDatabase(): Promise<IDBDatabase> {

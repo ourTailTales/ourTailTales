@@ -65,7 +65,7 @@ type State = {
   /** Shareable link to the banked free preview, once it has been uploaded. */
   bookUrl: string | null;
   /** Local-draft save state, shown in the header as a saved/saving indicator. */
-  saveStatus: "saved" | "saving";
+  saveStatus: "saved" | "saving" | "error";
   /** Customer-uploaded print-ready cover, used instead of the designed one when set. */
   customCover: CustomCoverMeta | null;
   /**
@@ -148,7 +148,7 @@ type Actions = {
   hydrateDraft: () => void;
   restoreLocalBook: (knownEmail?: string | null) => Promise<boolean>;
   setFreePreviewReady: (ready: boolean) => void;
-  setSaveStatus: (status: "saved" | "saving") => void;
+  setSaveStatus: (status: "saved" | "saving" | "error") => void;
   setCustomCover: (customCover: CustomCoverMeta | null) => void;
   setOriginalBook: (snapshot: BookSnapshot | null) => void;
   resetToOriginal: () => void;
@@ -218,7 +218,7 @@ const initialState: State = {
   originalBook: null,
 };
 
-export const useOurTailTalesStore = create<OurTailTalesStore>((set) => ({
+export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
   ...initialState,
 
   startProcessing: (total) =>
@@ -372,13 +372,20 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set) => ({
   finishStoryGeneration: () =>
     set((state) => ({
       funnelState: "editing",
-      // The way back. Taken here because this is the last moment the book is
-      // purely what we wrote — everything after it is the customer's own.
-      originalBook: {
-        meta: structuredClone(state.meta),
-        chapters: structuredClone(state.chapters),
-        pages: structuredClone(state.pages),
-      },
+      // The way back. Taken at the last moment the book is purely what we
+      // wrote, because everything after it is the customer's own.
+      //
+      // Kept if it already exists. This runs again whenever generation is
+      // re-entered — a draft restored mid-write, one failed chapter retried —
+      // and re-taking it there would snapshot a book the customer has already
+      // edited, so "reset to original" would quietly restore their edits
+      // instead of undoing them.
+      originalBook:
+        state.originalBook ?? {
+          meta: structuredClone(state.meta),
+          chapters: structuredClone(state.chapters),
+          pages: structuredClone(state.pages),
+        },
     })),
 
   updateChapterText: (chapterId, patch) =>
@@ -522,7 +529,40 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set) => ({
    * address's book" when there isn't one.
    */
   restoreLocalBook: async (knownEmail) => {
-    const restored = await restoreLocalDraft(knownEmail).catch(() => null);
+    let restored: Awaited<ReturnType<typeof restoreLocalDraft>>;
+    try {
+      restored = await restoreLocalDraft(knownEmail);
+    } catch (error) {
+      // Storage refused to answer. That is not the same as "this address has
+      // no book", and treating it as one is how an intact record gets thrown
+      // away: the screen is cleared, the next save mints a fresh id, and it
+      // writes straight over the book that was there all along.
+      console.error("[ourTailTales] Local draft could not be read", error);
+
+      const asking = knownEmail?.trim().toLowerCase() || null;
+      const holding = get().leadEmail?.trim().toLowerCase() || null;
+
+      if (asking !== holding) {
+        // Except here. We cannot show one person's pet to another while we
+        // work out whether the database is well, so privacy wins over the
+        // book and the screen starts empty.
+        assetStore.releaseAll();
+        releaseAllVideoPosters();
+        clearCustomCoverFile();
+        set({
+          ...initialState,
+          leadEmail: knownEmail?.trim() || null,
+          saveStatus: "error",
+        });
+        return false;
+      }
+
+      // Same person, unreadable storage: leave their book on screen and say
+      // plainly that it is not being saved.
+      set({ saveStatus: "error" });
+      return false;
+    }
+
     if (!restored) {
       assetStore.releaseAll();
       releaseAllVideoPosters();

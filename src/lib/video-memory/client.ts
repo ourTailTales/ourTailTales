@@ -53,9 +53,24 @@ export function loadStoredDraft(email?: string | null): StoredDraft | null {
   return readDraft(draftStorageKey(email));
 }
 
-export function storeDraft(draft: StoredDraft, email?: string | null): void {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(draftStorageKey(email), JSON.stringify(draft));
+/**
+ * Returns false when the browser would not keep it.
+ *
+ * Safari in private browsing throws here, and this sits in the middle of
+ * banking the book and mailing the link: an unguarded throw took out the
+ * teaser PDF, the email and the book link together, with nothing shown to the
+ * customer. The draft still works for the rest of this tab either way; what
+ * is lost is finding it again after a reload.
+ */
+export function storeDraft(draft: StoredDraft, email?: string | null): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    window.localStorage.setItem(draftStorageKey(email), JSON.stringify(draft));
+    return true;
+  } catch (error) {
+    console.error("[ourTailTales] This browser would not store the draft", error);
+    return false;
+  }
 }
 
 function readDraft(key: string): StoredDraft | null {

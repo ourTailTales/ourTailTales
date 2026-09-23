@@ -13,6 +13,7 @@ describe("nextBookStep", () => {
         chapterCount: 0,
         unwritten: 0,
         mediaCount: enough,
+        photoCount: enough,
       }),
     ).toBe("build");
   });
@@ -24,6 +25,7 @@ describe("nextBookStep", () => {
         chapterCount: 0,
         unwritten: 0,
         mediaCount: enough - 1,
+        photoCount: enough,
       }),
     ).toBe("needPhotos");
   });
@@ -35,6 +37,7 @@ describe("nextBookStep", () => {
         chapterCount: 5,
         unwritten: 5,
         mediaCount: enough,
+        photoCount: enough,
       }),
     ).toBe("write");
   });
@@ -48,6 +51,7 @@ describe("nextBookStep", () => {
         chapterCount: 5,
         unwritten: 3,
         mediaCount: enough,
+        photoCount: enough,
       }),
     ).toBe("write");
   });
@@ -59,6 +63,7 @@ describe("nextBookStep", () => {
         chapterCount: 5,
         unwritten: 0,
         mediaCount: enough,
+        photoCount: enough,
       }),
     ).toBe("open");
   });
@@ -70,6 +75,7 @@ describe("nextBookStep", () => {
         chapterCount: 5,
         unwritten: 1,
         mediaCount: enough,
+        photoCount: enough,
       }),
     ).toBe("write");
   });
@@ -82,6 +88,7 @@ describe("nextBookStep", () => {
           chapterCount: 5,
           unwritten: 5,
           mediaCount: enough,
+          photoCount: enough,
         }),
       ).toBe("wait");
     }
@@ -95,6 +102,7 @@ describe("nextBookStep", () => {
           chapterCount: 5,
           unwritten: 0,
           mediaCount: enough,
+          photoCount: enough,
         }),
       ).toBe("wait");
     }
@@ -107,7 +115,34 @@ describe("nextBookStep", () => {
         chapterCount: 0,
         unwritten: 0,
         mediaCount: 0,
+        photoCount: enough,
       }),
     ).toBe("wait");
+  });
+
+  it("asks for photographs when the album is nothing but videos", () => {
+    // Videos clear the size gate and then propose no chapters at all, so the
+    // waiting screen used to sit there for a book that could never be built.
+    expect(
+      nextBookStep({
+        funnelState: "album_ready",
+        chapterCount: 0,
+        unwritten: 0,
+        mediaCount: enough,
+        photoCount: 0,
+      }),
+    ).toBe("needPhotos");
+  });
+
+  it("builds as soon as there is one real photograph among the videos", () => {
+    expect(
+      nextBookStep({
+        funnelState: "album_ready",
+        chapterCount: 0,
+        unwritten: 0,
+        mediaCount: enough,
+        photoCount: 1,
+      }),
+    ).toBe("build");
   });
 });

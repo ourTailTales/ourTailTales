@@ -61,9 +61,14 @@ export function startIngestion(
     timer ??= setTimeout(flush, FLUSH_MS);
   };
 
+  /** Ids already through, so a fallback run cannot take them twice. */
+  const accepted = new Set<string>();
+
   const acceptPhoto = (photo: ProcessedPhoto): void => {
     const file = filesById.get(photo.id);
     if (!file) return;
+    if (accepted.has(photo.id)) return;
+    accepted.add(photo.id);
     assetStore.putAsset(photo.id, file, photo.thumbBlob);
     buffer.push(photo);
     scheduleFlush();
@@ -106,9 +111,18 @@ export function startIngestion(
     });
 
     active.addEventListener("error", () => {
-      // The worker could not run; finish this album on the main thread.
+      // The worker died; finish this album on the main thread. Only the ones
+      // it had not already delivered: restarting over the whole list put the
+      // same photo in twice, which is a duplicate React key and the same
+      // picture placed twice in the chapter proposals.
       active.terminate();
-      if (!stopped) void runOnMainThread(items, acceptPhoto, () => {
+      if (stopped) return;
+      const remaining = items.filter((item) => !accepted.has(item.id));
+      if (remaining.length === 0) {
+        finish();
+        return;
+      }
+      void runOnMainThread(remaining, acceptPhoto, () => {
         failures += 1;
       }, finish, () => stopped);
     });
