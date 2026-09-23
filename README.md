@@ -69,6 +69,11 @@ stripe login
 npm run stripe:listen   # prints: Your webhook signing secret is whsec_...
 ```
 
+`stripe login` leaves the CLI pointed at a sandbox, which is what you want — it is test
+mode. The script forwards only the three events this app handles; the CLI has required an
+explicit `--events`, `--all-snapshot` or `--all-thin` since v1.5x, so a bare
+`stripe listen` now exits with an error.
+
 Copy that `whsec_` into `STRIPE_WEBHOOK_SECRET` in `.env.local`, then restart `npm run
 dev`. **You do this once.** The CLI generates its signing secret at `stripe login` and
 reuses it for every later `stripe listen`, so there is nothing to re-copy. It only
