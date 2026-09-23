@@ -43,4 +43,3 @@ next-env.d.ts
 
 # Stray build/scratch artifacts
 .tmp-*
-.motion-preview/
