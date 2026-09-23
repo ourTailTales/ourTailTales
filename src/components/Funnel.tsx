@@ -465,7 +465,7 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
         );
       }
 
-      const { orderId } = await prepareOrder({
+      const { orderId, orderToken } = await prepareOrder({
         meta: state.meta,
         chapters: state.chapters,
         pages: state.pages,
@@ -480,7 +480,9 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
       });
 
       track("checkout_started", { chapters: state.chapterCount });
-      router.push(`/checkout?order=${orderId}`);
+      router.push(
+        `/checkout?order=${orderId}&t=${encodeURIComponent(orderToken)}`,
+      );
     } catch (error) {
       captureClientException(error);
       useOurTailTalesStore.getState().setExporting(null);

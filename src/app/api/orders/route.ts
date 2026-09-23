@@ -13,6 +13,8 @@ import {
   luluInteriorPages,
   storyPages,
 } from "@/lib/pricing";
+import { mintOrderToken } from "@/lib/order/token";
+import { LIMITS, enforceRateLimit } from "@/lib/rate-limit";
 import { supabaseAdmin } from "@/lib/supabase/server";
 
 const requestSchema = z.object({
@@ -27,9 +29,17 @@ const requestSchema = z.object({
  *
  * Page counts and the book price are always recomputed here from the chapter
  * count. A price sent by the browser is never trusted.
+ *
+ * Returns a token alongside the id. From here on, every route that changes
+ * this order wants it: the id alone is an identifier, not a credential.
  */
 export async function POST(request: Request): Promise<Response> {
   try {
+    // Nothing authenticates this route — it is where a funnel begins — so the
+    // only thing standing between a script and unbounded rows is this.
+    const limited = await enforceRateLimit(request, LIMITS.draft);
+    if (limited) return limited;
+
     const parsed = requestSchema.safeParse(await request.json());
     if (!parsed.success) {
       return Response.json(
@@ -64,6 +74,7 @@ export async function POST(request: Request): Promise<Response> {
 
     return Response.json({
       orderId,
+      orderToken: mintOrderToken(orderId),
       totalPages: luluInteriorPages(chapterCount),
       bookPrice: bookPrice(chapterCount),
     });

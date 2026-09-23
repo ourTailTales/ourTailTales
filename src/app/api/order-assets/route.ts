@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 import { routeError } from "@/lib/env";
+import { requireOrderToken } from "@/lib/order/token";
+import { LIMITS, enforceRateLimit } from "@/lib/rate-limit";
 import {
   STORAGE_BUCKET,
   orderAssetPath,
@@ -14,15 +16,29 @@ const requestSchema = z.object({ orderId: z.string().uuid() });
  *
  * The bucket is private and the service-role key stays on the server; the
  * browser only ever receives these scoped, expiring URLs.
+ *
+ * Requires the order's token. Without it, anyone who learned an order id could
+ * mint an upload URL for somebody else's print files.
+ *
+ * Note what this does NOT protect: a signed upload URL stays usable for hours
+ * after it is minted, so the customer who legitimately owns it can still
+ * replace their own print files later, including after paying. That is handled
+ * where it has to be, by copying the files to a path no client holds a URL for
+ * at the moment payment lands. See `freezePrintFiles`.
  */
 export async function POST(request: Request): Promise<Response> {
   try {
+    const limited = await enforceRateLimit(request, LIMITS.draft);
+    if (limited) return limited;
+
     const parsed = requestSchema.safeParse(await request.json());
     if (!parsed.success) {
       return Response.json({ error: "Unknown order." }, { status: 400 });
     }
 
     const { orderId } = parsed.data;
+    const unauthorized = requireOrderToken(request, orderId);
+    if (unauthorized) return unauthorized;
     const supabase = supabaseAdmin();
 
     const { data: order, error: lookupError } = await supabase

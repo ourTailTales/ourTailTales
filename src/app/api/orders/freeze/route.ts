@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { resolveDraft } from "@/lib/drafts/resolve";
 import { routeError } from "@/lib/env";
+import { requireOrderToken } from "@/lib/order/token";
 import { includedUniqueVideoIds } from "@/lib/video-memory/count";
 import { centsToUsd, videoMemoryQuote } from "@/lib/video-memory/pricing";
 import { supabaseAdmin } from "@/lib/supabase/server";
@@ -21,6 +22,17 @@ const placementSchema = z.object({
   zIndex: z.number().optional(),
 });
 
+/**
+ * Records what is actually going to be printed, and what the Video Memories on
+ * it cost.
+ *
+ * Two things gate it. The order's token, because this rewrites the contents of
+ * somebody's order. And the absence of a PaymentIntent, because this is what
+ * the price is computed from: left open afterwards, a customer could take a
+ * quote for one Video Memory, re-freeze with twenty, and confirm the payment
+ * they were already holding. The quote and the thing quoted have to stop
+ * moving at the same moment.
+ */
 const requestSchema = z.object({
   orderId: z.string().uuid(),
   pages: z.array(
@@ -35,23 +47,43 @@ const requestSchema = z.object({
 
 export async function POST(request: Request): Promise<Response> {
   try {
-    const draft = await resolveDraft(request);
     const parsed = requestSchema.safeParse(await request.json());
     if (!parsed.success) {
       return Response.json({ error: "The book could not be frozen." }, { status: 400 });
     }
 
+    const unauthorized = requireOrderToken(request, parsed.data.orderId);
+    if (unauthorized) return unauthorized;
+
+    const draft = await resolveDraft(request);
+
     const supabase = supabaseAdmin();
     const { data: order } = await supabase
       .from("orders")
-      .select("id, status, draft_id, interior_path, cover_path")
+      .select(
+        "id, status, draft_id, interior_path, cover_path, stripe_payment_intent_id",
+      )
       .eq("id", parsed.data.orderId)
       .maybeSingle();
     if (!order || order.status !== "pending_payment") {
       return Response.json({ error: "Unknown order." }, { status: 404 });
     }
-    if (draft && order.draft_id && draft.id !== order.draft_id) {
+    // An order that came from a book must be frozen by whoever holds that
+    // book. This used to skip the check entirely when no credentials were
+    // presented, which made presenting none the way past it.
+    if (order.draft_id && draft?.id !== order.draft_id) {
       return Response.json({ error: "Unknown draft." }, { status: 401 });
+    }
+    // The quote has already been taken. Changing what is in the book now
+    // changes what it should have cost.
+    if (order.stripe_payment_intent_id) {
+      return Response.json(
+        {
+          error:
+            "This order has already been priced. Start a new order to change the book.",
+        },
+        { status: 409 },
+      );
     }
     if (!order.interior_path || !order.cover_path) {
       return Response.json(

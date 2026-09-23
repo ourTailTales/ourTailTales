@@ -18,9 +18,12 @@ const US_STATE_PATTERN = /^[A-Za-z]{2}$/;
 
 export function CheckoutForm({
   order,
+  orderToken,
   publishableKey,
 }: {
   order: OrderView;
+  /** This order's credential, from the checkout link. */
+  orderToken: string;
   publishableKey: string | null;
 }) {
   const [step, setStep] = useState<Step>("address");
@@ -129,7 +132,11 @@ export function CheckoutForm({
     try {
       const response = await fetch("/api/stripe/payment-intent", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...postHogHeaders() },
+        headers: {
+          "Content-Type": "application/json",
+          "x-order-token": orderToken,
+          ...postHogHeaders(),
+        },
         body: JSON.stringify({
           orderId: order.id,
           email: email.trim(),

@@ -5,6 +5,8 @@ import { resolveDraft } from "@/lib/drafts/resolve";
 import { claimUrl, draftPdfPath } from "@/lib/drafts/storage";
 import { routeError } from "@/lib/env";
 import { sendTeaserEmail } from "@/lib/email/send";
+import { MAX_CHAPTERS } from "@/lib/pricing";
+import { LIMITS, enforceRateLimit } from "@/lib/rate-limit";
 import { PREVIEW_BUCKET, supabaseAdmin } from "@/lib/supabase/server";
 
 /**
@@ -19,13 +21,22 @@ import { PREVIEW_BUCKET, supabaseAdmin } from "@/lib/supabase/server";
  * The bytes are read from storage rather than accepted from the request. The
  * teaser is banked the moment the book is written, and a route handler's body
  * cap is below what a ten-page photo book weighs anyway.
+ *
+ * Rate limited twice over, because holding a draft is a low bar: anyone can
+ * make one. Once against the caller's address, which bounds how many drafts
+ * one machine can spin up and mail from, and once against the draft itself,
+ * which bounds how many addresses a single book can be posted to. Without the
+ * second, one draft plus a list of addresses is an open relay running from our
+ * own verified sending domain.
  */
 
 const requestSchema = z.object({
   email: z.email().max(200),
   petName: z.string().max(80).optional().default(""),
-  hiddenChapters: z.number().int().min(0).max(200).optional().default(0),
-  hiddenPages: z.number().int().min(0).max(2000).optional().default(0),
+  // Bounded by the largest book we sell, not by a round number. These two
+  // are rendered straight into the email copy.
+  hiddenChapters: z.number().int().min(0).max(MAX_CHAPTERS).optional().default(0),
+  hiddenPages: z.number().int().min(0).max(MAX_CHAPTERS * 10).optional().default(0),
 });
 
 export async function POST(request: Request): Promise<Response> {
@@ -35,6 +46,16 @@ export async function POST(request: Request): Promise<Response> {
     if (!draft || !secret) {
       return Response.json({ error: "Unknown draft." }, { status: 401 });
     }
+
+    const perCaller = await enforceRateLimit(request, LIMITS.sample);
+    if (perCaller) return perCaller;
+
+    const perDraft = await enforceRateLimit(
+      request,
+      LIMITS.sample,
+      `draft:${draft.id}`,
+    );
+    if (perDraft) return perDraft;
 
     const parsed = requestSchema.safeParse(await request.json());
     if (!parsed.success) {

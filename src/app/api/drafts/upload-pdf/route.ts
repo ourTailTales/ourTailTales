@@ -3,6 +3,8 @@ import { z } from "zod";
 import { resolveDraft } from "@/lib/drafts/resolve";
 import { routeError } from "@/lib/env";
 import { draftPdfPath, type DraftPdfKind } from "@/lib/drafts/storage";
+import { pdfPageCount } from "@/lib/book/pdf-pages";
+import { TEASER_PAGE_COUNT } from "@/lib/book/teaser";
 import { watermarkPdf } from "@/lib/book/watermark";
 import { BASE_CHAPTERS, MAX_CHAPTERS } from "@/lib/pricing";
 import { PREVIEW_BUCKET, supabaseAdmin } from "@/lib/supabase/server";
@@ -14,16 +16,31 @@ import { PREVIEW_BUCKET, supabaseAdmin } from "@/lib/supabase/server";
  * Two steps, because the file is too big to post through a route handler:
  * a full book at preview resolution routinely clears Vercel's 4.5 MB request
  * body cap, and base64 would add a third again on top. So the browser uploads
- * straight to private storage through a scoped, expiring URL — the same shape
- * `api/order-assets` already uses for print files.
+ * straight to private storage through a scoped, expiring URL.
  *
- *   POST — mint a signed upload URL for the clean PDF.
- *   PUT  — the bytes have landed: watermark them, bank both copies, start the
- *          30-day clock.
+ *   POST — mint a signed upload URL onto the staging path.
+ *   PUT  — the bytes have landed: check them, write the files we will serve,
+ *          start the 30-day clock.
  *
- * The watermark is applied here rather than trusted from the client. The
- * renderer can already stamp one, but a flag the browser controls is a flag
- * the browser can drop.
+ * ## Why the browser never uploads to a path we serve
+ *
+ * Every upload lands on one staging path, `incoming.pdf`, and nothing is ever
+ * served from there. The files that are served — `teaser.pdf`, `preview.pdf`,
+ * `clean.pdf` — are written by this route from those bytes, after it has
+ * looked at them.
+ *
+ * That indirection is the whole security boundary, and it is worth stating
+ * why a simpler shape does not work. The client declares which book it is
+ * banking, and one of the two answers, `teaser`, deliberately skips
+ * watermarking. If the client uploaded straight to `teaser.pdf`, then checking
+ * the page count on arrival would not be enough: the signed URL stays valid
+ * afterwards, so the client could bank a real ten-page teaser, pass the check,
+ * and then quietly overwrite those same bytes with the whole book. The path
+ * has already been recorded as readable and unwatermarked, and every later
+ * reader gets the full book for nothing.
+ *
+ * So the rule is: a client may overwrite the staging file as often as it
+ * likes, and it will never be the file anybody reads.
  */
 
 /**
@@ -40,8 +57,9 @@ const DAYS_UNTIL_EXPIRY = 30;
  * Which book is being banked.
  *
  * `teaser` is the free ten pages, banked as soon as the book is written so the
- * welcome email has something to attach. It is deliberately not watermarked —
- * it is the thing that has to make someone want the book.
+ * welcome email has something to attach. It is the one that is not
+ * watermarked, because it is the thing that has to make someone want the book,
+ * which is exactly why its length is checked rather than taken on trust.
  *
  * `full` is the whole book, banked once the customer has an account. It lands
  * clean and is watermarked here, server-side: the renderer can stamp one too,
@@ -55,8 +73,6 @@ const finalizeSchema = z.object({
   kind: bankKindSchema,
 });
 
-const signSchema = z.object({ kind: bankKindSchema });
-
 /** Step one: where should the browser put the bytes? */
 export async function POST(request: Request): Promise<Response> {
   try {
@@ -65,11 +81,10 @@ export async function POST(request: Request): Promise<Response> {
       return Response.json({ error: "Unknown draft." }, { status: 401 });
     }
 
-    // Sent as a body on the teaser path and omitted by older callers, so an
-    // unreadable body means "full" rather than an error.
-    const body = await request.json().catch(() => ({}));
-    const kind = signSchema.safeParse(body).data?.kind ?? "full";
-    const path = draftPdfPath(draft.id, kind === "teaser" ? "teaser" : "clean");
+    // `kind` is still accepted in the body and deliberately ignored: which
+    // book this is only matters once we can see the bytes, and until then
+    // every upload goes to the same place.
+    const path = draftPdfPath(draft.id, "incoming");
     const { data, error } = await supabaseAdmin()
       .storage.from(PREVIEW_BUCKET)
       .createSignedUploadUrl(path, { upsert: true });
@@ -84,7 +99,7 @@ export async function POST(request: Request): Promise<Response> {
   }
 }
 
-/** Step two: the clean PDF is in storage — watermark it and record the draft. */
+/** Step two: the bytes are in staging — check them and write what we serve. */
 export async function PUT(request: Request): Promise<Response> {
   try {
     const draft = await resolveDraft(request);
@@ -102,11 +117,11 @@ export async function PUT(request: Request): Promise<Response> {
 
     const supabase = supabaseAdmin();
     const teaser = parsed.data.kind === "teaser";
-    const sourcePath = draftPdfPath(draft.id, teaser ? "teaser" : "clean");
+    const stagingPath = draftPdfPath(draft.id, "incoming");
 
     const { data: uploaded, error: downloadError } = await supabase.storage
       .from(PREVIEW_BUCKET)
-      .download(sourcePath);
+      .download(stagingPath);
 
     if (downloadError || !uploaded) {
       return Response.json(
@@ -115,20 +130,46 @@ export async function PUT(request: Request): Promise<Response> {
       );
     }
 
-    // The teaser is read as it was rendered. Only the full book is stamped.
-    let readablePath: DraftPdfKind = "teaser";
-    if (!teaser) {
-      const watermarked = await watermarkPdf(
-        new Uint8Array(await uploaded.arrayBuffer()),
+    const bytes = new Uint8Array(await uploaded.arrayBuffer());
+    const pages = await pdfPageCount(bytes);
+    if (pages === null || pages === 0) {
+      return Response.json(
+        { error: "Your book has not finished uploading yet." },
+        { status: 409 },
       );
-      const { error: uploadError } = await supabase.storage
+    }
+
+    const write = async (kind: DraftPdfKind, body: Uint8Array) => {
+      const { error } = await supabase.storage
         .from(PREVIEW_BUCKET)
-        .upload(draftPdfPath(draft.id, "preview"), watermarked, {
+        .upload(draftPdfPath(draft.id, kind), body, {
           upsert: true,
           contentType: "application/pdf",
           cacheControl: "3600",
         });
-      if (uploadError) throw new Error(uploadError.message);
+      if (error) throw new Error(error.message);
+    };
+
+    let readablePath: DraftPdfKind;
+    if (teaser) {
+      // The only claim the client makes that has money behind it. A "teaser"
+      // longer than the teaser is the whole book asking to skip the watermark.
+      if (pages > TEASER_PAGE_COUNT) {
+        console.error(
+          `[ourTailTales] Draft ${draft.id} banked a ${pages}-page file as a teaser.`,
+        );
+        return Response.json(
+          { error: "That is not the free sample. Please try again." },
+          { status: 400 },
+        );
+      }
+      await write("teaser", bytes);
+      readablePath = "teaser";
+    } else {
+      await write("preview", await watermarkPdf(bytes));
+      // The buyer's copy is written here too, so the file a purchase unlocks
+      // is one the server put there rather than one the browser left behind.
+      await write("clean", bytes);
       readablePath = "preview";
     }
 
@@ -163,6 +204,17 @@ export async function PUT(request: Request): Promise<Response> {
       })
       .eq("id", draft.id);
     if (updateError) throw new Error(updateError.message);
+
+    // Staging has done its job and is now a spare copy of the book sitting at
+    // the one path a client can write. Best effort: the nightly sweep removes
+    // it too, and failing to tidy up must not fail a banked book.
+    await supabase.storage
+      .from(PREVIEW_BUCKET)
+      .remove([stagingPath])
+      .then(
+        () => undefined,
+        () => undefined,
+      );
 
     return Response.json({
       draftId: draft.id,

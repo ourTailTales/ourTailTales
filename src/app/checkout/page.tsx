@@ -5,6 +5,7 @@ import { BrandMark } from "@/components/BrandMark";
 import { CheckoutForm } from "@/components/CheckoutForm";
 import { readEnv } from "@/lib/env";
 import { readOrder } from "@/lib/order/read";
+import { orderTokenValid } from "@/lib/order/token";
 import { supabaseConfigured } from "@/lib/supabase/server";
 
 export const metadata: Metadata = {
@@ -15,10 +16,17 @@ export const metadata: Metadata = {
 export default async function CheckoutPage({
   searchParams,
 }: PageProps<"/checkout">) {
-  const { order: orderParam } = await searchParams;
+  const { order: orderParam, t: tokenParam } = await searchParams;
   const orderId = typeof orderParam === "string" ? orderParam : null;
+  const orderToken = typeof tokenParam === "string" ? tokenParam : null;
 
-  const order = orderId ? await readOrder(orderId) : null;
+  // The id says which order. The token says it is yours. Checked here as well
+  // as on the routes, so a link without one lands on an explanation rather
+  // than on a form whose every button would be refused.
+  const authorized = Boolean(
+    orderId && orderToken && orderTokenValid(orderId, orderToken),
+  );
+  const order = orderId && authorized ? await readOrder(orderId) : null;
   const publishableKey = readEnv("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY");
 
   return (
@@ -65,7 +73,11 @@ export default async function CheckoutPage({
           Head back to your book and try ordering again in a moment.
         </Notice>
       ) : (
-        <CheckoutForm order={order} publishableKey={publishableKey ?? null} />
+        <CheckoutForm
+          order={order}
+          orderToken={orderToken ?? ""}
+          publishableKey={publishableKey ?? null}
+        />
       )}
     </main>
   );

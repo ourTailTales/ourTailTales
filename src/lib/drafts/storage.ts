@@ -11,6 +11,16 @@ import { SITE_URL } from "@/lib/env";
  * keeps an unpaid book from being lifted straight out of the bucket.
  */
 export type DraftPdfKind =
+  /**
+   * Where the browser puts the bytes.
+   *
+   * The only path a client is ever handed a signed upload URL for, and the
+   * only one it can therefore overwrite. Nothing is ever served from here.
+   * Every file that IS served is written by the server from these bytes, after
+   * it has checked them, which is what stops a client from replacing a file
+   * the server has already decided is safe to serve unwatermarked.
+   */
+  | "incoming"
   /** The whole book, unwatermarked. What a buyer receives. */
   | "clean"
   /** The whole book, watermarked. What an account holder reads before buying. */
@@ -18,8 +28,20 @@ export type DraftPdfKind =
   /** The free first ten pages. What the welcome email carries. */
   | "teaser";
 
+export const DRAFT_PDF_KINDS: readonly DraftPdfKind[] = [
+  "incoming",
+  "clean",
+  "preview",
+  "teaser",
+];
+
 export function draftPdfPath(draftId: string, kind: DraftPdfKind): string {
   return `drafts/${draftId}/${kind}.pdf`;
+}
+
+/** Every file a draft can own, for the nightly sweep to remove. */
+export function allDraftPdfPaths(draftId: string): string[] {
+  return DRAFT_PDF_KINDS.map((kind) => draftPdfPath(draftId, kind));
 }
 
 /**

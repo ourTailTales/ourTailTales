@@ -45,6 +45,16 @@ export const LIMITS = {
   lead: { name: "lead", limit: 10, windowSeconds: 60 * 10 },
   /** Outbound calls to the geocoder. One per chapter while editing. */
   geocode: { name: "geocode", limit: 120, windowSeconds: 60 * 10 },
+  /**
+   * Mail we send on a visitor's say-so, with an attachment, from our own
+   * verified domain.
+   *
+   * The tightest budget here, and not because the send costs much. A route
+   * that mails an arbitrary address an arbitrary attachment is a relay, and a
+   * relay is how a sending domain gets blacklisted. Nobody legitimately needs
+   * their own first pages more than a handful of times.
+   */
+  sample: { name: "sample", limit: 5, windowSeconds: 60 * 10 },
 } as const satisfies Record<string, RateLimit>;
 
 /**
@@ -70,12 +80,20 @@ function clientKey(request: Request): string {
 export async function enforceRateLimit(
   request: Request,
   limit: RateLimit,
+  /**
+   * What to count against, when the caller's address is the wrong subject.
+   *
+   * An address is the right subject for an anonymous route. For a route that
+   * is already authenticated it is the weaker of the two: one draft behind a
+   * pool of addresses still gets one budget this way.
+   */
+  subject?: string,
 ): Promise<Response | null> {
   if (!supabaseConfigured()) return null;
 
   try {
     const { data, error } = await supabaseAdmin().rpc("rate_limit_hit", {
-      p_bucket: `${limit.name}:${clientKey(request)}`,
+      p_bucket: `${limit.name}:${subject ?? clientKey(request)}`,
       p_window_seconds: limit.windowSeconds,
       p_limit: limit.limit,
     });

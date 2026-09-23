@@ -31,18 +31,25 @@ export function isConfigured(...names: string[]): boolean {
 /** Consistent JSON error shape for every route handler. */
 export function routeError(error: unknown, fallback: string): Response {
   if (error instanceof MissingEnvError) {
+    // Which key is missing is an operator's problem, and the log is where
+    // operators look. The customer is told the step is unavailable.
+    console.error("[ourTailTales] Not configured:", error.names.join(", "));
     return Response.json(
       {
-        error: `ourTailTales is not configured for this step yet (${error.names.join(", ")}).`,
+        error: "ourTailTales is not set up for this step yet.",
         code: "not_configured",
       },
       { status: 503 },
     );
   }
 
+  // Deliberately not `error.message`. That string is written by Postgres,
+  // Stripe, Supabase and Lulu, and it carries table names, column names,
+  // constraint names and query fragments. It goes to the log, where we can
+  // read it, and never to the caller, who cannot do anything with it except
+  // learn how the inside is put together.
   console.error("[ourTailTales]", error);
-  const message = error instanceof Error ? error.message : fallback;
-  return Response.json({ error: message || fallback }, { status: 500 });
+  return Response.json({ error: fallback }, { status: 500 });
 }
 
 /**

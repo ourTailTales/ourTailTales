@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { routeError } from "@/lib/env";
+import { requireOrderToken } from "@/lib/order/token";
 import {
   captureServerEvent,
   captureServerException,
@@ -27,8 +28,12 @@ import type { FrozenBookRevision } from "@/types/video-memory";
  * Locks the quote and creates the PaymentIntent.
  *
  * Both the book price and the shipping price are recalculated here. Nothing the
- * browser sends about money is trusted, and no fulfilment happens on this path
- * — only the Stripe webhook may submit a print job.
+ * browser sends about money is trusted, and no fulfilment happens on this path:
+ * only the Stripe webhook may submit a print job.
+ *
+ * Requires the order's token, because this writes the email and the shipping
+ * address onto the order. Without it, an order id was enough to redirect
+ * somebody else's book to a different doorstep.
  */
 
 const addressSchema = z.object({
@@ -65,6 +70,9 @@ export async function POST(request: Request): Promise<Response> {
         { status: 400 },
       );
     }
+
+    const unauthorized = requireOrderToken(request, parsed.data.orderId);
+    if (unauthorized) return unauthorized;
 
     const {
       orderId,

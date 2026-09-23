@@ -1,3 +1,4 @@
+import { allDraftPdfPaths } from "@/lib/drafts/storage";
 import { PREVIEW_BUCKET, supabaseAdmin } from "@/lib/supabase/server";
 
 /**
@@ -57,16 +58,28 @@ export async function expireDrafts(): Promise<Record<string, unknown>> {
       .filter((id): id is string => typeof id === "string"),
   );
 
+  // Someone may have bought their book in the seconds since the select above.
+  // Checked again here, as late as possible, because the next thing this does
+  // is delete files that a purchase makes permanent.
+  const { data: justBought } = await supabase
+    .from("book_drafts")
+    .select("id")
+    .in("id", candidateIds)
+    .not("digital_purchased_at", "is", null);
+
+  for (const row of justBought ?? []) keep.add(row.id);
+
   const reapable = expired.filter((draft) => !keep.has(draft.id));
   if (reapable.length === 0) {
     return { expired: 0, filesDeleted: 0, keptForOrders: keep.size };
   }
 
-  const paths = reapable.flatMap((draft) =>
-    [draft.pdf_storage_path, draft.clean_pdf_storage_path].filter(
-      (path): path is string => typeof path === "string" && path.length > 0,
-    ),
-  );
+  // Every file the draft can own, not only the two the row points at. The
+  // teaser is superseded by the watermarked preview the moment an account is
+  // made, and staging is superseded as soon as a book is banked; neither is
+  // recorded on the row afterwards, so listing only the recorded paths left
+  // both behind forever while the page told the customer the file was gone.
+  const paths = reapable.flatMap((draft) => allDraftPdfPaths(draft.id));
 
   if (paths.length > 0) {
     const { error: removeError } = await supabase.storage
@@ -93,7 +106,10 @@ export async function expireDrafts(): Promise<Record<string, unknown>> {
     .in(
       "id",
       reapable.map((draft) => draft.id),
-    );
+    )
+    // Belt and braces with the re-check above: a purchase that lands between
+    // the two must not have its paths cleared.
+    .is("digital_purchased_at", null);
 
   if (anonymiseError) throw new Error(anonymiseError.message);
 

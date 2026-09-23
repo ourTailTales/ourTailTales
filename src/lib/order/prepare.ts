@@ -9,6 +9,11 @@ import type { VideoMemoryPlacement } from "@/types/video-memory";
 
 export type PreparedOrder = {
   orderId: string;
+  /**
+   * The credential for this order. Every route that changes the order wants
+   * it, so it travels with the id from here to the checkout page.
+   */
+  orderToken: string;
   totalPages: number;
   lowResPlacements: number;
 };
@@ -53,7 +58,7 @@ export async function prepareOrder(args: {
   }
 
   args.onStatus("Setting up your order…");
-  const order = await postJson<{ orderId: string }>("/api/orders", {
+  const order = await postJson<{ orderId: string; orderToken: string }>("/api/orders", {
     petName: args.meta.petName,
     chapterCount: args.chapterCount,
     email: args.email,
@@ -101,7 +106,11 @@ export async function prepareOrder(args: {
   const uploads = await postJson<{
     interior: SignedUpload;
     cover: SignedUpload;
-  }>("/api/order-assets", { orderId: order.orderId });
+  }>(
+    "/api/order-assets",
+    { orderId: order.orderId },
+    { "x-order-token": order.orderToken },
+  );
 
   const interiorBlob = new Blob([interior.bytes as unknown as BlobPart], {
     type: "application/pdf",
@@ -123,6 +132,7 @@ export async function prepareOrder(args: {
       })),
       placements: args.placements,
     }, {
+      "x-order-token": order.orderToken,
       "x-draft-id": args.draftId,
       authorization: `Bearer ${args.draftSecret}`,
     });
@@ -130,6 +140,7 @@ export async function prepareOrder(args: {
 
   return {
     orderId: order.orderId,
+    orderToken: order.orderToken,
     totalPages,
     lowResPlacements: interior.lowResWarnings.length,
   };
