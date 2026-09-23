@@ -149,7 +149,7 @@ export function UploadMediaModal({
             className="mt-1.5 min-h-11 w-full rounded-xl border border-line px-3 text-sm text-ink outline-none focus:border-periwinkle"
           />
           <span className="mt-1.5 block text-xs text-ink-faint">
-            Your photos stay on this device — only the finished book is sent.
+            Your photos stay on this device. Only the finished book is sent.
           </span>
         </label>
       </div>

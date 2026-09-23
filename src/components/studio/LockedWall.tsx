@@ -47,9 +47,9 @@ export function LockedWall({
       </h2>
 
       <p className="mt-2 max-w-prose text-sm leading-6 text-page-ink-soft">
-        {chapters} — {pages} — are already written. Make an account and the whole
-        book opens, stays in your library, and follows you to any device. Then you
-        can change any of it: the cover, the chapters, every photo.
+        {chapters} and {pages} are already written. Make an account and the
+        whole book opens and stays in your library. Then you can change any of
+        it: the cover, the chapters, every photo.
       </p>
 
       <button
@@ -61,7 +61,7 @@ export function LockedWall({
       </button>
 
       <p className="mt-3 text-xs text-page-ink-faint">
-        Free. Your photos stay on your own device either way.
+        Free. Your photos stay on your device.
       </p>
     </div>
   );

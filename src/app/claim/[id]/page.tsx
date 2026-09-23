@@ -9,7 +9,7 @@ import { draftLeadEmail } from "@/lib/drafts/lead";
 import { createAuthServerClient } from "@/lib/supabase/auth-server";
 
 export const metadata: Metadata = {
-  title: "Open your book — ourTailTales",
+  title: "Open your book | ourTailTales",
   robots: { index: false, follow: false },
 };
 
@@ -56,7 +56,7 @@ export default async function ClaimPage({
           {draft.chapterCount
             ? `All ${draft.chapterCount} chapters, and every page between them.`
             : "Every chapter, and every page between them."}{" "}
-          Pick a password and it opens — then you can change any of it.
+          Pick a password and it opens. Then you can change any of it.
         </p>
 
         {signedIn ? (

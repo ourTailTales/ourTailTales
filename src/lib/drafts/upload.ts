@@ -28,8 +28,10 @@ export async function bankBook(args: {
   petName: string;
   chapterCount: number;
   kind: "teaser" | "full";
+  /** Whose book this is. Two addresses in one browser get two drafts. */
+  email: string | null;
 }): Promise<BankedBook> {
-  const draft = await ensureDraft();
+  const draft = await ensureDraft(args.email);
   const headers = draftHeaders(draft.draftId, draft.secret);
 
   const signResponse = await fetch("/api/drafts/upload-pdf", {

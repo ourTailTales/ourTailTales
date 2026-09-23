@@ -53,7 +53,7 @@ export function ClaimForm({ knownEmail }: { knownEmail: string | null }) {
         if (authError) {
           setWorking(false);
           setError(
-            "You already have an account with this address — that password did not match it.",
+            "You already have an account with this address. That password did not match it.",
           );
           return;
         }
@@ -68,7 +68,7 @@ export function ClaimForm({ knownEmail }: { knownEmail: string | null }) {
       if (!data.session) {
         setWorking(false);
         setError(
-          "Almost there — check your email to confirm the address, then come back.",
+          "Check your email to confirm the address, then come back.",
         );
         return;
       }

@@ -29,13 +29,13 @@ export function teaserEmailHtml(args: {
   const name = args.petName.trim();
   const title = name ? `${possessive(name)} book is written` : "Your book is written";
   const opening = name
-    ? `Your photos of ${name} are a book now. The first ten pages are attached to this email — cover included.`
-    : "Your photos are a book now. The first ten pages are attached to this email — cover included.";
+    ? `Your photos of ${name} are a book now. The first ten pages, cover included, are attached to this email.`
+    : "Your photos are a book now. The first ten pages, cover included, are attached to this email.";
 
   const rest =
     args.hiddenChapters > 0
-      ? `The rest is already written: ${plural(args.hiddenChapters, "chapter")} and ${plural(args.hiddenPages, "page")} more. Make your account and the whole book opens — and you can change any of it, from the cover to every photo on every page.`
-      : "Make your account and the whole book is saved to your library, where you can change any of it — the cover, the chapters, every photo.";
+      ? `The rest is already written: ${plural(args.hiddenChapters, "chapter")} and ${plural(args.hiddenPages, "page")} more. Make your account and the whole book opens. You can change any of it, from the cover to every photo on every page.`
+      : "Make your account and the whole book is saved to your library, where you can change any of it: the cover, the chapters, every photo.";
 
   return layout({
     preheader: title,
@@ -68,7 +68,7 @@ export function digitalPurchaseEmailHtml(args: {
     heading: title,
     body: `
       ${paragraph(
-        "Thank you. The watermark is gone and the link no longer expires — it is yours to keep and to download whenever you like.",
+        "Thank you. The watermark is gone and the link no longer expires. It is yours to keep and to download whenever you like.",
       )}
       ${button("Open your book", args.bookUrl)}
       ${paragraph(
@@ -118,7 +118,7 @@ export function shippingNotificationEmailHtml(args: {
         args.trackingUrl ?? args.orderUrl,
       )}
       ${paragraph(
-        "Once it arrives, it is simply a book on a shelf — which was the whole idea.",
+        "Once it arrives, it is simply a book on a shelf, which was the whole idea.",
         colors.inkSoft,
       )}
     `,

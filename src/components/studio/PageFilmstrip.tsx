@@ -19,18 +19,21 @@ import type { PhotoAsset } from "@/types/photo";
  */
 const PHOTO_WINDOW = 12;
 
+/** Pixels of travel before a press counts as dragging rather than clicking. */
+const DRAG_THRESHOLD = 5;
+
 /**
  * The filmstrip: every page of the book, in order, along the bottom.
  *
- * Scrolling here browses; it never selects. Binding the viewport to scroll
- * position sounds seamless and is the opposite — the controls change under
- * someone's hand while they are still looking for a page, and they lose their
- * place. So the strip moves freely and a tap commits, which is also what makes
- * it usable with a trackpad, a finger, and the arrow keys alike.
+ * Grab it anywhere and pull. Nobody should have to find a scrollbar to move
+ * through their own book, and a five hundred page book makes that bar a few
+ * pixels wide.
  *
- * The selected thumbnail is scrolled into view when selection changes from
- * elsewhere (arrow keys, the wall's "keep reading"), but never while the
- * customer is the one doing the scrolling.
+ * Moving the strip browses; it never selects. Binding the tools to scroll
+ * position sounds seamless and is the opposite, because they change under
+ * someone's hand while they are still looking for a page. A click commits. A
+ * click that turns out to have been a drag does not, which is what lets both
+ * gestures live on the same thumbnails.
  */
 export function PageFilmstrip({
   slides,
@@ -51,10 +54,14 @@ export function PageFilmstrip({
 }) {
   const stripRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<HTMLButtonElement>(null);
-  const userScrolling = useRef(false);
+
+  /** Set while the customer is moving the strip themselves. */
+  const panning = useRef(false);
+  /** Where the drag began, and how far it has travelled. */
+  const origin = useRef({ x: 0, scrollLeft: 0, moved: 0 });
 
   useEffect(() => {
-    if (userScrolling.current) return;
+    if (panning.current) return;
     activeRef.current?.scrollIntoView({
       behavior: "smooth",
       block: "nearest",
@@ -62,23 +69,53 @@ export function PageFilmstrip({
     });
   }, [selected]);
 
+  const startPan = (event: React.PointerEvent<HTMLDivElement>): void => {
+    // Leave the middle and right buttons, and anything with its own gesture.
+    if (event.button !== 0) return;
+    const strip = stripRef.current;
+    if (!strip) return;
+    panning.current = true;
+    origin.current = { x: event.clientX, scrollLeft: strip.scrollLeft, moved: 0 };
+  };
+
+  const pan = (event: React.PointerEvent<HTMLDivElement>): void => {
+    const strip = stripRef.current;
+    if (!panning.current || !strip) return;
+    const travelled = event.clientX - origin.current.x;
+    origin.current.moved = Math.max(
+      origin.current.moved,
+      Math.abs(travelled),
+    );
+    // Only capture the pointer once this is clearly a drag, so a plain click
+    // still reaches the thumbnail underneath.
+    if (origin.current.moved > DRAG_THRESHOLD && !strip.hasPointerCapture(event.pointerId)) {
+      strip.setPointerCapture(event.pointerId);
+    }
+    strip.scrollLeft = origin.current.scrollLeft - travelled;
+  };
+
+  const endPan = (event: React.PointerEvent<HTMLDivElement>): void => {
+    const strip = stripRef.current;
+    if (strip?.hasPointerCapture(event.pointerId)) {
+      strip.releasePointerCapture(event.pointerId);
+    }
+    panning.current = false;
+    // Let the click that follows know whether it was a drag.
+    dragged.current = origin.current.moved > DRAG_THRESHOLD;
+  };
+
+  /** True when the pointer that just went up had been dragging the strip. */
+  const dragged = useRef(false);
+
   return (
     <div className="border-t border-page-line bg-white/85 backdrop-blur">
       <div
         ref={stripRef}
-        onPointerDown={() => {
-          userScrolling.current = true;
-        }}
-        onPointerUp={() => {
-          userScrolling.current = false;
-        }}
-        onWheel={() => {
-          userScrolling.current = true;
-          window.setTimeout(() => {
-            userScrolling.current = false;
-          }, 600);
-        }}
-        className="flex snap-x snap-proximity gap-3 overflow-x-auto px-4 py-3 sm:px-6"
+        onPointerDown={startPan}
+        onPointerMove={pan}
+        onPointerUp={endPan}
+        onPointerCancel={endPan}
+        className="filmstrip flex cursor-grab gap-3 overflow-x-auto px-4 py-3 active:cursor-grabbing sm:px-6"
         role="tablist"
         aria-label="Pages"
       >
@@ -99,7 +136,14 @@ export function PageFilmstrip({
                 type="button"
                 role="tab"
                 aria-selected={isActive}
-                onClick={() => onSelect(slide.position)}
+                onClick={() => {
+                  // A drag that ended on a thumbnail was a drag, not a choice.
+                  if (dragged.current) {
+                    dragged.current = false;
+                    return;
+                  }
+                  onSelect(slide.position);
+                }}
                 className="group flex w-[4.5rem] shrink-0 snap-center flex-col items-center gap-1.5 sm:w-20"
               >
                 <span

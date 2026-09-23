@@ -44,7 +44,8 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
   const ingestion = useRef<Ingestion | null>(null);
   const [askEmail, setAskEmail] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const [localReady, setLocalReady] = useState(false);
+  /** Which address the album in memory was loaded for. */
+  const [loadedFor, setLoadedFor] = useState<string | null>(null);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const isAuthenticated = useIsAuthenticated();
@@ -55,30 +56,43 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
 
   useEffect(() => {
     track("create_page_viewed");
-    // Each customer's saved album/book lives under their own email, so the
-    // very first restore needs to know which one to look up — a link with
-    // ?email= identifies the visitor immediately; otherwise this starts (or
-    // resumes) the shared anonymous slot, same as a pre-login cart.
-    const emailParam = searchParams.get("email")?.trim() || null;
+  }, []);
+
+  /**
+   * Loads the book for whichever address the visitor arrived as.
+   *
+   * Keyed on the address rather than run once on mount, because the landing
+   * page navigates here client side: a second address submitted there changes
+   * the query string without remounting anything, and this component used to
+   * never look again. The book already in memory stayed on screen, so a
+   * different person saw the previous person's pet.
+   */
+  const emailParam = searchParams.get("email")?.trim() || null;
+  const emailKey = emailParam ?? "";
+  // Derived rather than set: the moment the address changes this is false
+  // again, without an effect having to remember to say so.
+  const localReady = loadedFor === emailKey;
+
+  useEffect(() => {
+    let current = true;
     void useOurTailTalesStore
       .getState()
       .restoreLocalBook(emailParam)
-      .finally(() => setLocalReady(true));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- read once on mount by design
-  }, []);
-
-  // The landing-page email CTA already captured an email; carry it straight
-  // into the draft instead of asking again. A draft restored from a previous
-  // visit keeps its own saved email.
-  useEffect(() => {
-    if (!localReady) return;
-    const emailParam = searchParams.get("email")?.trim();
-    if (!emailParam) return;
-    const current = useOurTailTalesStore.getState();
-    if (current.leadEmail) return;
-    current.setLeadEmail(emailParam);
-    identifyLead(emailParam);
-  }, [localReady, searchParams]);
+      .finally(() => {
+        if (!current) return;
+        // A restored book keeps the address it was saved under; a fresh one
+        // takes the address that asked for it.
+        const state = useOurTailTalesStore.getState();
+        if (emailParam && !state.leadEmail) {
+          state.setLeadEmail(emailParam);
+          identifyLead(emailParam);
+        }
+        setLoadedFor(emailKey);
+      });
+    return () => {
+      current = false;
+    };
+  }, [emailParam, emailKey]);
 
   // Autosave: anything the customer types or picks — pet name, cover style,
   // dedication, chapter text, photo order, a custom cover upload — lands in
@@ -237,6 +251,7 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
       petName: state.meta.petName,
       chapterCount: state.chapterCount,
       kind: "teaser",
+      email: state.leadEmail,
     });
     useOurTailTalesStore.getState().setBookUrl(banked.url);
     track("free_pdf_stored", { chapters: state.chapterCount });
@@ -244,7 +259,7 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
     const email = useOurTailTalesStore.getState().leadEmail;
     if (!email) return;
 
-    const draft = loadStoredDraft();
+    const draft = loadStoredDraft(email);
     if (!draft) return;
 
     const response = await fetch("/api/email/send-sample", {
@@ -330,6 +345,7 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
       petName: state.meta.petName,
       chapterCount: state.chapterCount,
       kind: "full",
+      email: state.leadEmail,
     }).catch((error: unknown) => {
       captureClientException(error);
       return null;

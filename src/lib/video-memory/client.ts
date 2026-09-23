@@ -1,12 +1,31 @@
 import { postHogHeaders } from "@/lib/posthog-client";
 import type { VideoAsset, VideoMemoryPlacement } from "@/types/video-memory";
 
-const DRAFT_STORAGE_KEY = "ourtailtales.draft";
+/**
+ * Server-side draft credentials, kept per email address.
+ *
+ * This used to be one key for the whole browser, which meant two people
+ * sharing a laptop — or one person trying a second address — banked into the
+ * same `book_drafts` row, the same storage folder, and the same emailed link.
+ * The second book quietly replaced the first. Bucketed the same way the local
+ * album is, so an address only ever reaches its own book.
+ */
+const DRAFT_STORAGE_PREFIX = "ourtailtales.draft";
+
+/** Pre-2026-09 sessions kept their draft here, unbucketed. Migrated on first read. */
+const LEGACY_DRAFT_KEY = DRAFT_STORAGE_PREFIX;
 
 export type StoredDraft = {
   draftId: string;
   secret: string;
 };
+
+function draftStorageKey(email: string | null | undefined): string {
+  const normalized = email?.trim().toLowerCase();
+  return normalized
+    ? `${DRAFT_STORAGE_PREFIX}:email:${normalized}`
+    : `${DRAFT_STORAGE_PREFIX}:anon`;
+}
 
 export type VideoMemoryPublicConfig = {
   maxDurationMs: number;
@@ -28,10 +47,20 @@ export function draftHeaders(
   };
 }
 
-export function loadStoredDraft(): StoredDraft | null {
+export function loadStoredDraft(email?: string | null): StoredDraft | null {
   if (typeof window === "undefined") return null;
+  migrateLegacyDraft();
+  return readDraft(draftStorageKey(email));
+}
+
+export function storeDraft(draft: StoredDraft, email?: string | null): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(draftStorageKey(email), JSON.stringify(draft));
+}
+
+function readDraft(key: string): StoredDraft | null {
   try {
-    const raw = window.localStorage.getItem(DRAFT_STORAGE_KEY);
+    const raw = window.localStorage.getItem(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as StoredDraft;
     if (!parsed.draftId || !parsed.secret) return null;
@@ -41,12 +70,25 @@ export function loadStoredDraft(): StoredDraft | null {
   }
 }
 
-export function storeDraft(draft: StoredDraft): void {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft));
+/**
+ * Moves a pre-bucketing draft into the anonymous bucket, so nobody's
+ * in-progress book vanished the day this shipped. No-ops once moved.
+ */
+function migrateLegacyDraft(): void {
+  try {
+    const legacy = readDraft(LEGACY_DRAFT_KEY);
+    if (!legacy) return;
+    const anonKey = draftStorageKey(null);
+    if (!readDraft(anonKey)) {
+      window.localStorage.setItem(anonKey, JSON.stringify(legacy));
+    }
+    window.localStorage.removeItem(LEGACY_DRAFT_KEY);
+  } catch {
+    // A browser refusing localStorage is handled by every caller already.
+  }
 }
 
-export async function createDraft(): Promise<StoredDraft> {
+export async function createDraft(email?: string | null): Promise<StoredDraft> {
   const response = await fetch("/api/drafts", { method: "POST" });
   const data = (await response.json()) as {
     draftId?: string;
@@ -57,12 +99,12 @@ export async function createDraft(): Promise<StoredDraft> {
     throw new Error(data.error ?? "A draft could not be created.");
   }
   const draft = { draftId: data.draftId, secret: data.secret };
-  storeDraft(draft);
+  storeDraft(draft, email);
   return draft;
 }
 
-export async function ensureDraft(): Promise<StoredDraft> {
-  return loadStoredDraft() ?? createDraft();
+export async function ensureDraft(email?: string | null): Promise<StoredDraft> {
+  return loadStoredDraft(email) ?? createDraft(email);
 }
 
 export async function fetchVideoMemoryConfig(): Promise<VideoMemoryPublicConfig> {

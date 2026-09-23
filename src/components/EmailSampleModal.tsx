@@ -40,7 +40,7 @@ export function EmailSampleModal({
     setMessage("Sending your first pages…");
     try {
       await onSubmit(email.trim());
-      setMessage("On its way — check your inbox.");
+      setMessage("On its way. Check your inbox.");
       setStatus("idle");
     } catch (error) {
       setStatus("error");
@@ -71,8 +71,8 @@ export function EmailSampleModal({
           Where should we send it?
         </h2>
         <p className="mt-2 text-sm leading-6 text-ink-soft">
-          We&rsquo;ll email you the first ten pages of your book as a PDF —
-          cover included — and the link that opens the rest.
+          We&rsquo;ll email you the first ten pages of your book as a PDF,
+          cover included, plus the link that opens the rest.
         </p>
 
         <label className="mt-5 block">
@@ -95,7 +95,7 @@ export function EmailSampleModal({
 
         <p className="mt-2 text-xs text-ink-faint">
           We use your address to send your book and order updates. Your photos
-          never leave your device — only the finished PDF is stored.
+          never leave your device. Only the finished PDF is stored.
         </p>
 
         {message && (

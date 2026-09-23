@@ -56,7 +56,7 @@ export function PageInspector({
     return (
       <Panel
         title={slide.label}
-        hint="This page is part of the binding rather than the story, so there is nothing to change here."
+        hint="This page is part of the binding, not the story. Nothing to change here."
       />
     );
   }
@@ -82,7 +82,7 @@ export function PageInspector({
       return (
         <Panel
           title="Closing"
-          hint="The last page carries a photo from the final chapter and the closing line. Change the last chapter's photos and this follows."
+          hint="The last page uses a photo from the final chapter. Change that chapter's photos and this follows."
         />
       );
     default:
@@ -113,7 +113,7 @@ function CoverPanel({
   const nameSize = meta.coverNameSize ?? DEFAULT_COVER_NAME_SIZE;
 
   return (
-    <Panel title="Cover" hint="The first thing anyone sees, including you.">
+    <Panel title="Cover" hint="The first thing anyone sees.">
       <Field label="Pet's name">
         <input
           type="text"
@@ -206,7 +206,7 @@ function CoverPanel({
           className="text-xs font-medium text-page-ink-soft underline decoration-page-line underline-offset-4 hover:text-periwinkle-deep"
         >
           {customCover
-            ? "Your uploaded cover is in use — manage it"
+            ? "Your uploaded cover is in use. Manage it"
             : "I have my own print-ready cover"}
         </button>
         {showUpload || customCover ? (
@@ -266,7 +266,7 @@ function TitlePanel({ photos }: { photos: PhotoAsset[] }) {
           change one and rewrite a chapter from its own panel to hear it. */}
       <Field
         label="What they are"
-        note="Rewrite a chapter after changing this and it will be written again with it."
+        note="Rewrite a chapter afterwards to hear the difference."
       >
         <input
           type="text"
@@ -304,7 +304,7 @@ function TitlePanel({ photos }: { photos: PhotoAsset[] }) {
 
       <Field
         label="Photo"
-        note="The title page shares the cover photo, so changing it here changes both."
+        note="The title page uses the cover photo. Changing it here changes both."
       >
         <PhotoPicker
           photos={photos}
@@ -326,7 +326,7 @@ function DedicationPanel() {
   return (
     <Panel
       title="Dedication"
-      hint="A line or two of your own. It also appears on the back cover."
+      hint="A line or two of your own. It also goes on the back cover."
     >
       <Field label={`Dedication · ${meta.dedication.length}/320`}>
         <textarea
@@ -372,7 +372,7 @@ function ChapterPanel({
   const writing = chapter.aiStatus === "pending";
 
   return (
-    <Panel title="Chapter" hint="Everything we wrote here is yours to change.">
+    <Panel title="Chapter" hint="All of this is yours to change.">
       {chapter.aiStatus === "error" ? (
         <p className="rounded-lg border border-page-line bg-lavender/40 px-3 py-2 text-xs text-page-ink-soft">
           {chapter.aiError ?? "This chapter could not be written."}
@@ -479,7 +479,7 @@ function PhotoPagePanel({
     return (
       <Panel
         title={slide.label}
-        hint="This page has no photos on it — the chapter ran out before reaching it."
+        hint="This page has no photos on it. The chapter ran out before reaching it."
       />
     );
   }

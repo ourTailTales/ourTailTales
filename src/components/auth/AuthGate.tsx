@@ -95,7 +95,7 @@ export function AuthGate({
           setStatus("idle");
           setIsError(true);
           setMessage(
-            "You already have an account with this address — that password did not match it.",
+            "You already have an account with this address. That password did not match it.",
           );
           return;
         }
@@ -116,7 +116,7 @@ export function AuthGate({
         setStatus("idle");
         setIsError(false);
         setMessage(
-          "Almost there — check your email to confirm the address, then come back and sign in.",
+          "Check your email to confirm the address, then come back and sign in.",
         );
         setMode("signIn");
         return;
@@ -154,7 +154,7 @@ export function AuthGate({
         </h2>
         <p className="mt-2 text-sm leading-6 text-ink-soft">
           {mode === "signUp"
-            ? "Pick a password and every page opens. Your book is saved to your library, and you can change any of it from there."
+            ? "Pick a password and every page opens. Your book is saved to your library, where you can change any of it."
             : "Sign in and your book opens where you left it."}
         </p>
 

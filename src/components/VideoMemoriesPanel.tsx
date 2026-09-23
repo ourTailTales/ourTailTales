@@ -78,7 +78,7 @@ export function VideoMemoriesPanel({ pages }: { pages: BookPage[] }) {
     void (async () => {
       try {
         const [nextDraft, nextConfig] = await Promise.all([
-          ensureDraft(),
+          ensureDraft(useOurTailTalesStore.getState().leadEmail),
           fetchVideoMemoryConfig(),
         ]);
         if (cancelled) return;

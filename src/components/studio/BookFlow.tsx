@@ -159,8 +159,11 @@ export function BookFlow({
   const reading = funnelState === "editing" || funnelState === "exporting";
 
   return (
+    // `book-editor-field` carries the light theme the whole app area runs on.
+    // Without it the studio inherits the dark tokens the hero uses, and every
+    // `text-ink` inside it turns the wrong colour against white paper.
     <section
-      className={`relative w-full ${
+      className={`book-editor-field relative w-full ${
         dragOver ? "ring-4 ring-inset ring-periwinkle/70" : ""
       }`}
       onDragEnter={(event) => {
@@ -284,7 +287,7 @@ function Waiting({
       : "Writing the chapters"
     : readingPhotos
       ? total > 0
-        ? `Reading your photos — ${processed} of ${total}`
+        ? `Reading your photos, ${processed} of ${total}`
         : "Reading your photos"
       : name
         ? `Sorting ${name}\u2019s life into chapters`
@@ -311,8 +314,8 @@ function Waiting({
             : `${missing} more photos and we can start`}
         </h1>
         <p className="max-w-sm text-sm leading-6 text-page-ink-soft">
-          A book needs at least {MIN_PHOTOS_FOR_BOOK} usable photos to fill five
-          chapters without repeating itself. You have {mediaCount}.
+          A book needs at least {MIN_PHOTOS_FOR_BOOK} photos to fill five
+          chapters. You have {mediaCount}.
         </p>
         <button
           type="button"
@@ -334,8 +337,8 @@ function Waiting({
             : "Start with their photos"}
         </h1>
         <p className="max-w-sm text-sm leading-6 text-page-ink-soft">
-          Drop the album in and we&rsquo;ll write the whole book — chapters,
-          cover and all — in a couple of minutes.
+          Drop the album in. We write the whole book, chapters and cover,
+          in a couple of minutes.
         </p>
         <button
           type="button"
@@ -361,7 +364,7 @@ function Waiting({
         <p className="mt-1.5 text-sm text-page-ink-soft">
           {writing
             ? "Every chapter comes from the photos you gave us. You can change all of it afterwards."
-            : "This happens on your own device — nothing is uploaded."}
+            : "This happens on your own device. Nothing is uploaded."}
         </p>
       </div>
 

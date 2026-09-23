@@ -191,10 +191,20 @@ export async function restoreLocalDraft(
     database.transaction(STORE, "readonly").objectStore(STORE).get(key),
   )) as StoredDraft | undefined;
   database.close();
-  if (!stored || stored.version !== VERSION) return null;
+
+  // Point at this bucket either way. A miss that left the pointer on the
+  // previous address meant the next save deleted *that* person's book, on the
+  // grounds that the identity had changed — which it had, in the wrong
+  // direction.
+  activeDraftKey = key;
+
+  if (!stored || stored.version !== VERSION) {
+    activeDraftId = null;
+    activePreviewPdf = null;
+    return null;
+  }
 
   activeDraftId = stored.localDraftId;
-  activeDraftKey = key;
   activePreviewPdf = stored.previewPdf ?? null;
   const photos = stored.photos.map(({ file, thumbBlob, ...metadata }) => ({
     ...metadata,

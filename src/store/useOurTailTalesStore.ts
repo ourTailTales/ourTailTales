@@ -287,17 +287,19 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set) => ({
   failProcessing: (message) =>
     set({ processingError: message, funnelState: "idle" }),
 
-  cancelProcessing: () => {
-    assetStore.releaseAll();
-    releaseAllVideoPosters();
-    clearCustomCoverFile();
-    const stored = loadStoredDraft();
-    set({
-      ...initialState,
-      draftId: stored?.draftId ?? null,
-      draftSecret: stored?.secret ?? null,
-    });
-  },
+  cancelProcessing: () =>
+    set((state) => {
+      assetStore.releaseAll();
+      releaseAllVideoPosters();
+      clearCustomCoverFile();
+      const stored = loadStoredDraft(state.leadEmail);
+      return {
+        ...initialState,
+        leadEmail: state.leadEmail,
+        draftId: stored?.draftId ?? null,
+        draftSecret: stored?.secret ?? null,
+      };
+    }),
 
   setMeta: (patch) => set((state) => ({ meta: { ...state.meta, ...patch } })),
 
@@ -502,16 +504,42 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set) => ({
       };
     }),
 
-  hydrateDraft: () => {
-    const stored = loadStoredDraft();
-    if (!stored) return;
-    set({ draftId: stored.draftId, draftSecret: stored.secret });
-  },
+  hydrateDraft: () =>
+    set((state) => {
+      const stored = loadStoredDraft(state.leadEmail);
+      if (!stored) return {};
+      return { draftId: stored.draftId, draftSecret: stored.secret };
+    }),
 
+  /**
+   * Loads the book belonging to this address, and only that one.
+   *
+   * The miss case is the important one. This store lives for as long as the
+   * tab does, so arriving from the landing page with a second address used to
+   * find nothing, return early, and leave the first person's book sitting in
+   * memory — the new visitor was shown someone else's pet. Finding nothing now
+   * clears everything instead, which is the honest answer to "show me this
+   * address's book" when there isn't one.
+   */
   restoreLocalBook: async (knownEmail) => {
     const restored = await restoreLocalDraft(knownEmail).catch(() => null);
-    if (!restored) return false;
+    if (!restored) {
+      assetStore.releaseAll();
+      releaseAllVideoPosters();
+      clearCustomCoverFile();
+      const stored = loadStoredDraft(knownEmail);
+      set({
+        ...initialState,
+        leadEmail: knownEmail?.trim() || null,
+        draftId: stored?.draftId ?? null,
+        draftSecret: stored?.secret ?? null,
+      });
+      return false;
+    }
+    const stored = loadStoredDraft(restored.leadEmail ?? knownEmail);
     set({
+      draftId: stored?.draftId ?? null,
+      draftSecret: stored?.secret ?? null,
       funnelState: restored.funnelState,
       photos: restored.photos,
       progress: restored.progress,
@@ -548,18 +576,20 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set) => ({
       };
     }),
 
-  reset: () => {
-    assetStore.releaseAll();
-    releaseAllVideoPosters();
-    clearCustomCoverFile();
-    void clearLocalDraft();
-    const stored = loadStoredDraft();
-    set({
-      ...initialState,
-      draftId: stored?.draftId ?? null,
-      draftSecret: stored?.secret ?? null,
-    });
-  },
+  reset: () =>
+    set((state) => {
+      assetStore.releaseAll();
+      releaseAllVideoPosters();
+      clearCustomCoverFile();
+      void clearLocalDraft();
+      const stored = loadStoredDraft(state.leadEmail);
+      return {
+        ...initialState,
+        leadEmail: state.leadEmail,
+        draftId: stored?.draftId ?? null,
+        draftSecret: stored?.secret ?? null,
+      };
+    }),
 }));
 
 /* --------------------------------- derivations -------------------------------- */

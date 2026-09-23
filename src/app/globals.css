@@ -185,6 +185,25 @@ body {
   --color-line: var(--color-page-line);
 }
 
-/* No longer recessed — sits flush with the page background. */
-.book-editor-shell {
+/* The page filmstrip is dragged, not scrolled with a bar: at five hundred
+   pages the bar is a few pixels wide and impossible to hit anyway. Hidden
+   rather than styled, so the gesture is the only affordance and there is
+   nothing to aim at and miss. */
+.filmstrip {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  overscroll-behavior-x: contain;
+  /* The drag handler moves scrollLeft directly; smooth scrolling would fight it. */
+  scroll-behavior: auto;
+}
+
+.filmstrip::-webkit-scrollbar {
+  display: none;
+}
+
+/* Text selection turns a drag across thumbnails into a highlight. */
+.filmstrip img,
+.filmstrip span {
+  user-select: none;
+  -webkit-user-select: none;
 }

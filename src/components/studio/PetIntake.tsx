@@ -44,11 +44,11 @@ export function PetIntake({ onDone }: { onDone: () => void }) {
   return (
     <div className="mx-auto flex min-h-[60dvh] w-full max-w-lg flex-col justify-center py-8">
       <h1 className="font-display text-3xl leading-tight text-page-ink">
-        First — who is the book about?
+        Who is the book about?
       </h1>
       <p className="mt-2 text-sm leading-6 text-page-ink-soft">
-        Four quick things. Every chapter gets written from these and your
-        photos, so they are worth thirty seconds.
+        We write every chapter from these and your photos.
+        It takes about thirty seconds.
       </p>
 
       <form
@@ -77,7 +77,7 @@ export function PetIntake({ onDone }: { onDone: () => void }) {
           />
           {attempted && !name ? (
             <p role="alert" className="mt-1.5 text-xs text-red-600">
-              We need their name — it goes on the cover.
+              We need their name. It goes on the cover.
             </p>
           ) : null}
         </div>
@@ -112,7 +112,7 @@ export function PetIntake({ onDone }: { onDone: () => void }) {
               type="text"
               value={meta.species ?? ""}
               onChange={(event) => setMeta({ species: event.target.value.slice(0, 40) })}
-              placeholder="Rabbit, horse, parrot…"
+              placeholder="Rabbit, horse, parrot"
               aria-label="What kind of animal"
               className="mt-2 min-h-11 w-full rounded-xl border border-page-line bg-white px-3.5 text-sm text-page-ink outline-none transition-colors placeholder:text-page-ink-faint focus:border-periwinkle focus:ring-2 focus:ring-periwinkle/20"
             />
@@ -187,7 +187,7 @@ export function PetIntake({ onDone }: { onDone: () => void }) {
             className="mt-1.5 min-h-11 w-full rounded-xl border border-page-line bg-white px-3.5 text-sm text-page-ink outline-none transition-colors placeholder:text-page-ink-faint focus:border-periwinkle focus:ring-2 focus:ring-periwinkle/20"
           />
           <p className="mt-1.5 text-xs text-page-ink-faint">
-            Optional — but this is usually what makes the book sound like them.
+            Optional. This is usually what makes the book sound like them.
           </p>
         </div>
 
@@ -195,7 +195,7 @@ export function PetIntake({ onDone }: { onDone: () => void }) {
           type="submit"
           className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-periwinkle px-6 text-base font-semibold text-white shadow-lift transition-colors hover:bg-periwinkle-deep"
         >
-          Next — add their photos
+          Next: add their photos
         </button>
       </form>
     </div>

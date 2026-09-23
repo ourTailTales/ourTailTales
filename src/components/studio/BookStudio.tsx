@@ -294,12 +294,12 @@ function ReadOnlyAside({ onUnlock }: { onUnlock: () => void }) {
     <div className="rounded-2xl border border-page-line bg-white/95 p-5">
       <h2 className="font-display text-lg text-page-ink">This is your book</h2>
       <p className="mt-1.5 text-sm leading-6 text-page-ink-soft">
-        We wrote every chapter from your own photos. Nothing here is fixed —
-        once it is saved to your account you can change:
+        We wrote every chapter from your photos. Nothing is fixed. Save it to
+        your account and you can change:
       </p>
       <ul className="mt-3 space-y-1.5 text-sm text-page-ink-soft">
         {[
-          "The cover — photo, style, lettering",
+          "The cover: photo, style, lettering",
           "Every chapter's title and story",
           "Which photo opens each chapter",
           "Any photo on any page",
@@ -319,7 +319,7 @@ function ReadOnlyAside({ onUnlock }: { onUnlock: () => void }) {
         Save it and start editing
       </button>
       <p className="mt-2.5 text-center text-xs text-page-ink-faint">
-        Free — you already gave us your email.
+        Free. You already gave us your email.
       </p>
     </div>
   );
