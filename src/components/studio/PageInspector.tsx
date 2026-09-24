@@ -17,6 +17,7 @@ import {
   defaultNameAnchor,
 } from "@/lib/book/coverLayouts";
 import type { StudioSlide } from "@/lib/book/studio";
+import { BRAND_PALETTE, sanitizePalette } from "@/lib/book/palette";
 import { useOurTailTalesStore } from "@/store/useOurTailTalesStore";
 import type { CoverFontId } from "@/types/book";
 import type { PhotoAsset } from "@/types/photo";
@@ -137,6 +138,8 @@ function CoverPanel({
           ))}
         </div>
       </Field>
+
+      <BookColors />
 
       <div className="grid grid-cols-2 gap-3">
         <Field label="Font">
@@ -302,6 +305,8 @@ function TitlePanel({ photos }: { photos: PhotoAsset[] }) {
         />
       </Field>
 
+      <BookColors />
+
       {/* Here as well as on its own page: with no dedication there is no
           dedication page, so this is the only way to add one back. */}
       <Field
@@ -329,6 +334,83 @@ function TitlePanel({ photos }: { photos: PhotoAsset[] }) {
         />
       </Field>
     </Panel>
+  );
+}
+
+/* ------------------------------- book colors ------------------------------ */
+
+/**
+ * The palettes proposed for this pet, and the classic ourTailTales one.
+ *
+ * Each is shown the way it will print (after `sanitizePalette`), with the
+ * reason it was chosen, so "Picks up Rocket's red collar" is something the
+ * owner can see and agree with rather than a color they have to guess at.
+ */
+function BookColors() {
+  const meta = useOurTailTalesStore((state) => state.meta);
+  const setMeta = useOurTailTalesStore((state) => state.setMeta);
+  const options = meta.petProfile?.palettes ?? [];
+  if (options.length === 0) return null;
+
+  const current = meta.paletteIndex ?? 0;
+  const choices = [
+    ...options.map((option, index) => ({
+      index,
+      name: option.name,
+      reason: option.reason,
+      palette: sanitizePalette(option),
+    })),
+    {
+      index: -1,
+      name: "Classic ourTailTales",
+      reason: "Our own periwinkle and pastels.",
+      palette: BRAND_PALETTE,
+    },
+  ];
+
+  return (
+    <Field label="Book colors" note="Chosen from what they look like and wear.">
+      <div className="flex flex-col gap-2" role="radiogroup" aria-label="Book colors">
+        {choices.map((choice) => {
+          const active = choice.index === current;
+          return (
+            <button
+              key={choice.index}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              onClick={() => setMeta({ paletteIndex: choice.index })}
+              className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors ${
+                active
+                  ? "border-periwinkle bg-periwinkle-wash/50 ring-1 ring-periwinkle/30"
+                  : "border-page-line bg-white hover:border-periwinkle"
+              }`}
+            >
+              <span
+                aria-hidden
+                className="flex h-9 w-16 shrink-0 overflow-hidden rounded-md ring-1 ring-page-line"
+                style={{ background: choice.palette.paper }}
+              >
+                <span className="w-1/4" style={{ background: choice.palette.accent }} />
+                {choice.palette.tape.slice(0, 3).map((color) => (
+                  <span key={color} className="w-1/4" style={{ background: color }} />
+                ))}
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-medium text-page-ink">
+                  {choice.name}
+                </span>
+                {choice.reason ? (
+                  <span className="block text-xs leading-snug text-page-ink-soft">
+                    {choice.reason}
+                  </span>
+                ) : null}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </Field>
   );
 }
 

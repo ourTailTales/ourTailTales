@@ -38,6 +38,14 @@ Avoid:
 
 ## Book design: a clean scrapbook
 
+**The book's colors are the pet's, not ours.** The product UI stays on the
+ourTailTales palette below. Inside a book, the paper, tape, scraps, accents
+and doodles come from a palette chosen for that pet: echoing their collar,
+harness or clothes, or built on their coat (`src/lib/book/palette.ts`). The
+owner can switch between three proposals or pick the classic ourTailTales
+colors. Whatever is proposed is made print-safe: near-white paper, 7:1 body
+text, 3:1 accents, pastel tape.
+
 Inside the book, photos are treated as prints placed by hand, not as
 rectangles in a grid. One definition drives the screen and the printed
 PDF: `src/lib/book/scrapbook.ts`.
@@ -46,11 +54,11 @@ Allowed:
 - Prints with a white border; a polaroid's deep bottom edge when there is
   room, with the month and year handwritten on it
 - A slight tilt (under 3°), neighbours leaning opposite ways
-- Washi tape in the brand pastels (Lavender, Sage, Petal, Memory Blue)
-- Flat pastel paper scraps tucked behind prints or note cards
+- Washi tape in the book palette's pastels
+- Flat pale paper scraps from the book palette, tucked behind prints or note cards
 - White note cards for words, ruled faintly on the dedication
 - At most two small line doodles a page (heart, star, sparkle, loop, wave),
-  in Periwinkle or Sage; a paw is allowed but rare
+  in the palette's doodle or accent color; a paw is allowed but rare
 - Type: Caveat for handwriting (title page, captions, dates), Cormorant
   Garamond for titles and story text
 
