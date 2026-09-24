@@ -222,3 +222,18 @@ body {
   user-select: none;
   -webkit-user-select: none;
 }
+
+/* The mobile page carousel: a swipe-and-peek strip, one page centered and the
+   neighbors visible at the edges. Scrolled natively by touch — there is no JS
+   drag handler here, only scroll-snap — so unlike `.filmstrip` this keeps the
+   browser's own touch handling and default (not "auto") scroll-behavior, and
+   only hides the bar so the swipe gesture is the only affordance. */
+.page-carousel {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  overscroll-behavior-x: contain;
+}
+
+.page-carousel::-webkit-scrollbar {
+  display: none;
+}

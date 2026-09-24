@@ -8,6 +8,7 @@ import { track } from "@/lib/analytics";
 import { CoverCanvas, PageCanvas } from "@/components/book-viewer/PageCanvas";
 import { PageZoom } from "@/components/book-viewer/PageZoom";
 import { LockedWall } from "@/components/studio/LockedWall";
+import { PageCarousel } from "@/components/studio/PageCarousel";
 import { PageFilmstrip } from "@/components/studio/PageFilmstrip";
 import { PageInspector } from "@/components/studio/PageInspector";
 import { buildSlides, lockWallIndex } from "@/lib/book/studio";
@@ -123,6 +124,10 @@ export function BookStudio({
           </p>
         </div>
 
+        {/* Reset stays here at every width — it is rare and small. Download
+            and Order hardcover move to their own block below the carousel
+            and the tools on narrow screens, so this row is their desktop
+            copy only. */}
         <div className="flex flex-wrap items-center gap-2">
           {unlocked && originalBook ? (
             confirmReset ? (
@@ -158,23 +163,25 @@ export function BookStudio({
             )
           ) : null}
 
-          <button
-            type="button"
-            onClick={onDownload}
-            disabled={downloading}
-            className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-page-line bg-white px-3 text-xs font-medium text-page-ink-soft transition-colors hover:border-periwinkle hover:text-periwinkle-deep disabled:opacity-60"
-          >
-            <Download aria-hidden className="size-3.5" />
-            {downloading ? "Preparing…" : unlocked ? "Download PDF" : "Download free pages"}
-          </button>
+          <div className="hidden items-center gap-2 lg:flex">
+            <button
+              type="button"
+              onClick={onDownload}
+              disabled={downloading}
+              className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-page-line bg-white px-3 text-xs font-medium text-page-ink-soft transition-colors hover:border-periwinkle hover:text-periwinkle-deep disabled:opacity-60"
+            >
+              <Download aria-hidden className="size-3.5" />
+              {downloading ? "Preparing…" : unlocked ? "Download PDF" : "Download free pages"}
+            </button>
 
-          <button
-            type="button"
-            onClick={onCheckout}
-            className="inline-flex min-h-10 items-center rounded-lg bg-periwinkle px-4 text-sm font-semibold text-white shadow-lift transition-colors hover:bg-periwinkle-deep"
-          >
-            Order hardcover · {formatUsd(price)}
-          </button>
+            <button
+              type="button"
+              onClick={onCheckout}
+              className="inline-flex min-h-10 items-center rounded-lg bg-periwinkle px-4 text-sm font-semibold text-white shadow-lift transition-colors hover:bg-periwinkle-deep"
+            >
+              Order hardcover · {formatUsd(price)}
+            </button>
+          </div>
         </div>
       </header>
 
@@ -188,66 +195,85 @@ export function BookStudio({
       ) : null}
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_23rem] lg:items-start">
-        {/* Viewport */}
+        {/* Viewport — a swipeable peek carousel under the width where a
+            mouse-driven chevron makes sense, the original single page with
+            its chevrons above it. Both read from the same `slide`/`move`
+            state, so they can never drift into showing different pages. */}
         <div className="lg:col-start-1 lg:row-start-1">
-          <div className="relative mx-auto w-full max-w-[34rem]">
-            <div className="overflow-hidden rounded-xl bg-white shadow-[0_18px_50px_-24px_rgb(25_32_58/0.5)] ring-1 ring-page-line">
-              <div className={slide.locked ? "blur-[7px] saturate-50" : ""}>
-                {slide.page ? (
-                  <PageCanvas
-                    page={slide.page}
-                    meta={meta}
-                    chapters={chapters}
-                    photos={photoMap}
-                    placeholder={slide.locked}
-                  />
+          <div className="lg:hidden">
+            <PageCarousel
+              slides={slides}
+              position={position}
+              onSelect={setSelected}
+              meta={meta}
+              chapters={chapters}
+              photos={photoMap}
+              photoList={photoList}
+              onUnlock={onUnlock}
+              onZoom={() => setZoomed(true)}
+            />
+          </div>
+
+          <div className="hidden lg:block">
+            <div className="relative mx-auto w-full max-w-[34rem]">
+              <div className="overflow-hidden rounded-xl bg-white shadow-[0_18px_50px_-24px_rgb(25_32_58/0.5)] ring-1 ring-page-line">
+                <div className={slide.locked ? "blur-[7px] saturate-50" : ""}>
+                  {slide.page ? (
+                    <PageCanvas
+                      page={slide.page}
+                      meta={meta}
+                      chapters={chapters}
+                      photos={photoMap}
+                      placeholder={slide.locked}
+                    />
+                  ) : (
+                    <CoverCanvas meta={meta} photos={photoList} />
+                  )}
+                </div>
+
+                {slide.locked ? (
+                  <div className="absolute inset-0 flex items-center justify-center bg-white/45 p-5">
+                    <button
+                      type="button"
+                      onClick={onUnlock}
+                      className="rounded-xl bg-periwinkle px-5 py-3 text-sm font-semibold text-white shadow-lift hover:bg-periwinkle-deep"
+                    >
+                      Unlock this page
+                    </button>
+                  </div>
                 ) : (
-                  <CoverCanvas meta={meta} photos={photoList} />
+                  // Set body text on a page this size reads around six pixels
+                  // on a phone. This is the way to actually read it.
+                  <button
+                    type="button"
+                    onClick={() => setZoomed(true)}
+                    aria-label={`Read ${slide.label} full size`}
+                    className="absolute bottom-2.5 right-2.5 flex size-9 items-center justify-center rounded-full bg-white/90 text-page-ink-soft shadow-sm backdrop-blur transition-colors hover:text-periwinkle-deep"
+                  >
+                    <Maximize2 aria-hidden className="size-4" strokeWidth={2.25} />
+                  </button>
                 )}
               </div>
 
-              {slide.locked ? (
-                <div className="absolute inset-0 flex items-center justify-center bg-white/45 p-5">
-                  <button
-                    type="button"
-                    onClick={onUnlock}
-                    className="rounded-xl bg-periwinkle px-5 py-3 text-sm font-semibold text-white shadow-lift hover:bg-periwinkle-deep"
-                  >
-                    Unlock this page
-                  </button>
-                </div>
-              ) : (
-                // Set body text on a page this size reads around six pixels
-                // on a phone. This is the way to actually read it.
-                <button
-                  type="button"
-                  onClick={() => setZoomed(true)}
-                  aria-label={`Read ${slide.label} full size`}
-                  className="absolute bottom-2.5 right-2.5 flex size-9 items-center justify-center rounded-full bg-white/90 text-page-ink-soft shadow-sm backdrop-blur transition-colors hover:text-periwinkle-deep"
-                >
-                  <Maximize2 aria-hidden className="size-4" strokeWidth={2.25} />
-                </button>
-              )}
+              <button
+                type="button"
+                aria-label="Previous page"
+                onClick={() => move(-1)}
+                disabled={position === 0}
+                className="absolute -left-2 top-1/2 flex size-10 -translate-y-1/2 items-center justify-center rounded-full border border-page-line bg-white/95 text-page-ink shadow-sm transition-colors hover:border-periwinkle disabled:opacity-0 sm:-left-5"
+              >
+                <ChevronLeft aria-hidden className="size-5" />
+              </button>
+              <button
+                type="button"
+                aria-label="Next page"
+                onClick={() => move(1)}
+                disabled={position >= slides.length - 1}
+                className="absolute -right-2 top-1/2 flex size-10 -translate-y-1/2 items-center justify-center rounded-full border border-page-line bg-white/95 text-page-ink shadow-sm transition-colors hover:border-periwinkle disabled:opacity-0 sm:-right-5"
+              >
+                <ChevronRight aria-hidden className="size-5" />
+              </button>
             </div>
-
-            <button
-              type="button"
-              aria-label="Previous page"
-              onClick={() => move(-1)}
-              disabled={position === 0}
-              className="absolute -left-2 top-1/2 flex size-10 -translate-y-1/2 items-center justify-center rounded-full border border-page-line bg-white/95 text-page-ink shadow-sm transition-colors hover:border-periwinkle disabled:opacity-0 sm:-left-5"
-            >
-              <ChevronLeft aria-hidden className="size-5" />
-            </button>
-            <button
-              type="button"
-              aria-label="Next page"
-              onClick={() => move(1)}
-              disabled={position >= slides.length - 1}
-              className="absolute -right-2 top-1/2 flex size-10 -translate-y-1/2 items-center justify-center rounded-full border border-page-line bg-white/95 text-page-ink shadow-sm transition-colors hover:border-periwinkle disabled:opacity-0 sm:-right-5"
-            >
-              <ChevronRight aria-hidden className="size-5" />
-            </button>
           </div>
 
           {zoomed ? (
@@ -301,6 +327,28 @@ export function BookStudio({
             <ReadOnlyAside onUnlock={onUnlock} />
           )}
         </aside>
+
+        {/* Download and Order hardcover, on their own below the carousel and
+            the tools — the header row above carries these on wider screens,
+            where there is room for them next to the title. */}
+        <div className="flex flex-col gap-2.5 lg:hidden">
+          <button
+            type="button"
+            onClick={onCheckout}
+            className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-periwinkle px-6 text-base font-semibold text-white shadow-lift transition-colors hover:bg-periwinkle-deep"
+          >
+            Order hardcover · {formatUsd(price)}
+          </button>
+          <button
+            type="button"
+            onClick={onDownload}
+            disabled={downloading}
+            className="inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl border border-page-line bg-white px-4 text-sm font-medium text-page-ink-soft transition-colors hover:border-periwinkle hover:text-periwinkle-deep disabled:opacity-60"
+          >
+            <Download aria-hidden className="size-3.5" />
+            {downloading ? "Preparing…" : unlocked ? "Download PDF" : "Download free pages"}
+          </button>
+        </div>
       </div>
     </div>
   );
