@@ -22,8 +22,8 @@ const PHOTO_WINDOW = 12;
 /** Pixels of travel before a press counts as dragging rather than clicking. */
 const DRAG_THRESHOLD = 5;
 
-/** How long the strip must sit still before a scroll counts as having landed. */
-const SETTLE_DELAY_MS = 120;
+/** How long the strip must sit still before it counts as no longer scrolling. */
+const SCROLL_IDLE_MS = 100;
 
 /**
  * The filmstrip: every page of the book, in order, along the bottom.
@@ -32,11 +32,13 @@ const SETTLE_DELAY_MS = 120;
  * through their own book, and a five hundred page book makes that bar a few
  * pixels wide.
  *
- * Moving the strip also moves the page above it: once the strip stops
- * (a click, a drag released, or a native touch scroll coming to rest),
- * whichever thumbnail is nearest the center becomes the selection. A click
- * still commits immediately rather than waiting for that; the settle check is
- * what covers a drag or a swipe that never produces a click at all.
+ * Moving the strip also moves the page above it, live: whichever thumbnail
+ * sits furthest to the left — nearest the strip's own leading edge — is the
+ * selection, re-checked on every scroll frame rather than once movement
+ * stops. The `scrollIntoView` sync effect below, which snaps the active
+ * thumbnail flush to that same leading edge on a click or a keypress, is
+ * held off for as long as anything (a drag or a native touch scroll) is
+ * still moving the strip, so it never fights a gesture already in progress.
  */
 export function PageFilmstrip({
   slides,
@@ -66,12 +68,20 @@ export function PageFilmstrip({
   /** Set just before a keyboard move, so the effect below knows to move focus too. */
   const keyboardNav = useRef(false);
 
+  /** Set for as long as the strip is actively moving, by any means. */
+  const scrolling = useRef(false);
+  const scrollIdleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
-    if (panning.current) return;
+    // While anything is moving the strip — a JS-driven pointer drag, or a
+    // native touch scroll this component never gets a start/end signal for —
+    // this would drag the active thumbnail back toward the edge mid-gesture,
+    // on top of whatever the customer's own hand is doing.
+    if (panning.current || scrolling.current) return;
     activeRef.current?.scrollIntoView({
       behavior: "smooth",
       block: "nearest",
-      inline: "center",
+      inline: "start",
     });
     if (keyboardNav.current) {
       keyboardNav.current = false;
@@ -82,31 +92,41 @@ export function PageFilmstrip({
     }
   }, [selected]);
 
-  /** Debounce handle for the settle check below. */
-  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => {
-    if (settleTimer.current) clearTimeout(settleTimer.current);
-  }, []);
+  /** rAF handle for the per-frame check below, so a burst of scroll events
+   *  only ever schedules one read of the DOM per paint. */
+  const scrollFrame = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (scrollFrame.current !== null) cancelAnimationFrame(scrollFrame.current);
+      if (scrollIdleTimer.current) clearTimeout(scrollIdleTimer.current);
+    },
+    [],
+  );
 
   /**
-   * Whatever thumbnail is nearest the strip's own center once scrolling goes
-   * quiet — whether that scrolling was a drag, a native touch swipe, or the
-   * `scrollIntoView` above finishing — becomes the selection. Debounced
-   * rather than continuous: this only ever fires once movement has actually
-   * stopped, so a page never flickers past while a thumb is still travelling.
+   * Whatever thumbnail is furthest left — nearest the strip's own leading
+   * edge — becomes the selection, checked on every scroll frame rather than
+   * once the strip stops. `scrolling` just marks that movement is happening
+   * right now, for the sync effect above to stay out of the way; it never
+   * gates this check itself.
    */
   const handleScroll = useCallback(() => {
-    if (settleTimer.current) clearTimeout(settleTimer.current);
-    settleTimer.current = setTimeout(() => {
+    scrolling.current = true;
+    if (scrollIdleTimer.current) clearTimeout(scrollIdleTimer.current);
+    scrollIdleTimer.current = setTimeout(() => {
+      scrolling.current = false;
+    }, SCROLL_IDLE_MS);
+
+    if (scrollFrame.current !== null) return;
+    scrollFrame.current = requestAnimationFrame(() => {
+      scrollFrame.current = null;
       const strip = stripRef.current;
       if (!strip) return;
-      const stripRect = strip.getBoundingClientRect();
-      const centerX = stripRect.left + stripRect.width / 2;
+      const leadingEdge = strip.getBoundingClientRect().left;
       let closest: number | null = null;
       let closestDistance = Infinity;
       strip.querySelectorAll<HTMLElement>("[role=tab]").forEach((el) => {
-        const rect = el.getBoundingClientRect();
-        const distance = Math.abs(rect.left + rect.width / 2 - centerX);
+        const distance = Math.abs(el.getBoundingClientRect().left - leadingEdge);
         if (distance < closestDistance) {
           closestDistance = distance;
           closest = Number(el.dataset.position);
@@ -115,7 +135,7 @@ export function PageFilmstrip({
       if (closest !== null && closest !== selected) {
         onSelect(closest);
       }
-    }, SETTLE_DELAY_MS);
+    });
   }, [selected, onSelect]);
 
   /**
@@ -242,7 +262,7 @@ export function PageFilmstrip({
                   }
                   onSelect(slide.position);
                 }}
-                className="group flex w-[4.5rem] shrink-0 snap-center flex-col items-center gap-1.5 sm:w-20"
+                className="group flex w-[4.5rem] shrink-0 snap-start flex-col items-center gap-1.5 sm:w-20"
               >
                 <span
                   className={`relative block w-full overflow-hidden rounded-md border transition-all ${
