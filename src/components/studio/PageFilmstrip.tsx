@@ -60,6 +60,9 @@ export function PageFilmstrip({
   /** Where the drag began, and how far it has travelled. */
   const origin = useRef({ x: 0, scrollLeft: 0, moved: 0 });
 
+  /** Set just before a keyboard move, so the effect below knows to move focus too. */
+  const keyboardNav = useRef(false);
+
   useEffect(() => {
     if (panning.current) return;
     activeRef.current?.scrollIntoView({
@@ -67,7 +70,51 @@ export function PageFilmstrip({
       block: "nearest",
       inline: "center",
     });
+    if (keyboardNav.current) {
+      keyboardNav.current = false;
+      // preventScroll: the scrollIntoView above already handles bringing the
+      // thumbnail into view, smoothly; a plain .focus() would additionally
+      // jump the browser's own scroll anchoring and fight it.
+      activeRef.current?.focus({ preventScroll: true });
+    }
   }, [selected]);
+
+  /**
+   * Arrow-key roving tabindex for the tablist, per the WAI-ARIA tabs pattern.
+   *
+   * Every thumbnail used to be its own tab stop, so a fifty-chapter book put
+   * five hundred stops between whatever came before the filmstrip and
+   * whatever came after it. Only the active tab is now in the page's Tab
+   * order; arrow keys move both the selection and focus among the rest.
+   */
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
+    const currentIndex = slides.findIndex((slide) => slide.position === selected);
+    if (currentIndex === -1) return;
+
+    let nextIndex: number;
+    switch (event.key) {
+      case "ArrowRight":
+        nextIndex = Math.min(currentIndex + 1, slides.length - 1);
+        break;
+      case "ArrowLeft":
+        nextIndex = Math.max(currentIndex - 1, 0);
+        break;
+      case "Home":
+        nextIndex = 0;
+        break;
+      case "End":
+        nextIndex = slides.length - 1;
+        break;
+      default:
+        return;
+    }
+
+    event.preventDefault();
+    const next = slides[nextIndex];
+    if (!next || next.position === selected) return;
+    keyboardNav.current = true;
+    onSelect(next.position);
+  };
 
   const startPan = (event: React.PointerEvent<HTMLDivElement>): void => {
     // Leave the middle and right buttons, and anything with its own gesture.
@@ -123,6 +170,7 @@ export function PageFilmstrip({
         onPointerMove={pan}
         onPointerUp={endPan}
         onPointerCancel={endPan}
+        onKeyDown={handleKeyDown}
         className="filmstrip flex cursor-grab gap-3 overflow-x-auto px-4 py-3 active:cursor-grabbing sm:px-6"
         role="tablist"
         aria-label="Pages"
@@ -144,6 +192,7 @@ export function PageFilmstrip({
                 type="button"
                 role="tab"
                 aria-selected={isActive}
+                tabIndex={isActive ? 0 : -1}
                 onClick={() => {
                   // A drag that ended on a thumbnail was a drag, not a choice.
                   if (dragged.current) {

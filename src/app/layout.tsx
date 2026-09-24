@@ -9,6 +9,7 @@ import {
   Playfair_Display,
 } from "next/font/google";
 import { brand } from "@/lib/brand";
+import { SkipLink } from "@/components/SkipLink";
 import "./globals.css";
 
 const display = Merienda({
@@ -43,14 +44,14 @@ const caveat = Caveat({
 });
 
 export const metadata: Metadata = {
-  title: `${brand.name} — ${brand.line}`,
+  title: `${brand.name} | ${brand.line}`,
   description:
     "Drop in your pet's photo album. ourTailTales organizes the years, builds the chapters, and creates a hardcover book you can keep forever.",
   metadataBase: new URL(
     process.env.NEXT_PUBLIC_SITE_URL ?? `https://${brand.domain}`,
   ),
   openGraph: {
-    title: `${brand.name} — ${brand.line}`,
+    title: `${brand.name} | ${brand.line}`,
     description:
       "Turn their camera roll into the story of their life. A hardcover keepsake from the moments you shared.",
     siteName: brand.name,
@@ -73,6 +74,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${display.variable} ${cover.variable} ${body.variable} ${playfair.variable} ${caveat.variable} brand-atmosphere antialiased`}
     >
       <body className="min-h-dvh flex flex-col text-ink">
+        <SkipLink />
         {children}
         <Analytics />
         <SpeedInsights />
