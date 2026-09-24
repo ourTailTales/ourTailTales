@@ -18,6 +18,11 @@ export function ClaimForm({ knownEmail }: { knownEmail: string | null }) {
   const [password, setPassword] = useState("");
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Set only for the one error this actually explains: an existing account
+  // with a password that didn't match. Wrong-address typos and other errors
+  // get no such offer, since a reset link would just go to the wrong inbox.
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
 
   const submit = async (): Promise<void> => {
     const trimmed = email.trim();
@@ -36,6 +41,8 @@ export function ClaimForm({ knownEmail }: { knownEmail: string | null }) {
 
     setWorking(true);
     setError(null);
+    setShowForgotPassword(false);
+    setResetSent(false);
     try {
       const supabase = createAuthBrowserClient();
       let { data, error: authError } = await supabase.auth.signUp({
@@ -55,6 +62,7 @@ export function ClaimForm({ knownEmail }: { knownEmail: string | null }) {
           setError(
             "You already have an account with this address. That password did not match it.",
           );
+          setShowForgotPassword(true);
           return;
         }
       }
@@ -86,6 +94,32 @@ export function ClaimForm({ knownEmail }: { knownEmail: string | null }) {
     }
   };
 
+  const sendResetLink = async (): Promise<void> => {
+    const trimmed = email.trim();
+    if (!authConfigured()) return;
+
+    setWorking(true);
+    try {
+      const supabase = createAuthBrowserClient();
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(trimmed, {
+        redirectTo: `${window.location.origin}/auth/callback?next=/reset-password`,
+      });
+      setWorking(false);
+      if (resetError) {
+        setError(resetError.message);
+        return;
+      }
+      setError(null);
+      setShowForgotPassword(false);
+      setResetSent(true);
+    } catch (caught) {
+      setWorking(false);
+      setError(
+        caught instanceof Error ? caught.message : "That did not work. Please try again.",
+      );
+    }
+  };
+
   return (
     <form
       className="mt-6 space-y-3"
@@ -103,7 +137,11 @@ export function ClaimForm({ knownEmail }: { knownEmail: string | null }) {
           type="email"
           autoComplete="email"
           value={email}
-          onChange={(event) => setEmail(event.target.value)}
+          onChange={(event) => {
+            setEmail(event.target.value);
+            setShowForgotPassword(false);
+            setResetSent(false);
+          }}
           disabled={working}
           className="mt-1 min-h-11 w-full rounded-xl border border-page-line px-3 text-sm text-page-ink outline-none focus:border-periwinkle disabled:opacity-60"
         />
@@ -126,9 +164,23 @@ export function ClaimForm({ knownEmail }: { knownEmail: string | null }) {
         <p className="mt-1.5 text-xs text-page-ink-faint">At least 6 characters.</p>
       </div>
 
-      {error ? (
+      {resetSent ? (
+        <p role="status" className="text-sm leading-6 text-page-ink-soft">
+          Check your email for a link to pick a new password.
+        </p>
+      ) : error ? (
         <p role="alert" className="text-sm leading-6 text-red-600">
-          {error}
+          {error}{" "}
+          {showForgotPassword ? (
+            <button
+              type="button"
+              onClick={() => void sendResetLink()}
+              disabled={working}
+              className="underline underline-offset-4 hover:text-red-700 disabled:opacity-60"
+            >
+              Forgot your password?
+            </button>
+          ) : null}
         </p>
       ) : null}
 
