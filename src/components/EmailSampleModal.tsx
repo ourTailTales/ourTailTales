@@ -4,7 +4,15 @@ import { useRef, useState } from "react";
 
 import { useDialogA11y } from "@/lib/a11y/useDialog";
 
-/** Mounted only while open, so each visit starts from a clean state. */
+/**
+ * Mounted only while open, so each visit starts from a clean state.
+ *
+ * Opening this already was the request — the customer clicked "Email me my
+ * book" — so the only thing missing is an address, not a second decision
+ * about whether to send it. There is no separate "send" button: a valid
+ * address sends the moment it's given, the same way the address field during
+ * upload commits itself on blur rather than waiting for a submit click.
+ */
 export function EmailSampleModal({
   onClose,
   onSubmit,
@@ -15,14 +23,20 @@ export function EmailSampleModal({
   initialEmail: string | null;
 }) {
   const [email, setEmail] = useState(initialEmail ?? "");
-  const [status, setStatus] = useState<"idle" | "working" | "error">("idle");
+  const [status, setStatus] = useState<"idle" | "working" | "sent" | "error">("idle");
   const [message, setMessage] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   useDialogA11y(dialogRef, { onClose, initialFocusRef: inputRef });
 
-  const handleSubmit = async (): Promise<void> => {
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+  const isValid = (value: string): boolean =>
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+
+  const send = async (): Promise<void> => {
+    // Already sent, or already sending — a blur right after Enter must not
+    // fire this twice.
+    if (status === "working" || status === "sent") return;
+    if (!isValid(email)) {
       setStatus("error");
       setMessage("Please enter a valid email address.");
       return;
@@ -32,8 +46,8 @@ export function EmailSampleModal({
     setMessage("Sending your first pages…");
     try {
       await onSubmit(email.trim());
+      setStatus("sent");
       setMessage("On its way. Check your inbox.");
-      setStatus("idle");
     } catch (error) {
       setStatus("error");
       setMessage(
@@ -78,13 +92,23 @@ export function EmailSampleModal({
             ref={inputRef}
             type="email"
             value={email}
-            onChange={(event) => setEmail(event.target.value)}
+            disabled={status === "working" || status === "sent"}
+            onChange={(event) => {
+              setEmail(event.target.value);
+              if (status === "error") {
+                setStatus("idle");
+                setMessage(null);
+              }
+            }}
             onKeyDown={(event) => {
-              if (event.key === "Enter") void handleSubmit();
+              if (event.key === "Enter") void send();
+            }}
+            onBlur={() => {
+              if (isValid(email)) void send();
             }}
             placeholder="you@example.com"
             autoComplete="email"
-            className="w-full rounded-lg border border-line bg-white px-3.5 py-2.5 text-ink outline-none transition-colors placeholder:text-ink-faint focus:border-periwinkle focus:ring-2 focus:ring-periwinkle/20"
+            className="w-full rounded-lg border border-line bg-white px-3.5 py-2.5 text-ink outline-none transition-colors placeholder:text-ink-faint focus:border-periwinkle focus:ring-2 focus:ring-periwinkle/20 disabled:opacity-60"
           />
         </label>
 
@@ -101,24 +125,6 @@ export function EmailSampleModal({
             {message}
           </p>
         )}
-
-        <div className="mt-6 flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => void handleSubmit()}
-            disabled={status === "working"}
-            className="rounded-xl bg-periwinkle px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-periwinkle-deep disabled:opacity-60"
-          >
-            {status === "working" ? "Building…" : "Send my sample"}
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-sm text-ink-soft underline decoration-line underline-offset-4 hover:text-periwinkle-deep"
-          >
-            Not now
-          </button>
-        </div>
       </div>
     </div>
   );
