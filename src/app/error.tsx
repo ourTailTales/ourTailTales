@@ -33,8 +33,8 @@ export default function ErrorBoundary({
           Something went wrong on our side
         </h1>
         <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-page-ink-soft">
-          Not your fault, and nothing you were working on has been thrown away —
-          your photos stay on your own device until you choose to order. Trying
+          Not your fault, and nothing you were working on has been thrown away.
+          Your photos stay on your own device until you choose to order. Trying
           again usually works.
         </p>
         <div className="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">

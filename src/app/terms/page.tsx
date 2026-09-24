@@ -5,7 +5,7 @@ import { LegalDoc, LegalSection } from "@/components/landing/LegalDoc";
 import { brand } from "@/lib/brand";
 
 export const metadata: Metadata = {
-  title: `Terms of Service — ${brand.name}`,
+  title: `Terms of Service | ${brand.name}`,
   description: `Terms for using ${brand.name} to create and order hardcover pet books.`,
 };
 
@@ -46,7 +46,7 @@ export default function TermsPage() {
           You retain ownership of photos, videos, captions, and other materials
           you submit (&ldquo;Content&rdquo;). You grant us a limited license to
           host, process, reproduce, and transmit Content solely as needed to
-          provide the Service—including generating previews, print files, and
+          provide the Service, including generating previews, print files, and
           shipping a finished book.
         </p>
         <p>

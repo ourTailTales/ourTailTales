@@ -493,7 +493,7 @@ export function CheckoutForm({
       <aside className="h-fit rounded-2xl border border-line bg-white p-6 shadow-lift">
         <h2 className="font-display text-lg text-ink">Your book</h2>
         <dl className="mt-4 space-y-2.5 text-sm">
-          <Row label={`${order.petName ?? "Pet"} — hardcover 8.5 × 8.5 in`} />
+          <Row label={`${order.petName ?? "Pet"} · hardcover 8.5 × 8.5 in`} />
           <Row
             label={`${order.chapterCount} chapters · ${order.storyPages} story pages`}
           />
@@ -517,7 +517,7 @@ export function CheckoutForm({
         </dl>
         <p className="mt-4 text-xs leading-5 text-ink-faint">
           Printed and bound to order. Your photos were never uploaded to build
-          this book — only the finished print files were.
+          this book, only the finished print files were.
         </p>
       </aside>
     </div>

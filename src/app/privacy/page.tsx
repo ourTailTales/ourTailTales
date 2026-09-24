@@ -4,7 +4,7 @@ import { LegalDoc, LegalSection } from "@/components/landing/LegalDoc";
 import { brand } from "@/lib/brand";
 
 export const metadata: Metadata = {
-  title: `Privacy Policy — ${brand.name}`,
+  title: `Privacy Policy | ${brand.name}`,
   description: `How ${brand.name} handles photos, emails, payments, and analytics.`,
 };
 
@@ -26,7 +26,7 @@ export default function PrivacyPage() {
           just because you open the editor.
         </p>
         <p>
-          When you order a hardcover—or upload optional video memories—we
+          When you order a hardcover, or upload optional video memories, we
           receive the files needed to prepare print-ready pages, covers, and
           related assets. Those files are used to fulfill your order and operate
           the Service.

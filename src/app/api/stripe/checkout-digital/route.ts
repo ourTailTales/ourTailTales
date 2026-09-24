@@ -43,7 +43,7 @@ export async function POST(request: Request): Promise<Response> {
       return Response.json(
         {
           error:
-            "Make your free account first — that is what opens the whole book, and then you can buy the clean PDF.",
+            "Make your free account first. That is what opens the whole book, and then you can buy the clean PDF.",
         },
         { status: 409 },
       );
@@ -82,7 +82,7 @@ export async function POST(request: Request): Promise<Response> {
             currency: "usd",
             unit_amount: toMinorUnits(DIGITAL_PRICE),
             product_data: {
-              name: petName ? `${petName}’s book — full PDF` : "Your book — full PDF",
+              name: petName ? `${petName}’s book (full PDF)` : "Your book (full PDF)",
               description:
                 "The complete book as a PDF, without the watermark, kept permanently.",
             },

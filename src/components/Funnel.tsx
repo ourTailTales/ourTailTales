@@ -524,7 +524,7 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
       .catch((error: unknown) => {
         captureClientException(error);
         setNotice(
-          "Your book is open, but saving it to your library did not work. It is still here in this browser — try reloading.",
+          "Your book is open, but saving it to your library did not work. It is still here in this browser. Try reloading.",
         );
       });
   }, [claimBook]);
@@ -650,7 +650,7 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
   // rather than stored: the parameter was previously set by the auth callback
   // and read by nothing, so a broken link looked exactly like a working one.
   const authErrorNotice = searchParams.get("authError")
-    ? "That sign-in link did not work — it may have already been used or expired. You can sign in again from your book."
+    ? "That sign-in link did not work. It may have already been used or expired. You can sign in again from your book."
     : null;
 
   const stage = !localReady ? (

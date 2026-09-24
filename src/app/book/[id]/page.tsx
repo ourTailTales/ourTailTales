@@ -14,7 +14,7 @@ import { createAuthServerClient } from "@/lib/supabase/auth-server";
 
 
 export const metadata: Metadata = {
-  title: "Your book — ourTailTales",
+  title: "Your book | ourTailTales",
   robots: { index: false, follow: false },
 };
 
@@ -229,7 +229,7 @@ function FreeBookPreview({
             {draft.expiresAt && (
               <p className="mt-2 flex items-center gap-1.5 text-xs text-page-ink-faint">
                 <CalendarClock aria-hidden className="size-3.5" />
-                {expiryLabel(draft.expiresAt)} — {formatExpiry(draft.expiresAt)}
+                {expiryLabel(draft.expiresAt)} · {formatExpiry(draft.expiresAt)}
               </p>
             )}
           </div>
@@ -256,7 +256,7 @@ function FreeBookPreview({
       {settling && (
         <section className="mt-6 rounded-[1.5rem] border border-sage bg-sage/20 p-5 sm:p-7">
           <h2 className="font-display text-xl font-bold text-page-ink">
-            Payment received — thank you
+            Payment received, thank you
           </h2>
           <p className="mt-1.5 max-w-prose text-sm leading-6 text-page-ink-soft">
             Your clean copy is being unlocked now. Refresh this page in a
@@ -272,7 +272,7 @@ function FreeBookPreview({
             Read the whole book
           </h2>
           <p className="mt-1.5 max-w-prose text-sm leading-6 text-page-ink-soft">
-            These are the first pages. The rest is already written — make your
+            These are the first pages. The rest is already written. Make your
             free account and every page opens, stays in your library, and
             becomes yours to change.
           </p>

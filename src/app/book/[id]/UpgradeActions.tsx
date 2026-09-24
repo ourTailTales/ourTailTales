@@ -66,7 +66,7 @@ export function UpgradeActions({
           disabled={busy}
           className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-page-line bg-white px-5 py-3 text-sm font-semibold text-page-ink transition-colors hover:border-periwinkle hover:text-periwinkle-deep disabled:opacity-60"
         >
-          {busy ? "Opening checkout…" : `${formatUsd(digitalPrice)} — keep the full PDF`}
+          {busy ? "Opening checkout…" : `${formatUsd(digitalPrice)} · keep the full PDF`}
         </button>
         <a
           href="/create"

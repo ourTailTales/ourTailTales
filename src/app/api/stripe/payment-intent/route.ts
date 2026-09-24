@@ -208,7 +208,7 @@ export async function POST(request: Request): Promise<Response> {
           // Let Stripe decide which methods to show for this account.
           automatic_payment_methods: { enabled: true },
           receipt_email: email,
-          description: `ourTailTales hardcover — ${order.chapter_count} chapters`,
+          description: `ourTailTales hardcover (${order.chapter_count} chapters)`,
           metadata: analyticsMetadata,
         });
 

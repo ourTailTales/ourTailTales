@@ -13,7 +13,7 @@ import type { OrderStatus } from "@/types/order";
 import type { FulfillmentStage } from "@/types/video-memory";
 
 export const metadata: Metadata = {
-  title: "Your order — ourTailTales",
+  title: "Your order | ourTailTales",
   robots: { index: false, follow: false },
 };
 

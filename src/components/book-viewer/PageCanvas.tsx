@@ -425,6 +425,6 @@ function SlotPhoto({
 function lifespanText(meta: BookMeta): string {
   const birth = meta.birthYear.trim();
   const death = meta.deathYear.trim();
-  if (birth && death) return `${birth} — ${death}`;
+  if (birth && death) return `${birth}\u2013${death}`;
   return birth || death;
 }

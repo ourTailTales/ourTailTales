@@ -43,7 +43,7 @@ const faqs = [
   {
     question: "What if my book arrives damaged or misprinted?",
     answer:
-      "We\'ll reprint it and send a new copy at no cost. You already see the entire book as a free preview before you order, so this covers the physical printing and shipping \u2014 not the story itself, since you\'ve already seen that.",
+      "We\'ll reprint it and send a new copy at no cost. You already see the entire book as a free preview before you order, so this covers the physical printing and shipping, not the story itself, since you\'ve already seen that.",
   },
   {
     question: "Can I get a free version before I pay anything?",

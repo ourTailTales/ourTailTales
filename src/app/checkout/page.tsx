@@ -9,7 +9,7 @@ import { orderTokenValid } from "@/lib/order/token";
 import { supabaseConfigured } from "@/lib/supabase/server";
 
 export const metadata: Metadata = {
-  title: "Checkout — ourTailTales",
+  title: "Checkout | ourTailTales",
   robots: { index: false, follow: false },
 };
 
