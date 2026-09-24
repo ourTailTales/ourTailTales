@@ -1,7 +1,12 @@
 import { z } from "zod";
 
 import { readEnv } from "@/lib/env";
-import type { StoryDraft, StoryRequest } from "@/types/story";
+import type {
+  PetProfile,
+  ProfileRequest,
+  StoryDraft,
+  StoryRequest,
+} from "@/types/story";
 
 /**
  * The seam between ourTailTales and whichever model writes the chapters.
@@ -19,6 +24,11 @@ export type StoryProvider = {
     chapter: StoryRequest,
     signal?: AbortSignal,
   ): Promise<StoryDraft>;
+  /** One look at the pet: appearance, what they wear, and book palettes. */
+  generateProfile(
+    request: ProfileRequest,
+    signal?: AbortSignal,
+  ): Promise<PetProfile>;
 };
 
 /**
@@ -52,6 +62,58 @@ export function parseStoryDraft(raw: string, providerId: string): StoryDraft {
     );
   }
   return parsed.data;
+}
+
+const HEX = z.string().regex(/^#?[0-9a-fA-F]{6}$/).transform((value) =>
+  value.startsWith("#") ? value.toLowerCase() : `#${value.toLowerCase()}`,
+);
+
+const PaletteSchema = z.object({
+  name: z.string().min(1).max(60),
+  reason: z.string().max(200).default(""),
+  paper: HEX,
+  ink: HEX,
+  accent: HEX,
+  tape: z.array(HEX).min(1).max(6),
+  scraps: z.array(HEX).min(1).max(6),
+  doodle: HEX,
+});
+
+/**
+ * The profile, validated. Palettes that fail are dropped rather than failing
+ * the whole profile: one good palette and the pet's description are still
+ * worth having, and the book falls back to its classic colors without any.
+ */
+export const PetProfileSchema = z.object({
+  appearance: z.string().max(300).default(""),
+  accessories: z
+    .array(z.object({ item: z.string().max(60), color: z.string().max(60) }))
+    .max(8)
+    .default([]),
+  motifs: z.array(z.string().max(80)).max(8).default([]),
+  palettes: z.array(z.unknown()).max(5).default([]),
+});
+
+export function parsePetProfile(raw: string, providerId: string): PetProfile {
+  let json: unknown;
+  try {
+    json = JSON.parse(raw);
+  } catch {
+    throw new Error(`The ${providerId} model did not return usable JSON.`);
+  }
+  const parsed = PetProfileSchema.safeParse(json);
+  if (!parsed.success) {
+    throw new Error(`The ${providerId} model returned an unexpected profile shape.`);
+  }
+  return {
+    appearance: parsed.data.appearance.trim(),
+    accessories: parsed.data.accessories.slice(0, 5),
+    motifs: parsed.data.motifs.slice(0, 4),
+    palettes: parsed.data.palettes.flatMap((palette) => {
+      const result = PaletteSchema.safeParse(palette);
+      return result.success ? [result.data] : [];
+    }).slice(0, 3),
+  };
 }
 
 /* -------------------------------- registry -------------------------------- */

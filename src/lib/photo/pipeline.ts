@@ -12,8 +12,11 @@ import type { ProcessedPhoto } from "@/types/photo";
 /** Retained browsing thumbnail: long edge in CSS pixels. */
 export const BROWSE_THUMB_EDGE = 256;
 
-/** Larger thumbnail generated on demand for the 3-5 AI representatives. */
-export const AI_THUMB_EDGE = 448;
+/**
+ * Larger thumbnail generated on demand for the 3-5 AI representatives —
+ * large enough that a collar, a tag or a bandana is legible to the writer.
+ */
+export const AI_THUMB_EDGE = 640;
 
 const HASH_WIDTH = 9;
 const HASH_HEIGHT = 8;

@@ -1,3 +1,5 @@
+import type { PetProfile } from "@/types/story";
+
 export type PlaceLabel = {
   city?: string;
   region?: string;
@@ -150,4 +152,14 @@ export type BookMeta = {
   coverNameBold?: boolean;
   /** Whether the cover name is underlined — defaults to false. */
   coverNameUnderline?: boolean;
+  /**
+   * What the pet looks like and the palettes proposed for their book, from
+   * one look at their photos before the chapters were written.
+   */
+  petProfile?: PetProfile;
+  /**
+   * Which of `petProfile.palettes` the book uses: 0 by default, -1 for the
+   * classic ourTailTales colors.
+   */
+  paletteIndex?: number;
 };

@@ -27,6 +27,7 @@ import { persistLocalDraft } from "@/lib/drafts/local";
 import { saveBookProject } from "@/lib/books/cloud";
 import { bankBook } from "@/lib/drafts/upload";
 import { generateChapterStory } from "@/lib/story/client";
+import { generatePetProfile } from "@/lib/story/profile";
 import { prepareOrder } from "@/lib/order/prepare";
 import { placedMemoriesReadyForCheckout } from "@/lib/video-memory/checkout-ready";
 import { draftHeaders, loadStoredDraft } from "@/lib/video-memory/client";
@@ -47,6 +48,9 @@ const STORY_CONCURRENCY = 2;
  * catches a request that is genuinely lost rather than one that is slow.
  */
 const STORY_TIMEOUT_MS = 90_000;
+
+/** The profile look is worth waiting a little for, not a lot. */
+const PROFILE_TIMEOUT_MS = 25_000;
 
 export function Funnel({ embedded = false }: { embedded?: boolean }) {
   const router = useRouter();
@@ -302,6 +306,7 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
       species: state.meta.species,
       stillHere: state.meta.stillHere,
       notes: state.meta.notes,
+      profile: state.meta.petProfile,
     };
 
     const queue = [...chapterIds];
@@ -427,6 +432,7 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
 
     storyRun.current = new AbortController();
     state.beginStoryGeneration();
+    await lookAtThePet(storyRun.current.signal);
     await runStories(pending);
     storyRun.current = null;
     useOurTailTalesStore.getState().finishStoryGeneration();
@@ -754,6 +760,34 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
  * upload costs them the email copy, not the book. The email exists for the
  * person who closes the tab — it is the way back in, not the way through.
  */
+/**
+ * One look at the pet before the chapters are written: what they look like
+ * and wear (so every chapter describes the same dog) and the book's colors.
+ * Best effort and time-boxed — without it the chapters are still written and
+ * the book keeps its classic colors.
+ */
+async function lookAtThePet(stop: AbortSignal): Promise<void> {
+  const state = useOurTailTalesStore.getState();
+  if (state.meta.petProfile) return;
+
+  const timeout = new AbortController();
+  const timer = setTimeout(() => timeout.abort(), PROFILE_TIMEOUT_MS);
+  const onStop = (): void => timeout.abort();
+  stop.addEventListener("abort", onStop);
+  try {
+    const profile = await generatePetProfile(
+      { meta: state.meta, chapters: state.chapters, photos: state.photos },
+      timeout.signal,
+    );
+    useOurTailTalesStore.getState().setMeta({ petProfile: profile, paletteIndex: 0 });
+  } catch (error) {
+    if (!timeout.signal.aborted) captureClientException(error);
+  } finally {
+    clearTimeout(timer);
+    stop.removeEventListener("abort", onStop);
+  }
+}
+
 async function deliverTeaserOnce(): Promise<void> {
   const state = useOurTailTalesStore.getState();
   if (state.pages.length === 0) return;
