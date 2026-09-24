@@ -1,5 +1,7 @@
 import posthog from "posthog-js";
 
+import { redactProperties } from "@/lib/analytics-redact";
+
 const token = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN;
 const host = process.env.NEXT_PUBLIC_POSTHOG_HOST;
 
@@ -37,6 +39,13 @@ if (token && host) {
     defaults: "2026-01-30",
     capture_exceptions: true,
     debug: process.env.NODE_ENV === "development",
-    before_send: (event) => (isLocalhost() ? null : event),
+    before_send: (event) => {
+      if (isLocalhost()) return null;
+      // Autocapture and pageviews land here too, not only this app's own
+      // track() calls, which is exactly where a draft secret or order token
+      // sitting in $current_url/$referrer would otherwise leak through.
+      if (event) event.properties = redactProperties(event.properties);
+      return event;
+    },
   });
 }

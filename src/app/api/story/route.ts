@@ -34,9 +34,12 @@ const requestSchema = z.object({
   places: z
     .array(
       z.object({
-        city: z.string().optional(),
-        region: z.string().optional(),
-        country: z.string().optional(),
+        // Capped like the other free-text fields: these reach the Gemini
+        // prompt directly, and a real city/region/country name is never
+        // anywhere near this long.
+        city: z.string().max(80).optional(),
+        region: z.string().max(80).optional(),
+        country: z.string().max(80).optional(),
       }),
     )
     .max(5)

@@ -25,6 +25,12 @@ describe("redactUrl", () => {
     const plain = "https://ourtailtales.com/create";
     expect(redactUrl(plain)).toBe(plain);
   });
+
+  it("strips the order token from a checkout URL", () => {
+    expect(
+      redactUrl("https://ourtailtales.com/checkout?order=abc-123&t=ordertoken"),
+    ).toBe("https://ourtailtales.com/checkout?order=abc-123&t=redacted");
+  });
 });
 
 describe("redactProperties", () => {
@@ -43,5 +49,12 @@ describe("redactProperties", () => {
   it("does not disturb non-string values", () => {
     const out = redactProperties({ chapters: 5, ok: true, missing: null });
     expect(out).toEqual({ chapters: 5, ok: true, missing: null });
+  });
+
+  it("catches the order token even with no draft secret present", () => {
+    const out = redactProperties({
+      $current_url: "https://ourtailtales.com/checkout?order=abc&t=ordertoken",
+    });
+    expect(JSON.stringify(out)).not.toContain("ordertoken");
   });
 });
