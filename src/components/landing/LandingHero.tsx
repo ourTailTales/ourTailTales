@@ -6,7 +6,7 @@ import { EmailCaptureCta } from "@/components/landing/EmailCaptureCta";
 
 export function LandingHero() {
   return (
-    <section className="relative isolate flex min-h-[min(94vh,50rem)] w-full flex-col overflow-hidden sm:min-h-[min(98vh,54rem)]">
+    <section className="relative isolate flex min-h-[min(94dvh,50rem)] w-full flex-col overflow-hidden sm:min-h-[min(98vh,54rem)]">
       <Image
         src="/marketing/banner-2.png"
         alt=""

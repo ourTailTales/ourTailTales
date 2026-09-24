@@ -32,6 +32,7 @@ export function BookFlow({
   onFiles,
   onStartOver,
   onCreateStory,
+  onStopStory,
   onRegenerate,
   onUnlock,
   onDownload,
@@ -43,6 +44,8 @@ export function BookFlow({
   onFiles: (files: File[]) => void;
   onStartOver: () => void;
   onCreateStory: () => void;
+  /** Gives up on the chapters still being written and opens what is done. */
+  onStopStory: () => void;
   onRegenerate: (chapterId: string) => void;
   onUnlock: () => void;
   onDownload: () => void;
@@ -248,6 +251,7 @@ export function BookFlow({
             chapterCount={chapters.length}
             onOpenUpload={() => setUploadOpen(true)}
             onStartOver={onStartOver}
+            onStopStory={onStopStory}
             hasMedia={mediaCount > 0}
             petName={petName}
             error={processingError}
@@ -271,6 +275,7 @@ function Waiting({
   mediaCount,
   photoCount,
   onStartOver,
+  onStopStory,
   error,
   processed,
   total,
@@ -286,6 +291,7 @@ function Waiting({
   /** Usable photographs on their own. */
   photoCount: number;
   onStartOver: () => void;
+  onStopStory: () => void;
   /** Reading the album failed. */
   error: string | null;
   processed: number;
@@ -442,6 +448,16 @@ function Waiting({
             : "This happens on your own device. Nothing is uploaded."}
         </p>
       </div>
+
+      {writing ? (
+        <button
+          type="button"
+          onClick={onStopStory}
+          className="text-xs text-page-ink-faint underline decoration-page-line underline-offset-4 hover:text-periwinkle-deep"
+        >
+          Stop and open what is written
+        </button>
+      ) : null}
 
       <div
         className="h-1.5 w-56 overflow-hidden rounded-full bg-page-line"

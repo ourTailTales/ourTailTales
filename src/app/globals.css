@@ -13,11 +13,20 @@
      background; now that the main background is light, "deep" darkens on
      hover again, as it should. */
   --color-periwinkle-deep: #4a56b0;
-  --color-periwinkle-wash: #2a3150;
+  /* A wash is a tint, and this was a dark navy left over from the dark-chrome
+     era. It is used as a background under `text-periwinkle-deep`, so the
+     paywall badge came out at about 1.7:1 and the editor's notice banner at
+     2.9:1. Back to the brand value. */
+  --color-periwinkle-wash: #eef1fb;
   --color-memory-blue: #c9d8fa;
   --color-lavender: #e2d7f5;
   --color-sage: #c9ded7;
-  --color-sage-deep: #c9ded7;
+  /* The brand value (docs/BRAND_GUIDELINES.md, src/lib/brand.ts). This had
+     regressed to equal --color-sage, a pale mint, which is a background, not
+     ink: "On its way. Check your inbox." was rendering at about 1.4:1 against
+     white, so the confirmation was invisible and people re-sent mail that had
+     already gone. */
+  --color-sage-deep: #3f6b5c;
   --color-petal: #edb8aa;
   --color-pink: #e8648a;
   --color-pink-deep: #c94d72;
@@ -26,7 +35,7 @@
      one background, one text-color scheme, everywhere. */
   --color-ink: #252a3a;
   --color-ink-soft: #5a6070;
-  --color-ink-faint: #8b91a0;
+  --color-ink-faint: #6b7183;
   --color-line: #d5dceb;
   /* Cloud — cool-light accent used for small inset callouts (never the page
      background — see Cream below for that). */
@@ -42,7 +51,10 @@
   /* Readable ink for printed-page UIs */
   --color-page-ink: #252a3a;
   --color-page-ink-soft: #5a6070;
-  --color-page-ink-faint: #8b91a0;
+  /* Was #8b91a0, about 3.0:1 on cream, and it carries the page counter, the
+     filmstrip labels and every panel hint. Darkened to clear 4.5:1 while
+     staying clearly quieter than the soft ink above it. */
+  --color-page-ink-faint: #6b7183;
   --color-page-line: #d5dceb;
   /* Book editor pastel field (banner bottom fade matches the carousel) */
   --color-editor-field: #e4ecf8;

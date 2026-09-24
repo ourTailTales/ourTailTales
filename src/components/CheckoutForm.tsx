@@ -66,6 +66,11 @@ export function CheckoutForm({
       setError("Please enter the email address for your order confirmation.");
       return;
     }
+    const missing = missingAddressField(address);
+    if (missing) {
+      setError(`Please add ${missing} before we look up delivery.`);
+      return;
+    }
     if (!US_STATE_PATTERN.test(address.state)) {
       setError("Please use a two-letter state code, such as CA.");
       return;
@@ -204,6 +209,8 @@ export function CheckoutForm({
                 <input
                   value={address.phone}
                   onChange={(event) => patch(setAddress, { phone: event.target.value })}
+                  type="tel"
+                  inputMode="tel"
                   autoComplete="tel"
                   placeholder="415-555-0134"
                   className={inputClass}
@@ -266,10 +273,16 @@ export function CheckoutForm({
               </div>
             </div>
 
+            {error && (
+              <p role="alert" className="mt-4 text-sm text-red-600">
+                {error}
+              </p>
+            )}
+
             <button
               type="button"
               onClick={() => void fetchQuote()}
-              disabled={busy || !isAddressComplete(address)}
+              disabled={busy}
               className={primaryButton}
             >
               {busy ? "Checking delivery…" : "See delivery options"}
@@ -666,13 +679,13 @@ function VideoMemoryDisclosure({
   );
 }
 
-function isAddressComplete(address: ShippingAddress): boolean {
-  return Boolean(
-    address.name &&
-      address.phone &&
-      address.street1 &&
-      address.city &&
-      address.state &&
-      address.postcode,
-  );
+/** The first required field still empty, named the way the form labels it. */
+function missingAddressField(address: ShippingAddress): string | null {
+  if (!address.name.trim()) return "your name";
+  if (!address.phone.trim()) return "a phone number";
+  if (!address.street1.trim()) return "your street address";
+  if (!address.city.trim()) return "your city";
+  if (!address.state.trim()) return "your state";
+  if (!address.postcode.trim()) return "your ZIP code";
+  return null;
 }

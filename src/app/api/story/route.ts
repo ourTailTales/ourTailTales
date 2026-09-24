@@ -13,6 +13,13 @@ import { LIMITS, enforceRateLimit } from "@/lib/rate-limit";
  * thumbnails are forwarded to the model and never written to disk or Supabase.
  */
 
+/**
+ * A vision call with four thumbnails attached routinely runs past the
+ * platform default, and this route had no budget declared at all, so chapters
+ * came back as 504s at the single most expensive moment in the funnel.
+ */
+export const maxDuration = 60;
+
 const requestSchema = z.object({
   petName: z.string().max(80),
   species: z.string().max(40).optional(),

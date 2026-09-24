@@ -36,6 +36,17 @@ import { authConfigured } from "@/lib/supabase/auth-browser";
 /** Chapters written at once. Keeps the AI endpoint from being hammered. */
 const STORY_CONCURRENCY = 2;
 
+/**
+ * How long one chapter may take before we give up on it.
+ *
+ * `generateChapterStory` accepts an `AbortSignal` and nothing ever passed
+ * one, so a request that never answered never failed either: the progress bar
+ * stopped where it was and the screen waited for the rest of somebody's life
+ * indefinitely. Generously above what the route itself allows, so this only
+ * catches a request that is genuinely lost rather than one that is slow.
+ */
+const STORY_TIMEOUT_MS = 90_000;
+
 export function Funnel({ embedded = false }: { embedded?: boolean }) {
   const router = useRouter();
   const store = useOurTailTalesStore();
@@ -276,6 +287,9 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
     [store, save],
   );
 
+  /** Set while chapters are being written, so the customer can stop it. */
+  const storyRun = useRef<AbortController | null>(null);
+
   const runStories = useCallback(async (chapterIds: string[]) => {
     const state = useOurTailTalesStore.getState();
     const photoMap = photoMapOf(state.photos);
@@ -301,20 +315,41 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
 
         const actions = useOurTailTalesStore.getState();
         actions.setChapterAiStatus(chapterId, "pending");
+
+        // One deadline per chapter, plus whatever the customer decides.
+        const chapterAbort = new AbortController();
+        const timer = setTimeout(
+          () => chapterAbort.abort(),
+          STORY_TIMEOUT_MS,
+        );
+        const stopAll = (): void => chapterAbort.abort();
+        storyRun.current?.signal.addEventListener("abort", stopAll);
+
         try {
           const { story, places } = await generateChapterStory(
             chapter,
             photoMap,
             context,
+            chapterAbort.signal,
           );
           actions.setChapterPlaces(chapterId, places);
           actions.applyChapterStory(chapterId, story);
         } catch (error) {
+          const stopped = storyRun.current?.signal.aborted === true;
           actions.setChapterAiStatus(
             chapterId,
             "error",
-            error instanceof Error ? error.message : "Story generation failed.",
+            stopped
+              ? "You stopped this one. Write it again whenever you like."
+              : chapterAbort.signal.aborted
+                ? "This chapter took too long to write. Try it again."
+                : error instanceof Error
+                  ? error.message
+                  : "Story generation failed.",
           );
+        } finally {
+          clearTimeout(timer);
+          storyRun.current?.signal.removeEventListener("abort", stopAll);
         }
       }
     };
@@ -397,8 +432,10 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
       .filter((chapter) => chapter.aiStatus !== "done")
       .map((chapter) => chapter.id);
 
+    storyRun.current = new AbortController();
     state.beginStoryGeneration();
     await runStories(pending);
+    storyRun.current = null;
     useOurTailTalesStore.getState().finishStoryGeneration();
     const completed = useOurTailTalesStore.getState();
     track("story_generated", { chapters: completed.chapters.length });
@@ -414,6 +451,19 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
       captureClientException(error),
     );
   }, [runStories, deliverTeaser, save]);
+
+  /**
+   * Stop writing and open whatever is finished.
+   *
+   * The wait had no exit at all: no cancel, and the only retry lived behind a
+   * button on a screen you could not reach from here. A hung request was
+   * therefore a dead end at the most expensive moment in the funnel. Stopping
+   * marks the rest as failed rather than losing them, and every one of them
+   * can be written again from the editor.
+   */
+  const stopStory = useCallback(() => {
+    storyRun.current?.abort();
+  }, []);
 
   /**
    * What the account actually buys.
@@ -618,6 +668,7 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
         store.reset();
       }}
       onCreateStory={() => void handleCreateStory()}
+      onStopStory={stopStory}
       onRegenerate={(chapterId) => void runStories([chapterId])}
       onUnlock={handleUnlock}
       onDownload={() => void handleDownload()}

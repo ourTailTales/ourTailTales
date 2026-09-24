@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { cloneElement, isValidElement, useId, useMemo, useState } from "react";
 import { Info, RefreshCw } from "lucide-react";
 
 import { AddMediaControl } from "@/components/editor/AddMediaControl";
@@ -374,8 +374,17 @@ function ChapterPanel({
   return (
     <Panel title="Chapter" hint="All of this is yours to change.">
       {chapter.aiStatus === "error" ? (
-        <p className="rounded-lg border border-page-line bg-lavender/40 px-3 py-2 text-xs text-page-ink-soft">
-          {chapter.aiError ?? "This chapter could not be written."}
+        // Was a lavender box in the same muted grey as every hint on the
+        // panel, with nothing pointing at the retry sitting below it. A
+        // chapter that failed is the one thing on this screen somebody has to
+        // act on.
+        <p
+          role="alert"
+          className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs leading-5 text-red-800"
+        >
+          {chapter.aiError ?? "This chapter could not be written."}{" "}
+          Use <span className="font-semibold">Write this chapter again</span>{" "}
+          below, or write it yourself.
         </p>
       ) : null}
 
@@ -582,6 +591,22 @@ function digitsOnly(value: string): string {
   return value.replace(/\D/g, "").slice(0, 4);
 }
 
+/**
+ * A labelled control.
+ *
+ * The label used to be a `<span>`, which is not a label: every text field in
+ * the editor — the pet's name, the years, the notes, the dedication, every
+ * chapter title and story — announced as "edit text, blank" to anyone not
+ * looking at the screen, and tapping the label did nothing.
+ *
+ * Where the child is a single form control it is given an id and a real
+ * `<label>` is tied to it. Where it is a group of buttons or a picker there is
+ * nothing to tie a label to, and one would steal the click, so those keep a
+ * plain caption. The distinction is made here rather than at twenty call
+ * sites, which is how it drifted in the first place.
+ */
+const LABELLABLE = new Set(["input", "textarea", "select"]);
+
 function Field({
   label,
   note,
@@ -591,10 +616,36 @@ function Field({
   note?: string;
   children: React.ReactNode;
 }) {
+  const generated = useId();
+
+  const control =
+    isValidElement(children) &&
+    typeof children.type === "string" &&
+    LABELLABLE.has(children.type)
+      ? cloneElement(children as React.ReactElement<{ id?: string }>, {
+          id: (children.props as { id?: string }).id ?? generated,
+        })
+      : null;
+
+  const id = control
+    ? ((control.props as { id?: string }).id ?? generated)
+    : null;
+
   return (
     <div>
-      <span className="mb-1.5 block text-sm font-medium text-page-ink-soft">{label}</span>
-      {children}
+      {id ? (
+        <label
+          htmlFor={id}
+          className="mb-1.5 block text-sm font-medium text-page-ink-soft"
+        >
+          {label}
+        </label>
+      ) : (
+        <span className="mb-1.5 block text-sm font-medium text-page-ink-soft">
+          {label}
+        </span>
+      )}
+      {control ?? children}
       {note ? (
         <p className="mt-1.5 flex items-start gap-1.5 text-[0.7rem] leading-4 text-page-ink-faint">
           <Info aria-hidden className="mt-px size-3 shrink-0" />
