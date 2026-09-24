@@ -3,10 +3,14 @@
 import Image from "next/image";
 import { brand } from "@/lib/brand";
 import { EmailCaptureCta } from "@/components/landing/EmailCaptureCta";
+import { SiteHeader } from "@/components/SiteHeader";
 
 export function LandingHero() {
   return (
-    <section className="relative isolate flex min-h-[min(94dvh,50rem)] w-full flex-col overflow-hidden sm:min-h-[min(98vh,54rem)]">
+    // `pt-[env(safe-area-inset-top)]`: with `viewport-fit=cover` (set on the
+    // landing page) the photo runs up under the phone's status bar instead
+    // of leaving a strip of page colour there, and the content still clears it.
+    <section className="relative isolate flex min-h-[min(94dvh,50rem)] w-full flex-col overflow-hidden pt-[env(safe-area-inset-top)] sm:min-h-[min(98vh,54rem)]">
       <Image
         src="/marketing/banner-2.png"
         alt=""
@@ -24,10 +28,13 @@ export function LandingHero() {
         className="pointer-events-none absolute inset-x-0 bottom-0 h-[calc(42%-20px)] bg-[linear-gradient(180deg,transparent_0%,rgb(250_247_242/0.2)_28%,rgb(250_247_242/0.55)_58%,rgb(250_247_242/0.85)_82%,#faf7f2_100%)]"
       />
 
-      <div className="relative z-10 mx-auto grid w-full max-w-[100rem] flex-1 items-center px-5 pt-10 pb-16 sm:px-8 sm:pt-14 sm:pb-20 lg:pl-8 lg:pr-14">
+      <div className="relative z-10 mx-auto flex w-full max-w-[100rem] flex-1 flex-col px-5 pt-5 pb-16 sm:px-8 sm:pt-6 sm:pb-20 lg:pl-8 lg:pr-14">
+        {/* In the flow rather than floated over the hero, so it takes up its
+            own room and the headline can never slide up underneath it. */}
+        <SiteHeader className="text-white" />
 
         {/* LEFT — hook + email CTA */}
-        <div className="flex flex-col max-w-5xl">
+        <div className="mt-12 flex max-w-5xl flex-1 flex-col justify-center sm:mt-16">
           <h1 className="animate-fade-up font-display text-[3.3rem] font-bold leading-[1.1] text-white sm:text-[3.8rem] lg:text-[6rem] lg:leading-[1.08]">
             {brand.title}
           </h1>
