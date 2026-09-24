@@ -1,14 +1,40 @@
 import {
   PDFDocument,
-  StandardFonts,
   degrees,
   rgb,
   type PDFFont,
+  type PDFImage,
   type PDFPage,
 } from "pdf-lib";
 
 import { drawExpiryNotice, drawFrontCoverPage } from "@/lib/book/cover-pdf";
-import { BLEED_INCHES, FIXED_SLOTS, LAYOUTS, PAGE_INCHES, TRIM_INCHES } from "@/lib/book/layouts";
+import { BLEED_INCHES, PAGE_INCHES, TRIM_INCHES } from "@/lib/book/layouts";
+import { drawable, loadBookFonts, type BookFonts } from "@/lib/book/pdf-fonts";
+import {
+  CLOSING_TEXT,
+  DEDICATION_CARD,
+  OPENER_CARD,
+  OPENER_STICKER,
+  OPENER_TEXT,
+  OPENER_TYPE,
+  PAPER as SCRAPBOOK_PAPER,
+  TITLE_TEXT,
+  dedicationType,
+  designPage,
+  photoCaption,
+  photoWindow,
+  type DesignContext,
+  type Print,
+} from "@/lib/book/scrapbook";
+import {
+  drawCard,
+  drawDoodle,
+  drawPrint,
+  drawScrap,
+  drawSticker,
+  drawTape,
+  hex,
+} from "@/lib/book/scrapbook-pdf";
 import { CLOSING_LINE, possessivePetName, titlePageHeading } from "@/lib/book/pagination";
 import { brand, hexToRgb01 } from "@/lib/brand";
 import * as assetStore from "@/lib/photo/assetStore";
@@ -32,8 +58,6 @@ const INK = brandRgb(brand.colors.ink);
 const INK_SOFT = brandRgb(brand.colors.inkSoft);
 const INK_FAINT = brandRgb(brand.colors.inkFaint);
 const ACCENT = brandRgb(brand.colors.periwinkle);
-const BLANK_SLOT = brandRgb(brand.colors.memoryBlue);
-const CHAPTER_FIELD = brandRgb(brand.colors.lavender);
 
 /** Below this effective resolution a placement is flagged to the customer. */
 export const LOW_PPI_THRESHOLD = 180;
@@ -133,11 +157,7 @@ export async function renderInteriorPdf(
   pdf.setProducer("ourTailTales");
   pdf.setCreator("ourTailTales");
 
-  const fonts = {
-    display: await pdf.embedFont(StandardFonts.TimesRoman),
-    displayItalic: await pdf.embedFont(StandardFonts.TimesRomanItalic),
-    sans: await pdf.embedFont(StandardFonts.Helvetica),
-  };
+  const fonts = await loadBookFonts(pdf);
 
   const chaptersById = new Map(chapters.map((chapter) => [chapter.id, chapter]));
   const selected: (BookPage | null)[] = pageLimit
@@ -178,7 +198,7 @@ export async function renderInteriorPdf(
       y: 0,
       width: PAGE_PT,
       height: PAGE_PT,
-      color: PAPER,
+      color: bookPage ? hex(SCRAPBOOK_PAPER) : PAPER,
     });
 
     if (bookPage) {
@@ -212,7 +232,9 @@ export async function renderInteriorPdf(
   }
 
   if (lockedNotice) {
-    drawLockedPage(addPage(), fonts, meta, lockedNotice);
+    const page = addPage();
+    page.drawRectangle({ x: 0, y: 0, width: PAGE_PT, height: PAGE_PT, color: hex(SCRAPBOOK_PAPER) });
+    drawLockedPage(page, fonts, meta, lockedNotice);
   }
 
   return {
@@ -237,14 +259,14 @@ function drawLockedPage(
   const name = meta.petName.trim();
 
   drawCentered(page, name ? `${possessivePetName(name)} story` : "Their story", {
-    font: fonts.display,
+    font: fonts.serifBold,
     size: 30,
     color: INK,
     baseline: PAGE_PT * 0.62,
   });
 
   drawCentered(page, "continues", {
-    font: fonts.displayItalic,
+    font: fonts.serifItalic,
     size: 30,
     color: INK,
     baseline: PAGE_PT * 0.555,
@@ -286,7 +308,7 @@ function drawLockedPage(
   });
 }
 
-type Fonts = { display: PDFFont; displayItalic: PDFFont; sans: PDFFont };
+type Fonts = BookFonts;
 
 type DrawContext = {
   pdf: PDFDocument;
@@ -301,156 +323,252 @@ type DrawContext = {
   lowResWarnings: LowResWarning[];
 };
 
+/**
+ * Every page is drawn from its scrapbook design (`scrapbook.ts`): paper
+ * scraps, then the prints, then the tape over them, then doodles, then the
+ * page's words. The same design drives the on-screen page, so the two agree.
+ */
 async function drawPage(context: DrawContext): Promise<void> {
+  const design = designPage(context.bookPage, designContextFor(context.photos));
+  const frame = { page: context.page, pagePt: PAGE_PT };
+
+  for (const scrap of design.scraps) drawScrap(frame, scrap);
+
+  switch (context.bookPage.kind) {
+    case "dedication":
+      drawCard(frame, DEDICATION_CARD);
+      break;
+    case "chapter-opener":
+      drawCard(frame, OPENER_CARD);
+      break;
+  }
+
+  for (const print of design.prints) {
+    const image = await embedPrintPhoto(context, print);
+    drawPrint(frame, print, { image, handFont: context.fonts.hand });
+  }
+  for (const print of design.prints) {
+    for (const tape of print.tapes) drawTape(frame, tape);
+  }
+  if (context.bookPage.kind === "dedication") {
+    drawTape(frame, {
+      cx: DEDICATION_CARD.cx,
+      cy: DEDICATION_CARD.cy - DEDICATION_CARD.h / 2,
+      w: 0.13,
+      h: 0.036,
+      rotation: -3,
+      color: brand.colors.sage,
+      opacity: 0.82,
+    });
+  }
+  for (const doodle of design.doodles) drawDoodle(frame, doodle);
+
   switch (context.bookPage.kind) {
     case "title":
-      return drawTitlePage(context);
+      return drawTitleText(context);
     case "dedication":
-      return drawDedicationPage(context);
+      return drawDedicationText(context);
     case "chapter-opener":
-      return drawOpenerPage(context);
+      return drawOpenerText(context);
     case "closing":
-      return drawClosingPage(context);
+      return drawClosingText(context);
     case "imprint":
       return drawImprintPage(context);
     default:
-      return drawPhotoPage(context);
+      return;
   }
 }
 
-async function drawTitlePage(context: DrawContext): Promise<void> {
+export function designContextFor(photos: Map<string, PhotoAsset>): DesignContext {
+  return {
+    orientationOf: (id) => photos.get(id)?.orientation,
+    captionOf: (id) => photoCaption(photos.get(id)?.capturedAt),
+  };
+}
+
+function drawTitleText(context: DrawContext): void {
   const { page, meta, fonts } = context;
 
-  drawCentered(page, titlePageHeading(meta.petName), {
-    font: fonts.display,
-    size: 46,
+  const heading = drawable(fonts.hand, titlePageHeading(meta.petName));
+  let size = TITLE_TEXT.headingSize;
+  while (fonts.hand.widthOfTextAtSize(heading, size) > PAGE_PT * 0.78 && size > 28) {
+    size -= 2;
+  }
+  drawCentered(page, heading, {
+    font: fonts.hand,
+    size,
     color: INK,
-    baseline: PAGE_PT * 0.74,
+    baseline: PAGE_PT * (1 - TITLE_TEXT.headingBaseline),
   });
 
   const years = lifespanText(meta);
   if (years) {
-    drawCenteredTracked(page, years.toUpperCase(), {
+    // A date stamp: tracked capitals inside a thin rounded outline.
+    const text = years.toUpperCase();
+    const tracking = 2.4;
+    const textSize = 10;
+    const textWidth =
+      fonts.sans.widthOfTextAtSize(text, textSize) + tracking * (text.length - 1);
+    const stampW = textWidth + 26;
+    const stampH = 20;
+    const centerY = PAGE_PT * (1 - TITLE_TEXT.yearsCy);
+    const r = stampH / 2;
+    const straight = stampW - stampH;
+    page.drawSvgPath(
+      `M${r} 0 L${r + straight} 0 A${r} ${r} 0 0 1 ${r + straight} ${stampH} L${r} ${stampH} A${r} ${r} 0 0 1 ${r} 0 Z`,
+      {
+        x: (PAGE_PT - stampW) / 2,
+        y: centerY + stampH / 2,
+        borderColor: ACCENT,
+        borderWidth: 1,
+        borderOpacity: 0.8,
+      },
+    );
+    drawCenteredTracked(page, text, {
       font: fonts.sans,
-      size: 10.5,
-      color: INK_FAINT,
-      tracking: 2.6,
-      baseline: PAGE_PT * 0.7,
+      size: textSize,
+      color: ACCENT,
+      tracking,
+      baseline: centerY - textSize * 0.35,
     });
   }
-
-  await drawSlotPhoto(context, FIXED_SLOTS.titleHero, context.bookPage.photoIds[0]);
 
   drawCenteredTracked(page, "ourTailTales", {
     font: fonts.sans,
     size: 8.5,
     color: INK_FAINT,
     tracking: 3.4,
-    baseline: PAGE_PT * 0.085,
+    baseline: PAGE_PT * (1 - TITLE_TEXT.brandBaseline),
   });
 }
 
-async function drawDedicationPage(context: DrawContext): Promise<void> {
+function drawDedicationText(context: DrawContext): void {
   const { page, meta, fonts } = context;
-  const text = meta.dedication.trim();
-
+  const text = drawable(fonts.serifItalic, meta.dedication.trim());
   // No dedication, no page: pagination leaves it out.
   if (!text) return;
 
-  const maxWidth = PAGE_PT * 0.62;
-  const size = text.length > 180 ? 14 : 17;
-  const lines = wrapText(text, fonts.displayItalic, size, maxWidth);
-  const leading = size * 1.6;
-  let baseline = PAGE_PT * 0.5 + ((lines.length - 1) * leading) / 2;
+  const card = DEDICATION_CARD;
+  const maxWidth = card.w * PAGE_PT * 0.8;
+  const { size, leading } = dedicationType(text);
+  const lines = wrapText(text, fonts.serifItalic, size, maxWidth);
 
-  for (const line of lines) {
-    drawCentered(page, line, {
-      font: fonts.displayItalic,
-      size,
-      color: INK,
-      baseline,
+  const firstBaseline =
+    PAGE_PT * (1 - card.cy) + ((lines.length - 1) * leading) / 2 - size * 0.3;
+
+  // Ruled like a note card, the rules sitting just under each line of words
+  // and carrying on above and below to the card's edges.
+  const cardTop = PAGE_PT * (1 - (card.cy - card.h / 2)) - 30;
+  const cardBottom = PAGE_PT * (1 - (card.cy + card.h / 2)) + 20;
+  const ruleOffset = size * 0.28;
+  let rule = firstBaseline - ruleOffset;
+  while (rule + leading < cardTop) rule += leading;
+  for (; rule > cardBottom; rule -= leading) {
+    page.drawLine({
+      start: { x: PAGE_PT * (card.cx - card.w / 2) + 26, y: rule },
+      end: { x: PAGE_PT * (card.cx + card.w / 2) - 26, y: rule },
+      thickness: 0.5,
+      color: ACCENT,
+      opacity: 0.2,
     });
+  }
+
+  let baseline = firstBaseline;
+  for (const line of lines) {
+    drawCentered(page, line, { font: fonts.serifItalic, size, color: INK, baseline });
     baseline -= leading;
   }
 }
 
-async function drawOpenerPage(context: DrawContext): Promise<void> {
+function drawOpenerText(context: DrawContext): void {
   const { page, chapter, fonts } = context;
-  const layout = LAYOUTS["chapter-opener"];
-
-  await drawSlotPhoto(context, layout.slots[0], context.bookPage.photoIds[0]);
-
-  const box = layout.textBox!;
-  const left = box.x * PAGE_PT;
+  const box = OPENER_TEXT;
+  const left = (box.cx - box.w / 2) * PAGE_PT;
   const maxWidth = box.w * PAGE_PT;
-  const boxTop = PAGE_PT - box.y * PAGE_PT;
-  const boxBottom = PAGE_PT - (box.y + box.h) * PAGE_PT;
+  const boxTop = PAGE_PT * (1 - (box.cy - box.h / 2));
+  const boxBottom = PAGE_PT * (1 - (box.cy + box.h / 2));
 
-  // Soft pastel field behind chapter title / date / blurb.
-  page.drawRectangle({
-    x: left - 10,
-    y: boxBottom - 8,
-    width: maxWidth + 20,
-    height: boxTop - boxBottom + 16,
-    color: CHAPTER_FIELD,
-    opacity: 0.55,
-  });
-
-  let cursor = boxTop - 26;
-
-  if (chapter?.dateLabel) {
-    drawTracked(page, chapter.dateLabel.toUpperCase(), {
-      x: left,
-      y: cursor,
-      font: fonts.sans,
-      size: 9,
-      color: ACCENT,
-      tracking: 2.4,
-    });
-    cursor -= 26;
+  if (chapter) {
+    drawSticker(
+      { page, pagePt: PAGE_PT },
+      OPENER_STICKER,
+      { text: String(chapter.index + 1), font: fonts.handBold, color: brand.colors.periwinkle },
+    );
   }
 
-  const titleLines = wrapText(chapter?.title ?? "", fonts.display, 30, maxWidth);
-  for (const line of titleLines) {
+  let cursor = boxTop - OPENER_TYPE.date;
+
+  if (chapter?.dateLabel) {
+    page.drawText(drawable(fonts.hand, chapter.dateLabel), {
+      x: left,
+      y: cursor,
+      font: fonts.hand,
+      size: OPENER_TYPE.date,
+      color: ACCENT,
+    });
+    cursor -= OPENER_TYPE.title + 8;
+  } else {
+    cursor -= OPENER_TYPE.title - OPENER_TYPE.date;
+  }
+
+  const title = drawable(fonts.serifBold, chapter?.title ?? "");
+  // Narrower than the card so a long title never runs under the sticker.
+  for (const line of wrapText(title, fonts.serifBold, OPENER_TYPE.title, maxWidth - 48)) {
     page.drawText(line, {
       x: left,
       y: cursor,
-      font: fonts.display,
-      size: 30,
+      font: fonts.serifBold,
+      size: OPENER_TYPE.title,
       color: INK,
     });
-    cursor -= 34;
+    cursor -= OPENER_TYPE.titleLeading;
   }
 
   cursor -= 6;
 
-  const blurbLines = wrapText(chapter?.blurb ?? "", fonts.sans, 10.5, maxWidth);
-  for (const line of blurbLines) {
-    if (cursor < boxBottom + 6) break;
+  const blurb = drawable(fonts.serif, chapter?.blurb ?? "");
+  const room = Math.max(0, Math.floor((cursor - boxBottom) / OPENER_TYPE.blurbLeading) + 1);
+  for (const line of fitLines(wrapText(blurb, fonts.serif, OPENER_TYPE.blurb, maxWidth), room, fonts.serif, OPENER_TYPE.blurb, maxWidth)) {
     page.drawText(line, {
       x: left,
       y: cursor,
-      font: fonts.sans,
-      size: 10.5,
+      font: fonts.serif,
+      size: OPENER_TYPE.blurb,
       color: INK_SOFT,
-      lineHeight: 16,
     });
-    cursor -= 16;
+    cursor -= OPENER_TYPE.blurbLeading;
   }
 }
 
-async function drawClosingPage(context: DrawContext): Promise<void> {
+/**
+ * At most `room` lines; if the text is cut, the last line ends on an
+ * ellipsis at a word boundary rather than stopping mid-sentence.
+ */
+function fitLines(
+  lines: string[],
+  room: number,
+  font: PDFFont,
+  size: number,
+  maxWidth: number,
+): string[] {
+  if (lines.length <= room) return lines;
+  if (room <= 0) return [];
+  const kept = lines.slice(0, room);
+  let last = kept[room - 1]!;
+  while (last && font.widthOfTextAtSize(`${last}…`, size) > maxWidth) {
+    last = last.replace(/\s*\S+$/, "");
+  }
+  kept[room - 1] = `${last.replace(/[\s,;:—–-]+$/, "")}…`;
+  return kept;
+}
+
+function drawClosingText(context: DrawContext): void {
   const { page, fonts } = context;
-  await drawSlotPhoto(
-    context,
-    FIXED_SLOTS.closingHero,
-    context.bookPage.photoIds[0],
-  );
   drawCentered(page, CLOSING_LINE, {
-    font: fonts.display,
-    size: 20,
+    font: fonts.hand,
+    size: CLOSING_TEXT.size,
     color: INK,
-    baseline: PAGE_PT * 0.1,
+    baseline: PAGE_PT * (1 - CLOSING_TEXT.baseline),
   });
 }
 
@@ -466,7 +584,7 @@ async function drawImprintPage(context: DrawContext): Promise<void> {
   });
 
   const lines = [
-    `Made from ${possessivePetName(meta.petName)} own photographs.`,
+    drawable(fonts.sans, `Made from ${possessivePetName(meta.petName)} own photographs.`),
     "Printed and bound on demand.",
   ];
   let baseline = PAGE_PT * 0.17;
@@ -481,36 +599,24 @@ async function drawImprintPage(context: DrawContext): Promise<void> {
   }
 }
 
-async function drawPhotoPage(context: DrawContext): Promise<void> {
-  const { bookPage } = context;
-  if (!bookPage.layoutId) return;
-
-  const layout = LAYOUTS[bookPage.layoutId];
-  for (const [index, photoId] of bookPage.photoIds.entries()) {
-    const slot = layout.slots[index];
-    if (!slot) continue;
-    await drawSlotPhoto(context, slot, photoId);
-  }
-}
-
 /**
- * Embeds exactly one photo, sized for exactly one slot. The rasterized JPEG is
- * dropped as soon as pdf-lib has copied it.
+ * Embeds exactly one photo, sized for exactly one print's window. The
+ * rasterized JPEG is dropped as soon as pdf-lib has copied it.
  */
-async function drawSlotPhoto(
+async function embedPrintPhoto(
   context: DrawContext,
-  slot: Slot,
-  photoId: string | undefined,
-): Promise<void> {
-  if (!photoId) return;
+  print: Print,
+): Promise<PDFImage | null> {
+  const photoId = print.photoId;
+  if (!photoId) return null;
 
   const photo = context.photos.get(photoId);
   const file = assetStore.getFile(photoId);
-  if (!photo || !file) return;
+  if (!photo || !file) return null;
 
-  const rect = slotRect(slot);
-  const widthInches = rect.width / PT_PER_INCH;
-  const heightInches = rect.height / PT_PER_INCH;
+  const window = photoWindow(print);
+  const widthInches = (window.w * PAGE_PT) / PT_PER_INCH;
+  const heightInches = (window.h * PAGE_PT) / PT_PER_INCH;
 
   try {
     const placement = await rasterizeForPlacement(
@@ -525,8 +631,6 @@ async function drawSlotPhoto(
       new Uint8Array(await placement.blob.arrayBuffer()),
     );
 
-    context.page.drawImage(embedded, rect);
-
     if (placement.ppi < LOW_PPI_THRESHOLD) {
       context.lowResWarnings.push({
         pageNumber: context.bookPage.pageNumber,
@@ -535,12 +639,10 @@ async function drawSlotPhoto(
         ppi: placement.ppi,
       });
     }
+    return embedded;
   } catch {
     // A single unreadable original must not abandon the whole book.
-    context.page.drawRectangle({
-      ...rect,
-      color: BLANK_SLOT,
-    });
+    return null;
   }
 }
 

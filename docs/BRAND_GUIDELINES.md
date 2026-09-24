@@ -31,10 +31,34 @@ Avoid:
 - Halos
 - Rainbow bridge clichés
 - Excessive paw-print motifs
-- Scrapbook textures
+- Grungy scrapbook textures (kraft paper, torn edges, distressed overlays) — the book is a *clean* scrapbook, see below
 - Sad stock photography
 - Cartoon clip art
 - Making AI the visual/emotional centerpiece
+
+## Book design: a clean scrapbook
+
+Inside the book, photos are treated as prints placed by hand, not as
+rectangles in a grid. One definition drives the screen and the printed
+PDF: `src/lib/book/scrapbook.ts`.
+
+Allowed:
+- Prints with a white border; a polaroid's deep bottom edge when there is
+  room, with the month and year handwritten on it
+- A slight tilt (under 3°), neighbours leaning opposite ways
+- Washi tape in the brand pastels (Lavender, Sage, Petal, Memory Blue)
+- Flat pastel paper scraps tucked behind prints or note cards
+- White note cards for words, ruled faintly on the dedication
+- At most two small line doodles a page (heart, star, sparkle, loop, wave),
+  in Periwinkle or Sage; a paw is allowed but rare
+- Type: Caveat for handwriting (title page, captions, dates), Cormorant
+  Garamond for titles and story text
+
+Not allowed:
+- Kraft, cardboard, lined-notebook or grunge textures
+- Torn-paper edges, stitched borders, paper clips, stamps as clip art
+- Stickers beyond the chapter number
+- Anything that covers the pet's face
 
 ## Official colors
 

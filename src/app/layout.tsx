@@ -23,6 +23,8 @@ const cover = Cormorant_Garamond({
   variable: "--font-cover",
   subsets: ["latin"],
   weight: ["500", "600", "700"],
+  // Italic for the book's dedication page.
+  style: ["normal", "italic"],
 });
 
 const body = Inter({
@@ -40,7 +42,9 @@ const playfair = Playfair_Display({
 const caveat = Caveat({
   variable: "--font-caveat",
   subsets: ["latin"],
-  weight: ["500", "700"],
+  // 600 is the book's handwriting (captions, the title page); the PDF embeds
+  // the same weight.
+  weight: ["500", "600", "700"],
 });
 
 export const metadata: Metadata = {

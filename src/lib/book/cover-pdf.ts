@@ -18,6 +18,7 @@ import {
   defaultNameAnchor,
 } from "@/lib/book/coverLayouts";
 import { verticalAlphaRampPng } from "@/lib/book/gradient-png";
+import { coverNameFont, drawable, loadBookFonts } from "@/lib/book/pdf-fonts";
 import { brand, hexToRgb01 } from "@/lib/brand";
 import { expiryHeadline, formatExpiryDate } from "@/lib/drafts/expiry";
 import * as assetStore from "@/lib/photo/assetStore";
@@ -41,25 +42,12 @@ export type { CoverDimensionsPt } from "@/lib/book/coverGeometry";
 
 type Rect = { x: number; y: number; width: number; height: number };
 
-type CoverFontSet = {
-  serif: PDFFont;
-  serifBold: PDFFont;
-  serifItalic: PDFFont;
-  sans: PDFFont;
-  sansBold: PDFFont;
-};
-
 /**
  * Renders the full wrap cover at exactly the size Lulu reported.
  *
  * The spine width is never guessed — it comes from `POST /cover-dimensions/`
- * for this pod package and this interior page count.
- *
- * Known gap: the name/years font choice made in the cover editor is only
- * approximated here (mapped to the closest built-in PDF font — pdf-lib has
- * no access to Merienda/Cormorant/Playfair/Caveat unless those font files
- * are embedded directly, which this doesn't do yet). Layout and text
- * position, however, match the editor exactly.
+ * for this pod package and this interior page count. The name is set in the
+ * face chosen in the cover editor, embedded from `public/fonts`.
  */
 export async function renderCoverPdf(args: {
   meta: BookMeta;
@@ -72,13 +60,7 @@ export async function renderCoverPdf(args: {
   pdf.setTitle(meta.petName ? `${meta.petName}, cover` : "ourTailTales cover");
   pdf.setProducer("ourTailTales");
 
-  const fonts: CoverFontSet = {
-    serif: await pdf.embedFont(StandardFonts.TimesRoman),
-    serifBold: await pdf.embedFont(StandardFonts.TimesRomanBold),
-    serifItalic: await pdf.embedFont(StandardFonts.TimesRomanItalic),
-    sans: await pdf.embedFont(StandardFonts.Helvetica),
-    sansBold: await pdf.embedFont(StandardFonts.HelveticaBold),
-  };
+  const fonts = await loadBookFonts(pdf);
 
   const page = pdf.addPage([dimensions.width, dimensions.height]);
   page.drawRectangle({
@@ -117,11 +99,7 @@ export async function renderCoverPdf(args: {
   });
 
   const nameBold = meta.coverNameBold ?? true;
-  const { name: nameFont } = pdfFontsForCoverFont(
-    fontId,
-    fonts,
-    nameBold,
-  );
+  const nameFont = coverNameFont(fontId, fonts, nameBold);
 
   drawCoverName(page, {
     meta,
@@ -134,7 +112,7 @@ export async function renderCoverPdf(args: {
 
   /* --------------------------------- spine --------------------------------- */
 
-  const spineText = meta.petName.trim();
+  const spineText = drawable(fonts.serif, meta.petName.trim());
   if (spineWidth >= MIN_SPINE_TEXT_PT && spineText) {
     const spineCenter = BLEED_PT + TRIM_PT + spineWidth / 2;
     const spineSize = Math.min(13, spineWidth * 0.42);
@@ -301,13 +279,7 @@ export async function drawFrontCoverPage(
   const { meta, targetPpi = 150 } = args;
   const { width, height } = page.getSize();
 
-  const fonts: CoverFontSet = {
-    serif: await pdf.embedFont(StandardFonts.TimesRoman),
-    serifBold: await pdf.embedFont(StandardFonts.TimesRomanBold),
-    serifItalic: await pdf.embedFont(StandardFonts.TimesRomanItalic),
-    sans: await pdf.embedFont(StandardFonts.Helvetica),
-    sansBold: await pdf.embedFont(StandardFonts.HelveticaBold),
-  };
+  const fonts = await loadBookFonts(pdf);
 
   const layoutId: CoverLayoutId = meta.coverLayoutId ?? DEFAULT_COVER_LAYOUT;
   const fontId: CoverFontId = meta.coverFontId ?? DEFAULT_COVER_FONT;
@@ -324,11 +296,7 @@ export async function drawFrontCoverPage(
     targetPpi,
   });
 
-  const { name: nameFont } = pdfFontsForCoverFont(
-    fontId,
-    fonts,
-    meta.coverNameBold ?? true,
-  );
+  const nameFont = coverNameFont(fontId, fonts, meta.coverNameBold ?? true);
 
   drawCoverName(page, {
     meta,
@@ -452,6 +420,7 @@ function drawCenteredText(
   color: ReturnType<typeof rgb>,
   center: { x: number; y: number; opacity?: number },
 ): void {
+  text = drawable(font, text);
   const textWidth = font.widthOfTextAtSize(text, size);
   page.drawText(text, {
     x: center.x - textWidth / 2,
@@ -473,6 +442,7 @@ function drawLeftText(
   color: ReturnType<typeof rgb>,
   pos: { x: number; y: number; opacity?: number },
 ): void {
+  text = drawable(font, text);
   page.drawText(text, {
     x: pos.x,
     y: pos.y - size * 0.35,
@@ -492,6 +462,7 @@ function drawRightText(
   color: ReturnType<typeof rgb>,
   pos: { x: number; y: number; opacity?: number },
 ): void {
+  text = drawable(font, text);
   const textWidth = font.widthOfTextAtSize(text, size);
   page.drawText(text, {
     x: pos.x - textWidth,
@@ -501,25 +472,6 @@ function drawRightText(
     color,
     opacity: pos.opacity ?? 1,
   });
-}
-
-/** Approximates the editor's 5 cover fonts with the closest built-in PDF font. */
-function pdfFontsForCoverFont(
-  fontId: CoverFontId,
-  fonts: CoverFontSet,
-  nameBold = true,
-): { name: PDFFont; years: PDFFont } {
-  switch (fontId) {
-    case "sans":
-      return { name: nameBold ? fonts.sansBold : fonts.sans, years: fonts.sans };
-    case "display":
-    case "caveat":
-      return { name: fonts.serifItalic, years: fonts.serifItalic };
-    case "playfair":
-    case "cover":
-    default:
-      return { name: nameBold ? fonts.serifBold : fonts.serif, years: fonts.serif };
-  }
 }
 
 function wrap(
