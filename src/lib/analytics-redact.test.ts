@@ -57,4 +57,16 @@ describe("redactProperties", () => {
     });
     expect(JSON.stringify(out)).not.toContain("ordertoken");
   });
+
+  it("keeps lead addresses out of URLs, including the person's initial URL", () => {
+    const out = redactProperties({
+      $current_url: "https://ourtailtales.com/create?email=a%40b.com",
+      $set_once: {
+        $initial_current_url: "https://ourtailtales.com/create?email=a%40b.com&utm_source=ig",
+      },
+    });
+    const json = JSON.stringify(out);
+    expect(json).not.toContain("a%40b.com");
+    expect(json).toContain("utm_source=ig");
+  });
 });

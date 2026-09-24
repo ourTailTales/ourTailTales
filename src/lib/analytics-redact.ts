@@ -14,8 +14,13 @@
  * pulling posthog-js into the test run.
  */
 
-/** Query parameters that must never leave the browser in an event property. */
-const SECRET_PARAMS = ["k", "t"];
+/**
+ * Query parameters that must never leave the browser in an event property.
+ * `email` is not a credential, but `/create?email=` put every lead's address
+ * into `$current_url` on every event from that page. The address reaches
+ * PostHog once, deliberately, as a person property.
+ */
+const SECRET_PARAMS = ["k", "t", "email"];
 
 const REDACTED = "redacted";
 
@@ -47,6 +52,9 @@ export function redactUrl(value: string): string {
  * Applied to every outgoing event. Any string property that carries a
  * redactable parameter is rewritten, rather than listing PostHog's URL
  * properties by name — that list grows, and missing one leaks a key.
+ *
+ * Nested objects are walked too: `$set` and `$set_once` carry the person's
+ * initial URL and referrer, which are the same URLs one level down.
  */
 export function redactProperties<T extends Record<string, unknown>>(
   properties: T,
@@ -57,6 +65,8 @@ export function redactProperties<T extends Record<string, unknown>>(
       SECRET_PARAMS.some((param) => value.includes(`${param}=`))
     ) {
       (properties as Record<string, unknown>)[key] = redactUrl(value);
+    } else if (value && typeof value === "object" && !Array.isArray(value)) {
+      redactProperties(value as Record<string, unknown>);
     }
   }
   return properties;

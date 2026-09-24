@@ -432,6 +432,15 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
     useOurTailTalesStore.getState().finishStoryGeneration();
     const completed = useOurTailTalesStore.getState();
     track("story_generated", { chapters: completed.chapters.length });
+    // The top of the book → order funnel: counted once, when a book is first
+    // written, not again for a chapter retried later.
+    if (pending.length === state.chapters.length && state.chapters.length > 0) {
+      track("book_created", {
+        chapters: completed.chapters.length,
+        photos: completed.photos.length,
+        has_dedication: completed.meta.dedication.trim().length > 0,
+      });
+    }
 
     completed.setSaveStatus("saving");
     if (!(await save())) {

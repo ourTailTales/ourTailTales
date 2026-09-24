@@ -1,6 +1,7 @@
 import posthog from "posthog-js";
 
 import { redactProperties } from "@/lib/analytics-redact";
+import { firstTouchFromLocation } from "@/lib/attribution";
 
 const token = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN;
 const host = process.env.NEXT_PUBLIC_POSTHOG_HOST;
@@ -37,6 +38,11 @@ if (token && host) {
   posthog.init(token, {
     api_host: host,
     defaults: "2026-01-30",
+    // Most people make a book long before they give an address or make an
+    // account. With the default ("identified_only") those anonymous visitors
+    // get no person profile, so the first-touch source a funnel is broken
+    // down by was never recorded for the people the funnel is about.
+    person_profiles: "always",
     capture_exceptions: true,
     // Every event on localhost is dropped just below, so debug mode there
     // would only ever print "this event was rejected" — never anything
@@ -53,4 +59,28 @@ if (token && host) {
       return event;
     },
   });
+
+  recordFirstTouch();
+}
+
+/**
+ * Stamps where this visitor first came from, once, as both a super property
+ * (on every later event from this browser) and a set-once person property
+ * (so server-side events like `order_completed` can be broken down by it).
+ */
+function recordFirstTouch(): void {
+  if (posthog.get_property("first_touch_channel")) return;
+  const touch = firstTouchFromLocation();
+  if (!touch) return;
+
+  const properties = {
+    first_touch_channel: touch.channel,
+    first_touch_referring_domain: touch.referringDomain ?? "$direct",
+    first_touch_utm_source: touch.utmSource ?? "",
+    first_touch_utm_medium: touch.utmMedium ?? "",
+    first_touch_utm_campaign: touch.utmCampaign ?? "",
+    first_touch_landing_path: touch.landingPath,
+  };
+  posthog.register_once(properties);
+  posthog.setPersonProperties(undefined, properties);
 }

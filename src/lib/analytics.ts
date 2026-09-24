@@ -20,6 +20,7 @@ export type FunnelEvent =
   | "processing_complete"
   | "book_size_confirmed"
   | "story_generated"
+  | "book_created"
   | "sample_email_submitted"
   | "teaser_email_sent"
   | "teaser_wall_reached"
@@ -55,9 +56,28 @@ export function track(event: FunnelEvent, props?: Props): void {
   }
 }
 
+/**
+ * Attaches an address to whoever this browser is, without identifying them.
+ *
+ * This used to call `identify` with the anonymous id itself, which marks the
+ * person as identified under that id. PostHog then refuses to merge them into
+ * the account they make later, so their book-making and their purchase ended
+ * up as two different people and the conversion funnel never joined up.
+ */
 export function identifyLead(email: string): void {
   if (!postHogConfigured()) return;
-  posthog.identify(posthog.get_distinct_id(), { email });
+  posthog.setPersonProperties({ email });
+}
+
+/**
+ * Signed in or signed up: from here on this browser is the account, and
+ * everything it did anonymously (the book it made, where it came from) is
+ * merged into it. Guarded so each page load identifies once.
+ */
+export function identifyAccount(userId: string, email?: string | null): void {
+  if (!postHogConfigured()) return;
+  if (posthog.get_distinct_id() === userId) return;
+  posthog.identify(userId, email ? { email } : undefined);
 }
 
 export function captureClientException(error: unknown): void {

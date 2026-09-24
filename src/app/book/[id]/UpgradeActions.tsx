@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ArrowRight, BookOpen } from "lucide-react";
 
+import { postHogHeaders } from "@/lib/posthog-client";
 import { formatUsd } from "@/lib/pricing";
 
 /**
@@ -35,6 +36,7 @@ export function UpgradeActions({
       const response = await fetch("/api/stripe/checkout-digital", {
         method: "POST",
         headers: {
+          ...postHogHeaders(),
           "Content-Type": "application/json",
           "x-draft-id": draftId,
           authorization: `Bearer ${secret}`,

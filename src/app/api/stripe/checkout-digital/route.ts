@@ -71,6 +71,7 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     const petName = (row.pet_name ?? "").trim();
+    const posthogDistinctId = request.headers.get("x-posthog-distinct-id");
     const returnUrl = bookUrl(draft.id, secret);
 
     const session = await stripeClient().checkout.sessions.create({
@@ -92,7 +93,13 @@ export async function POST(request: Request): Promise<Response> {
       // Carried through to the webhook, which is where access is actually
       // granted. The secret rides along so the confirmation email can link
       // straight back to the book.
-      metadata: { draftId: draft.id, draftSecret: secret },
+      // posthogDistinctId ties the purchase back to the browser that made
+      // the book, so it lands in the same person's conversion funnel.
+      metadata: {
+        draftId: draft.id,
+        draftSecret: secret,
+        ...(posthogDistinctId ? { posthogDistinctId } : {}),
+      },
       success_url: `${returnUrl}&purchased=true`,
       cancel_url: returnUrl,
     });

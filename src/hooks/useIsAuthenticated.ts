@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { identifyAccount } from "@/lib/analytics";
 import {
   authConfigured,
   createAuthBrowserClient,
@@ -35,6 +36,9 @@ export function useIsAuthenticated(): boolean {
         .getSession()
         .then(({ data }) => {
           if (active) setIsAuthenticated(Boolean(data.session));
+          if (data.session) {
+            identifyAccount(data.session.user.id, data.session.user.email);
+          }
         })
         .catch(() => {
           // Treated as signed out: the landing page must render either way.
@@ -42,6 +46,7 @@ export function useIsAuthenticated(): boolean {
 
       const { data } = client.auth.onAuthStateChange((_event, session) => {
         if (active) setIsAuthenticated(Boolean(session));
+        if (session) identifyAccount(session.user.id, session.user.email);
       });
       unsubscribe = () => data.subscription.unsubscribe();
     } catch {

@@ -129,6 +129,18 @@ async function fulfill(paymentIntent: Stripe.PaymentIntent): Promise<void> {
       video_memory_count: Number(claimed.selected_video_count ?? 0),
     },
   );
+  // The one conversion event, whatever was bought, so a single funnel
+  // (book_created → order_completed) covers both products.
+  await captureServerEvent(
+    paymentIntent.metadata?.posthogDistinctId || orderId,
+    "order_completed",
+    {
+      product: "hardcover",
+      revenue: paymentIntent.amount / 100,
+      currency: paymentIntent.currency,
+      order_id: orderId,
+    },
+  );
 
   // Before anything else reads them. The signed upload URLs the customer used
   // are still live, so from here on we print from a copy they cannot reach.
@@ -357,6 +369,16 @@ async function grantDigitalAccess(
     session.metadata?.posthogDistinctId || draftId,
     "digital_purchase_completed",
     { amount: (session.amount_total ?? 0) / 100 },
+  );
+  await captureServerEvent(
+    session.metadata?.posthogDistinctId || draftId,
+    "order_completed",
+    {
+      product: "digital",
+      revenue: (session.amount_total ?? 0) / 100,
+      currency: session.currency ?? "usd",
+      draft_id: draftId,
+    },
   );
 
   const email = session.customer_details?.email ?? session.customer_email;
