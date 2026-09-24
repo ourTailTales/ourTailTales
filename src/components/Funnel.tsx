@@ -690,7 +690,16 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
           <div className="brand-atmosphere py-5">
             <div className="mx-auto w-full max-w-[90rem] px-5 sm:px-8">
               <SiteHeader
-                status={<SaveStatusIndicator />}
+                status={
+                  // Only while someone can actually edit the book. A
+                  // signed-out reader of the free preview has nothing to
+                  // save, so "Saved" meant nothing to them.
+                  unlocked &&
+                  (store.funnelState === "editing" ||
+                    store.funnelState === "exporting") ? (
+                    <SaveStatusIndicator />
+                  ) : null
+                }
                 right={
                   store.leadEmail ? null : (
                     <button
