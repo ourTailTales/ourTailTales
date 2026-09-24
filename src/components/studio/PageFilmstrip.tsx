@@ -1,7 +1,7 @@
 "use client";
 
 import { Lock } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 import { CoverCanvas, PageCanvas } from "@/components/book-viewer/PageCanvas";
 import type { StudioSlide } from "@/lib/book/studio";
@@ -22,6 +22,9 @@ const PHOTO_WINDOW = 12;
 /** Pixels of travel before a press counts as dragging rather than clicking. */
 const DRAG_THRESHOLD = 5;
 
+/** How long the strip must sit still before a scroll counts as having landed. */
+const SETTLE_DELAY_MS = 120;
+
 /**
  * The filmstrip: every page of the book, in order, along the bottom.
  *
@@ -29,11 +32,11 @@ const DRAG_THRESHOLD = 5;
  * through their own book, and a five hundred page book makes that bar a few
  * pixels wide.
  *
- * Moving the strip browses; it never selects. Binding the tools to scroll
- * position sounds seamless and is the opposite, because they change under
- * someone's hand while they are still looking for a page. A click commits. A
- * click that turns out to have been a drag does not, which is what lets both
- * gestures live on the same thumbnails.
+ * Moving the strip also moves the page above it: once the strip stops
+ * (a click, a drag released, or a native touch scroll coming to rest),
+ * whichever thumbnail is nearest the center becomes the selection. A click
+ * still commits immediately rather than waiting for that; the settle check is
+ * what covers a drag or a swipe that never produces a click at all.
  */
 export function PageFilmstrip({
   slides,
@@ -78,6 +81,42 @@ export function PageFilmstrip({
       activeRef.current?.focus({ preventScroll: true });
     }
   }, [selected]);
+
+  /** Debounce handle for the settle check below. */
+  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (settleTimer.current) clearTimeout(settleTimer.current);
+  }, []);
+
+  /**
+   * Whatever thumbnail is nearest the strip's own center once scrolling goes
+   * quiet — whether that scrolling was a drag, a native touch swipe, or the
+   * `scrollIntoView` above finishing — becomes the selection. Debounced
+   * rather than continuous: this only ever fires once movement has actually
+   * stopped, so a page never flickers past while a thumb is still travelling.
+   */
+  const handleScroll = useCallback(() => {
+    if (settleTimer.current) clearTimeout(settleTimer.current);
+    settleTimer.current = setTimeout(() => {
+      const strip = stripRef.current;
+      if (!strip) return;
+      const stripRect = strip.getBoundingClientRect();
+      const centerX = stripRect.left + stripRect.width / 2;
+      let closest: number | null = null;
+      let closestDistance = Infinity;
+      strip.querySelectorAll<HTMLElement>("[role=tab]").forEach((el) => {
+        const rect = el.getBoundingClientRect();
+        const distance = Math.abs(rect.left + rect.width / 2 - centerX);
+        if (distance < closestDistance) {
+          closestDistance = distance;
+          closest = Number(el.dataset.position);
+        }
+      });
+      if (closest !== null && closest !== selected) {
+        onSelect(closest);
+      }
+    }, SETTLE_DELAY_MS);
+  }, [selected, onSelect]);
 
   /**
    * Arrow-key roving tabindex for the tablist, per the WAI-ARIA tabs pattern.
@@ -171,6 +210,7 @@ export function PageFilmstrip({
         onPointerUp={endPan}
         onPointerCancel={endPan}
         onKeyDown={handleKeyDown}
+        onScroll={handleScroll}
         className="filmstrip flex cursor-grab gap-3 overflow-x-auto px-4 py-3 active:cursor-grabbing sm:px-6"
         role="tablist"
         aria-label="Pages"
@@ -191,6 +231,7 @@ export function PageFilmstrip({
                 ref={isActive ? activeRef : undefined}
                 type="button"
                 role="tab"
+                data-position={slide.position}
                 aria-selected={isActive}
                 tabIndex={isActive ? 0 : -1}
                 onClick={() => {

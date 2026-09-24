@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, Download, Maximize2, RotateCcw } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, Lock, Maximize2, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { track } from "@/lib/analytics";
@@ -217,14 +217,14 @@ export function BookStudio({
               </div>
 
               {slide.locked ? (
+                // A label, not a control — the actual way through is the
+                // account CTA below (LockedWall or, here, the sidebar),
+                // never two competing buttons on the same locked page.
                 <div className="absolute inset-0 flex items-center justify-center bg-white/45 p-5">
-                  <button
-                    type="button"
-                    onClick={onUnlock}
-                    className="rounded-xl bg-periwinkle px-5 py-3 text-sm font-semibold text-white shadow-lift hover:bg-periwinkle-deep"
-                  >
-                    Unlock this page
-                  </button>
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-white/90 px-4 py-2 text-sm font-semibold text-page-ink-soft shadow-sm">
+                    <Lock aria-hidden className="size-3.5" />
+                    Sign up to view this page
+                  </span>
                 </div>
               ) : (
                 // Set body text on a page this size reads around six pixels
