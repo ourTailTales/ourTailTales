@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import { paginateBook } from "@/lib/book/pagination";
+import { pdfPageCount } from "@/lib/book/pdf-pages";
+import { renderTeaserPdf } from "@/lib/book/sample-pdf";
 import { buildSlides, lockWallIndex, lockedCount } from "@/lib/book/studio";
 import {
   TEASER_INTERIOR_PAGES,
   TEASER_PAGE_COUNT,
+  TEASER_PDF_MAX_PAGES,
   summarizeTeaser,
   teaserPages,
 } from "@/lib/book/teaser";
@@ -73,6 +76,23 @@ describe("the free teaser", () => {
     const summary = summarizeTeaser(pages, []);
     expect(summary.complete).toBe(true);
     expect(summary.hiddenPages).toBe(0);
+  });
+
+  it("renders a file the upload route actually accepts", async () => {
+    // The one check that matters: not what the page-selection logic intends,
+    // but what `renderTeaserPdf` actually produces and the upload route
+    // actually counts. This is exactly the gap a real five-chapter book fell
+    // through — the renderer's own "there is more" page pushed a normal
+    // teaser to eleven pages while the route still capped it at ten.
+    const { meta, chapters, pages } = bookOf(5);
+    const blob = await renderTeaserPdf({ pages, chapters, meta, photos: new Map() });
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    const pageCount = await pdfPageCount(bytes);
+
+    // Cover, nine interior pages, and the notice that the book continues —
+    // one more than the free content alone, and exactly what the cap allows.
+    expect(pageCount).toBe(TEASER_PDF_MAX_PAGES);
+    expect(pageCount).not.toBeGreaterThan(TEASER_PDF_MAX_PAGES);
   });
 });
 

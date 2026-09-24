@@ -4,7 +4,7 @@ import { resolveDraft } from "@/lib/drafts/resolve";
 import { routeError } from "@/lib/env";
 import { draftPdfPath, type DraftPdfKind } from "@/lib/drafts/storage";
 import { pdfPageCount } from "@/lib/book/pdf-pages";
-import { TEASER_PAGE_COUNT } from "@/lib/book/teaser";
+import { TEASER_PAGE_COUNT, TEASER_PDF_MAX_PAGES } from "@/lib/book/teaser";
 import { watermarkPdf } from "@/lib/book/watermark";
 import { BASE_CHAPTERS, MAX_CHAPTERS } from "@/lib/pricing";
 import { LIMITS, enforceRateLimit } from "@/lib/rate-limit";
@@ -162,7 +162,10 @@ export async function PUT(request: Request): Promise<Response> {
     if (teaser) {
       // The only claim the client makes that has money behind it. A "teaser"
       // longer than the teaser is the whole book asking to skip the watermark.
-      if (pages > TEASER_PAGE_COUNT) {
+      // The cap is one page more than the free content itself: the renderer
+      // appends a "there is more" notice page whenever the book continues
+      // past the teaser, which is true for nearly every real book.
+      if (pages > TEASER_PDF_MAX_PAGES) {
         console.error(
           `[ourTailTales] Draft ${draft.id} banked a ${pages}-page file as a teaser.`,
         );

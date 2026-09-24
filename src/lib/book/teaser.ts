@@ -21,6 +21,21 @@ export const TEASER_PAGE_COUNT = 10;
 /** Of those, how many are interior pages — the cover takes the first slot. */
 export const TEASER_INTERIOR_PAGES = TEASER_PAGE_COUNT - 1;
 
+/**
+ * The largest a legitimate teaser PDF can actually be.
+ *
+ * `TEASER_PAGE_COUNT` is the free content: the cover plus nine interior
+ * pages. Whenever the book keeps going past what the teaser shows — true for
+ * every book down to the five-chapter minimum, since that alone is already
+ * many times `TEASER_INTERIOR_PAGES` — the renderer appends one more page
+ * saying so, a "there is more" notice rather than a customer-facing page.
+ * That page is a normal, expected part of the file the browser uploads, so
+ * the upload route has to accept it too; checking against
+ * `TEASER_PAGE_COUNT` itself rejected almost every real teaser as if it were
+ * the whole book smuggled through.
+ */
+export const TEASER_PDF_MAX_PAGES = TEASER_PAGE_COUNT + 1;
+
 export type TeaserSummary = {
   /** Interior pages included, at most `TEASER_INTERIOR_PAGES`. */
   shownPages: number;

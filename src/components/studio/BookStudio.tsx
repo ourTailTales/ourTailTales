@@ -218,7 +218,7 @@ export function BookStudio({
               onClick={onUnlock}
               className="absolute bottom-0 left-1/2 z-20 inline-flex -translate-x-1/2 translate-y-1/2 items-center justify-center whitespace-nowrap rounded-full bg-periwinkle px-6 py-3 text-sm font-semibold text-white shadow-lift transition-colors hover:bg-periwinkle-deep sm:px-8 sm:text-base"
             >
-              Signup and Continue to Edit
+              Signup to Edit
             </button>
           ) : null}
         </div>
