@@ -76,6 +76,13 @@ export type InteriorRenderOptions = {
    * and it has to say plainly that the book behind it will not wait.
    */
   expiresAt?: Date;
+  /**
+   * Pad with blank pages up to exactly this many interior pages. The print
+   * order is sized from the chapter count alone (`luluInteriorPages`), and a
+   * book with no dedication has one page fewer than that; the blank goes on
+   * the back of the title page, where a book would put one anyway.
+   */
+  padToPageCount?: number;
   placements?: VideoMemoryPlacement[];
   onProgress?: (completed: number, total: number) => void;
 };
@@ -116,6 +123,7 @@ export async function renderInteriorPdf(
     frontCover = false,
     lockedNotice,
     expiresAt,
+    padToPageCount,
     placements = [],
     onProgress,
   } = options;
@@ -132,7 +140,13 @@ export async function renderInteriorPdf(
   };
 
   const chaptersById = new Map(chapters.map((chapter) => [chapter.id, chapter]));
-  const selected = pageLimit ? pages.slice(0, pageLimit) : pages;
+  const selected: (BookPage | null)[] = pageLimit
+    ? pages.slice(0, pageLimit)
+    : [...pages];
+  if (padToPageCount && selected.length < padToPageCount) {
+    const blanks = padToPageCount - selected.length;
+    selected.splice(Math.min(1, selected.length), 0, ...Array(blanks).fill(null));
+  }
   const lowResWarnings: LowResWarning[] = [];
 
   /** Every page is laid out on the full bleed page; cropping only changes what a reader sees. */
@@ -167,26 +181,28 @@ export async function renderInteriorPdf(
       color: PAPER,
     });
 
-    await drawPage({
-      pdf,
-      page,
-      bookPage,
-      chapter: bookPage.chapterId
-        ? chaptersById.get(bookPage.chapterId)
-        : undefined,
-      meta,
-      photos,
-      fonts,
-      targetPpi,
-      jpegQuality,
-      lowResWarnings,
-    });
+    if (bookPage) {
+      await drawPage({
+        pdf,
+        page,
+        bookPage,
+        chapter: bookPage.chapterId
+          ? chaptersById.get(bookPage.chapterId)
+          : undefined,
+        meta,
+        photos,
+        fonts,
+        targetPpi,
+        jpegQuality,
+        lowResWarnings,
+      });
 
-    drawVideoMemoryPlaceholders(
-      page,
-      fonts.sans,
-      placements.filter((placement) => placement.pageId === bookPage.id),
-    );
+      drawVideoMemoryPlaceholders(
+        page,
+        fonts.sans,
+        placements.filter((placement) => placement.pageId === bookPage.id),
+      );
+    }
 
     if (watermark) drawWatermark(page, fonts.sans, watermark);
     onProgress?.(index + 1, selected.length);
@@ -338,15 +354,8 @@ async function drawDedicationPage(context: DrawContext): Promise<void> {
   const { page, meta, fonts } = context;
   const text = meta.dedication.trim();
 
-  if (!text) {
-    page.drawLine({
-      start: { x: PAGE_PT * 0.41, y: PAGE_PT * 0.5 },
-      end: { x: PAGE_PT * 0.59, y: PAGE_PT * 0.5 },
-      thickness: 0.6,
-      color: INK_FAINT,
-    });
-    return;
-  }
+  // No dedication, no page: pagination leaves it out.
+  if (!text) return;
 
   const maxWidth = PAGE_PT * 0.62;
   const size = text.length > 180 ? 14 : 17;

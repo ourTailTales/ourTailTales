@@ -212,15 +212,8 @@ function TitlePage({
 function DedicationPage({ meta }: { meta: BookMeta }) {
   const text = meta.dedication.trim();
 
-  if (!text) {
-    return (
-      <span
-        aria-hidden
-        className="absolute bg-page-ink-faint"
-        style={{ left: "41%", top: "50%", width: "18%", height: "0.1%" }}
-      />
-    );
-  }
+  // No dedication, no page: pagination leaves it out.
+  if (!text) return null;
 
   return (
     <p

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+import { renderInteriorPdf } from "@/lib/book/interior-pdf";
 import { paginateBook } from "@/lib/book/pagination";
+import { luluInteriorPages } from "@/lib/pricing";
 import { pdfPageCount } from "@/lib/book/pdf-pages";
 import { renderTeaserPdf } from "@/lib/book/sample-pdf";
 import { buildSlides, lockWallIndex, lockedCount } from "@/lib/book/studio";
@@ -93,6 +95,36 @@ describe("the free teaser", () => {
     // one more than the free content alone, and exactly what the cap allows.
     expect(pageCount).toBe(TEASER_PDF_MAX_PAGES);
     expect(pageCount).not.toBeGreaterThan(TEASER_PDF_MAX_PAGES);
+  });
+
+  it("still renders within the cap with the expiry stamped on the cover", async () => {
+    const { meta, chapters, pages } = bookOf(5);
+    const blob = await renderTeaserPdf({
+      pages,
+      chapters,
+      meta,
+      photos: new Map(),
+      expiresAt: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
+    });
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    expect(await pdfPageCount(bytes)).toBe(TEASER_PDF_MAX_PAGES);
+  });
+});
+
+describe("the print interior", () => {
+  it("pads a book with no dedication back to the ordered page count", async () => {
+    const { meta, chapters, pages } = bookOf(5);
+    expect(pages).toHaveLength(luluInteriorPages(5) - 1);
+
+    const { pageCount } = await renderInteriorPdf({
+      pages,
+      chapters,
+      meta,
+      photos: new Map(),
+      targetPpi: 72,
+      padToPageCount: luluInteriorPages(5),
+    });
+    expect(pageCount).toBe(luluInteriorPages(5));
   });
 });
 

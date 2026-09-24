@@ -4,7 +4,11 @@ import { create } from "zustand";
 
 import { proposeChapters } from "@/lib/photo/cluster";
 import { groupDuplicates, selectablePhotos } from "@/lib/photo/dedupe";
-import { paginateBook } from "@/lib/book/pagination";
+import {
+  hasDedication,
+  paginateBook,
+  withoutEmptyDedication,
+} from "@/lib/book/pagination";
 import * as assetStore from "@/lib/photo/assetStore";
 import { clearCustomCoverFile } from "@/lib/book/customCoverStore";
 import {
@@ -305,7 +309,23 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
       };
     }),
 
-  setMeta: (patch) => set((state) => ({ meta: { ...state.meta, ...patch } })),
+  setMeta: (patch) =>
+    set((state) => {
+      const meta = { ...state.meta, ...patch };
+      // A dedication appearing or disappearing adds or removes its page. Any
+      // other edit leaves the page list alone, so layouts the customer chose
+      // are not re-dealt on every keystroke.
+      if (
+        state.pages.length === 0 ||
+        hasDedication(meta) === hasDedication(state.meta)
+      ) {
+        return { meta };
+      }
+      return {
+        meta,
+        pages: paginateBook(meta, state.chapters, orientationsOf(state.photos)),
+      };
+    }),
 
   goToConfigure: () => set({ funnelState: "configure" }),
 
@@ -602,7 +622,7 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
       meta: restored.meta,
       chapterCount: restored.chapterCount,
       chapters: restored.chapters,
-      pages: restored.pages,
+      pages: withoutEmptyDedication(restored.pages, restored.meta),
       leadEmail: restored.leadEmail,
       albumVideos: restored.albumVideos,
       freePreviewReady: Boolean(restored.previewPdf),

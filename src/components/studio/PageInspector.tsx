@@ -302,6 +302,21 @@ function TitlePanel({ photos }: { photos: PhotoAsset[] }) {
         />
       </Field>
 
+      {/* Here as well as on its own page: with no dedication there is no
+          dedication page, so this is the only way to add one back. */}
+      <Field
+        label={`Dedication · ${meta.dedication.length}/320`}
+        note="Optional. Leave it empty and the book has no dedication page."
+      >
+        <textarea
+          value={meta.dedication}
+          onChange={(event) => setMeta({ dedication: event.target.value.slice(0, 320) })}
+          rows={3}
+          placeholder="For the best copilot a family could ask for."
+          className={`${inputClass} resize-none leading-relaxed`}
+        />
+      </Field>
+
       <Field
         label="Photo"
         note="The title page uses the cover photo. Changing it here changes both."

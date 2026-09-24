@@ -13,7 +13,11 @@ export type OrientationLookup = Map<string, Orientation>;
 /**
  * Builds the complete interior page list:
  * title, dedication, then 10 pages per chapter, then closing and imprint.
- * Page count is therefore always `chapters * 10 + 4`.
+ *
+ * The dedication page only exists when there is a dedication — an empty page
+ * with a rule on it read as something missing. Page count is therefore
+ * `chapters * 10 + 4` with a dedication and one fewer without; the print file
+ * pads back to the ordered count (`padToPageCount` in the interior renderer).
  */
 export function paginateBook(
   meta: BookMeta,
@@ -38,12 +42,14 @@ export function paginateBook(
     photoIds: titlePhoto ? [titlePhoto] : [],
   });
 
-  push({
-    id: "page-dedication",
-    kind: "dedication",
-    layoutId: null,
-    photoIds: [],
-  });
+  if (hasDedication(meta)) {
+    push({
+      id: "page-dedication",
+      kind: "dedication",
+      layoutId: null,
+      photoIds: [],
+    });
+  }
 
   for (const chapter of chapters) {
     const hero = chapter.heroPhotoId ?? chapter.photoIds[0] ?? null;
@@ -134,4 +140,27 @@ export function possessivePetName(petName: string): string {
   const name = petName.trim();
   if (!name) return "their";
   return /s$/i.test(name) ? `${name}'` : `${name}'s`;
+}
+
+/** Whether the book carries a dedication page. */
+export function hasDedication(meta: Pick<BookMeta, "dedication">): boolean {
+  return meta.dedication.trim().length > 0;
+}
+
+/**
+ * Brings a saved page list in line with its dedication: drops a dedication
+ * page whose text is gone. Books saved before an empty dedication stopped
+ * getting a page still carry one, and re-paginating them from scratch would
+ * throw away every layout the customer picked.
+ */
+export function withoutEmptyDedication(
+  pages: BookPage[],
+  meta: Pick<BookMeta, "dedication">,
+): BookPage[] {
+  if (hasDedication(meta) || !pages.some((page) => page.kind === "dedication")) {
+    return pages;
+  }
+  return pages
+    .filter((page) => page.kind !== "dedication")
+    .map((page, index) => ({ ...page, pageNumber: index + 1 }));
 }

@@ -73,6 +73,7 @@ export async function prepareOrder(args: {
     photos: args.photos,
     placements: args.placements ?? [],
     targetPpi: 300,
+    padToPageCount: totalPages,
     onProgress: (done, total) =>
       args.onStatus(`Rendering page ${done} of ${total} at print resolution…`),
   });
