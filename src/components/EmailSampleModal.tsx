@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+
+import { useDialogA11y } from "@/lib/a11y/useDialog";
 
 /** Mounted only while open, so each visit starts from a clean state. */
 export function EmailSampleModal({
@@ -16,18 +18,8 @@ export function EmailSampleModal({
   const [status, setStatus] = useState<"idle" | "working" | "error">("idle");
   const [message, setMessage] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
-
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogA11y(dialogRef, { onClose, initialFocusRef: inputRef });
 
   const handleSubmit = async (): Promise<void> => {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
@@ -54,14 +46,17 @@ export function EmailSampleModal({
 
   return (
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
       aria-labelledby="sampleTitle"
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
     >
-      <button
-        type="button"
-        aria-label="Close"
+      {/* Pointer-only dismissal. Not a button: the panel's own Close button
+          and Escape already cover keyboard and screen-reader users, and a
+          second control named "Close" only doubled the announcement. */}
+      <div
+        aria-hidden="true"
         onClick={onClose}
         className="absolute inset-0 cursor-default bg-ink/40 backdrop-blur-sm"
       />

@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
+import { useDialogA11y } from "@/lib/a11y/useDialog";
 import { authConfigured, createAuthBrowserClient } from "@/lib/supabase/auth-browser";
 
 type Mode = "signIn" | "signUp";
@@ -37,21 +38,14 @@ export function AuthGate({
   const [isError, setIsError] = useState(false);
   const emailRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   // With the address already known, the only thing left to type is the
   // password — so that is where the cursor goes.
-  useEffect(() => {
-    if (initialEmail?.trim()) passwordRef.current?.focus();
-    else emailRef.current?.focus();
-  }, [initialEmail]);
-
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  useDialogA11y(dialogRef, {
+    onClose,
+    initialFocusRef: initialEmail?.trim() ? passwordRef : emailRef,
+  });
 
   const submit = async (): Promise<void> => {
     const trimmed = email.trim();
@@ -136,14 +130,16 @@ export function AuthGate({
 
   return (
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
       aria-labelledby="authGateTitle"
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
     >
-      <button
-        type="button"
-        aria-label="Close"
+      {/* Pointer-only dismissal — the form's own controls and Escape cover
+          the rest, so this is not also announced as "Close". */}
+      <div
+        aria-hidden="true"
         onClick={onClose}
         className="absolute inset-0 cursor-default bg-ink/40 backdrop-blur-sm"
       />

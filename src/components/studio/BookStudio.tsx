@@ -1,11 +1,12 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, Download, RotateCcw } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, Maximize2, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { track } from "@/lib/analytics";
 
 import { CoverCanvas, PageCanvas } from "@/components/book-viewer/PageCanvas";
+import { PageZoom } from "@/components/book-viewer/PageZoom";
 import { LockedWall } from "@/components/studio/LockedWall";
 import { PageFilmstrip } from "@/components/studio/PageFilmstrip";
 import { PageInspector } from "@/components/studio/PageInspector";
@@ -56,6 +57,7 @@ export function BookStudio({
 
   const [selected, setSelected] = useState(0);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [zoomed, setZoomed] = useState(false);
 
   const photoMap = useMemo(() => photoMapOf(photos), [photos]);
   const photoList = useMemo(() => selectablePhotos(photos), [photos]);
@@ -214,7 +216,18 @@ export function BookStudio({
                     Unlock this page
                   </button>
                 </div>
-              ) : null}
+              ) : (
+                // Set body text on a page this size reads around six pixels
+                // on a phone. This is the way to actually read it.
+                <button
+                  type="button"
+                  onClick={() => setZoomed(true)}
+                  aria-label={`Read ${slide.label} full size`}
+                  className="absolute bottom-2.5 right-2.5 flex size-9 items-center justify-center rounded-full bg-white/90 text-page-ink-soft shadow-sm backdrop-blur transition-colors hover:text-periwinkle-deep"
+                >
+                  <Maximize2 aria-hidden className="size-4" strokeWidth={2.25} />
+                </button>
+              )}
             </div>
 
             <button
@@ -236,6 +249,18 @@ export function BookStudio({
               <ChevronRight aria-hidden className="size-5" />
             </button>
           </div>
+
+          {zoomed ? (
+            <PageZoom
+              page={slide.page}
+              label={slide.label}
+              meta={meta}
+              chapters={chapters}
+              photos={photoMap}
+              photoList={photoList}
+              onClose={() => setZoomed(false)}
+            />
+          ) : null}
         </div>
 
         {/* Filmstrip — under the page on every width, so switching pages and
