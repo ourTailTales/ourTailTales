@@ -387,6 +387,9 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
       email: state.leadEmail,
     });
     useOurTailTalesStore.getState().setBookUrl(banked.url);
+    useOurTailTalesStore
+      .getState()
+      .setBookExpiresAt(banked.expiresAt ? new Date(banked.expiresAt) : null);
     track("free_pdf_stored", { chapters: state.chapterCount });
 
     const email = useOurTailTalesStore.getState().leadEmail;

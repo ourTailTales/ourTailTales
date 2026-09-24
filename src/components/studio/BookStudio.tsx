@@ -7,6 +7,7 @@ import { track } from "@/lib/analytics";
 
 import { CoverCanvas, PageCanvas } from "@/components/book-viewer/PageCanvas";
 import { PageZoom } from "@/components/book-viewer/PageZoom";
+import { ExpiryCountdown } from "@/components/studio/ExpiryCountdown";
 import { LockedWall } from "@/components/studio/LockedWall";
 import { PageFilmstrip } from "@/components/studio/PageFilmstrip";
 import { PageInspector } from "@/components/studio/PageInspector";
@@ -54,6 +55,7 @@ export function BookStudio({
   const photos = useOurTailTalesStore((state) => state.photos);
   const originalBook = useOurTailTalesStore((state) => state.originalBook);
   const resetToOriginal = useOurTailTalesStore((state) => state.resetToOriginal);
+  const bookExpiresAt = useOurTailTalesStore((state) => state.bookExpiresAt);
 
   const [selected, setSelected] = useState(0);
   const [confirmReset, setConfirmReset] = useState(false);
@@ -112,6 +114,10 @@ export function BookStudio({
 
   return (
     <div className="flex flex-col gap-5">
+      {!unlocked && bookExpiresAt ? (
+        <ExpiryCountdown expiresAt={bookExpiresAt} />
+      ) : null}
+
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <h1 className="truncate font-display text-xl text-page-ink sm:text-2xl">
@@ -163,15 +169,19 @@ export function BookStudio({
           ) : null}
 
           <div className="hidden items-center gap-2 lg:flex">
-            <button
-              type="button"
-              onClick={onDownload}
-              disabled={downloading}
-              className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-page-line bg-white px-3 text-xs font-medium text-page-ink-soft transition-colors hover:border-periwinkle hover:text-periwinkle-deep disabled:opacity-60"
-            >
-              <Download aria-hidden className="size-3.5" />
-              {downloading ? "Preparing…" : unlocked ? "Download PDF" : "Download free pages"}
-            </button>
+            {/* No free-pages download — a signed-out reader downloads
+                nothing; the account is what turns this into a file. */}
+            {unlocked ? (
+              <button
+                type="button"
+                onClick={onDownload}
+                disabled={downloading}
+                className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-page-line bg-white px-3 text-xs font-medium text-page-ink-soft transition-colors hover:border-periwinkle hover:text-periwinkle-deep disabled:opacity-60"
+              >
+                <Download aria-hidden className="size-3.5" />
+                {downloading ? "Preparing…" : "Download PDF"}
+              </button>
+            ) : null}
 
             <button
               type="button"
@@ -314,7 +324,8 @@ export function BookStudio({
 
         {/* Download and Order hardcover, on their own below the carousel and
             the tools — the header row above carries these on wider screens,
-            where there is room for them next to the title. */}
+            where there is room for them next to the title. No free-pages
+            download here either: signed out, there is only the order. */}
         <div className="flex flex-col gap-2.5 lg:hidden">
           <button
             type="button"
@@ -323,15 +334,17 @@ export function BookStudio({
           >
             Order hardcover · {formatUsd(price)}
           </button>
-          <button
-            type="button"
-            onClick={onDownload}
-            disabled={downloading}
-            className="inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl border border-page-line bg-white px-4 text-sm font-medium text-page-ink-soft transition-colors hover:border-periwinkle hover:text-periwinkle-deep disabled:opacity-60"
-          >
-            <Download aria-hidden className="size-3.5" />
-            {downloading ? "Preparing…" : unlocked ? "Download PDF" : "Download free pages"}
-          </button>
+          {unlocked ? (
+            <button
+              type="button"
+              onClick={onDownload}
+              disabled={downloading}
+              className="inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl border border-page-line bg-white px-4 text-sm font-medium text-page-ink-soft transition-colors hover:border-periwinkle hover:text-periwinkle-deep disabled:opacity-60"
+            >
+              <Download aria-hidden className="size-3.5" />
+              {downloading ? "Preparing…" : "Download PDF"}
+            </button>
+          ) : null}
         </div>
       </div>
     </div>
@@ -351,16 +364,14 @@ function ReadOnlyAside({ onUnlock }: { onUnlock: () => void }) {
     <div className="rounded-2xl border border-page-line bg-white/95 p-5">
       <h2 className="font-display text-lg text-page-ink">This is your book</h2>
       <p className="mt-1.5 text-sm leading-6 text-page-ink-soft">
-        We wrote every chapter from your photos. Nothing is fixed. Save it to
-        your account and you can change:
+        We wrote every chapter from your photos. Nothing is fixed. Make an
+        account and you can:
       </p>
       <ul className="mt-3 space-y-1.5 text-sm text-page-ink-soft">
         {[
-          "The cover: photo, style, lettering",
-          "Every chapter's title and story",
-          "Which photo opens each chapter",
-          "Any photo on any page",
-          "The dedication",
+          "Edit anything — the cover, every chapter, any photo, the dedication",
+          "Read the whole book, not just the free preview",
+          "Download the PDF and order the hardcover",
         ].map((item) => (
           <li key={item} className="flex gap-2">
             <span aria-hidden className="mt-2 size-1 shrink-0 rounded-full bg-periwinkle" />

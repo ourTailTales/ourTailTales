@@ -64,6 +64,8 @@ type State = {
   freePreviewReady: boolean;
   /** Shareable link to the banked free preview, once it has been uploaded. */
   bookUrl: string | null;
+  /** When the banked free preview stops being kept, or null once there's an account. */
+  bookExpiresAt: Date | null;
   /** Local-draft save state, shown in the header as a saved/saving indicator. */
   saveStatus: "saved" | "saving" | "error";
   /** Customer-uploaded print-ready cover, used instead of the designed one when set. */
@@ -137,6 +139,7 @@ type Actions = {
   goToEditing: () => void;
   setDraft: (draftId: string, draftSecret: string) => void;
   setBookUrl: (bookUrl: string | null) => void;
+  setBookExpiresAt: (bookExpiresAt: Date | null) => void;
   setVideoLibrary: (
     assets: VideoAsset[],
     placements: VideoMemoryPlacement[],
@@ -208,6 +211,7 @@ const initialState: State = {
   draftId: null,
   draftSecret: null,
   bookUrl: null,
+  bookExpiresAt: null,
   videoAssets: [],
   placements: [],
   videoNotice: null,
@@ -479,6 +483,8 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
   setDraft: (draftId, draftSecret) => set({ draftId, draftSecret }),
 
   setBookUrl: (bookUrl) => set({ bookUrl }),
+
+  setBookExpiresAt: (bookExpiresAt) => set({ bookExpiresAt }),
 
   setVideoLibrary: (videoAssets, placements) =>
     set({ videoAssets, placements }),
