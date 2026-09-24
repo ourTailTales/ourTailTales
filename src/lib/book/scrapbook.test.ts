@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { BRAND_PALETTE, sanitizePalette } from "@/lib/book/palette";
 import { paginateBook } from "@/lib/book/pagination";
 import {
   DECOR_EDGE,
@@ -45,6 +46,7 @@ function book() {
   const context: DesignContext = {
     orientationOf: (id) => orientations.get(id),
     captionOf: () => "June 2019",
+    palette: BRAND_PALETTE,
   };
   return { pages: paginateBook(meta, chapters, orientations), context };
 }
@@ -124,5 +126,34 @@ describe("photoCaption", () => {
   it("names the month and year", () => {
     expect(photoCaption(Date.UTC(2019, 5, 15))).toBe("June 2019");
     expect(photoCaption(null)).toBeNull();
+  });
+});
+
+describe("a pet's palette", () => {
+  it("colors the paper, tape, scraps and doodles, and changes nothing else", () => {
+    const { pages, context } = book();
+    const palette = sanitizePalette({
+      paper: "#fbf5ec",
+      ink: "#2b1d16",
+      accent: "#b3362b",
+      tape: ["#f0b9a8", "#f4d6a0", "#cfe0c4", "#e9c7b6"],
+      scraps: ["#f6e7d6", "#f3dcd6", "#e6eee0"],
+      doodle: "#b3362b",
+    });
+    for (const page of pages) {
+      const classic = designPage(page, context);
+      const pets = designPage(page, { ...context, palette });
+      expect(pets.paper).toBe(palette.paper);
+      expect(pets.prints.map((print) => [print.cx, print.cy, print.rotation])).toEqual(
+        classic.prints.map((print) => [print.cx, print.cy, print.rotation]),
+      );
+      for (const print of pets.prints) {
+        for (const tape of print.tapes) expect(palette.tape).toContain(tape.color);
+      }
+      for (const scrap of pets.scraps) expect(palette.scraps).toContain(scrap.color);
+      for (const doodle of pets.doodles) {
+        expect([palette.doodle, palette.accent]).toContain(doodle.color);
+      }
+    }
   });
 });

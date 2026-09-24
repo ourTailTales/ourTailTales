@@ -18,6 +18,7 @@ import {
   defaultNameAnchor,
 } from "@/lib/book/coverLayouts";
 import { verticalAlphaRampPng } from "@/lib/book/gradient-png";
+import { resolvePalette } from "@/lib/book/palette";
 import { coverNameFont, drawable, loadBookFonts } from "@/lib/book/pdf-fonts";
 import { brand, hexToRgb01 } from "@/lib/brand";
 import { expiryHeadline, formatExpiryDate } from "@/lib/drafts/expiry";
@@ -61,6 +62,10 @@ export async function renderCoverPdf(args: {
   pdf.setProducer("ourTailTales");
 
   const fonts = await loadBookFonts(pdf);
+  // The back cover and spine are printed on the book's own paper and ink.
+  const palette = resolvePalette(meta);
+  const paper = brandRgb(palette.paper);
+  const ink = brandRgb(palette.ink);
 
   const page = pdf.addPage([dimensions.width, dimensions.height]);
   page.drawRectangle({
@@ -68,7 +73,7 @@ export async function renderCoverPdf(args: {
     y: 0,
     width: dimensions.width,
     height: dimensions.height,
-    color: PAPER,
+    color: paper,
   });
 
   const spineWidth = Math.max(
@@ -123,7 +128,7 @@ export async function renderCoverPdf(args: {
       y: (dimensions.height - textWidth) / 2,
       font: fonts.serif,
       size: spineSize,
-      color: INK,
+      color: ink,
       rotate: degrees(90),
     });
   }
@@ -143,26 +148,26 @@ export async function renderCoverPdf(args: {
 
   let baseline = dimensions.height / 2 + (quoteLines.length * lineHeight) / 2 - lineHeight;
   for (const line of quoteLines) {
-    drawCenteredText(page, line, fonts.serifItalic, quoteSize, INK, {
+    drawCenteredText(page, line, fonts.serifItalic, quoteSize, ink, {
       x: backCenterX,
       y: baseline,
     });
     baseline -= lineHeight;
   }
 
-  drawCenteredText(page, "•  •  •", fonts.sans, 9, INK, {
+  drawCenteredText(page, "•  •  •", fonts.sans, 9, ink, {
     x: backCenterX,
     y: baseline - 6,
     opacity: 0.4,
   });
 
   const colophonY = BLEED_PT + 0.9 * PT_PER_INCH;
-  drawCenteredText(page, brand.name, fonts.sansBold, 9, INK, {
+  drawCenteredText(page, brand.name, fonts.sansBold, 9, ink, {
     x: backCenterX,
     y: colophonY + 12,
     opacity: 0.8,
   });
-  drawCenteredText(page, brand.domain, fonts.sans, 7.5, INK, {
+  drawCenteredText(page, brand.domain, fonts.sans, 7.5, ink, {
     x: backCenterX,
     y: colophonY,
     opacity: 0.5,

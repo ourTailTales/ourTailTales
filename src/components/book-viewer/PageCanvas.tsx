@@ -25,7 +25,7 @@ import {
   type Print,
   type Tape,
 } from "@/lib/book/scrapbook";
-import { brand } from "@/lib/brand";
+import { resolvePalette } from "@/lib/book/palette";
 import { getFullUrl } from "@/lib/photo/assetStore";
 import type { BookMeta, BookPage, Chapter } from "@/types/book";
 import type { PhotoAsset } from "@/types/photo";
@@ -178,17 +178,34 @@ function PageBody({
   photos: Map<string, PhotoAsset>;
   placeholder: boolean;
 }) {
+  const palette = useMemo(
+    () => resolvePalette(meta),
+    [meta],
+  );
   const design = useMemo(
     () =>
       designPage(page, {
         orientationOf: (id) => photos.get(id)?.orientation,
         captionOf: (id) => photoCaption(photos.get(id)?.capturedAt),
+        palette,
       }),
-    [page, photos],
+    [page, photos, palette],
   );
 
   return (
-    <div className="absolute inset-0" style={{ background: design.paper }}>
+    <div
+      className="absolute inset-0"
+      style={
+        {
+          background: design.paper,
+          // The pet's palette, for every piece of type on the page.
+          "--bk-ink": palette.ink,
+          "--bk-ink-soft": palette.inkSoft,
+          "--bk-ink-faint": palette.inkFaint,
+          "--bk-accent": palette.accent,
+        } as CSSProperties
+      }
+    >
       {design.scraps.map((scrap, index) => (
         <div
           key={`scrap-${index}`}
@@ -225,7 +242,7 @@ function PageBody({
             w: 0.13,
             h: 0.036,
             rotation: -3,
-            color: brand.colors.sage,
+            color: palette.tape[1] ?? palette.tape[0]!,
             opacity: 0.82,
           }}
         />
@@ -259,7 +276,7 @@ function PageWords({
     case "closing":
       return (
         <p
-          className="absolute inset-x-0 text-center text-page-ink"
+          className="absolute inset-x-0 text-center text-(--bk-ink)"
           style={{
             bottom: pt(PAGE_PT * (1 - CLOSING_TEXT.baseline) - CLOSING_TEXT.size * 0.28),
             fontFamily: HAND,
@@ -291,7 +308,7 @@ function TitleWords({ meta }: { meta: BookMeta }) {
   return (
     <>
       <p
-        className="absolute inset-x-0 whitespace-nowrap text-center text-page-ink"
+        className="absolute inset-x-0 whitespace-nowrap text-center text-(--bk-ink)"
         style={{
           bottom: pt(PAGE_PT * (1 - TITLE_TEXT.headingBaseline) - size * 0.28),
           fontFamily: HAND,
@@ -308,7 +325,7 @@ function TitleWords({ meta }: { meta: BookMeta }) {
           style={{ top: pct(TITLE_TEXT.yearsCy), transform: "translateY(-50%)" }}
         >
           <span
-            className="rounded-full border border-periwinkle/80 uppercase text-periwinkle"
+            className="rounded-full border border-(--bk-accent)/80 uppercase text-(--bk-accent)"
             style={{
               fontSize: pt(10),
               letterSpacing: pt(2.4),
@@ -321,7 +338,7 @@ function TitleWords({ meta }: { meta: BookMeta }) {
         </div>
       ) : null}
       <p
-        className="absolute inset-x-0 text-center uppercase text-page-ink-faint"
+        className="absolute inset-x-0 text-center uppercase text-(--bk-ink-faint)"
         style={{
           bottom: pt(PAGE_PT * (1 - TITLE_TEXT.brandBaseline) - 2),
           fontSize: pt(8.5),
@@ -348,14 +365,14 @@ function DedicationWords({ meta }: { meta: BookMeta }) {
         ...boxStyle(DEDICATION_CARD),
         padding: `${pt(30)} ${pt(26)} ${pt(20)}`,
         // Ruled like a note card, one rule per line of words.
-        backgroundImage: `repeating-linear-gradient(to bottom, transparent 0, transparent calc(${pt(leading)} - 1px), rgb(91 104 200 / 0.2) calc(${pt(leading)} - 1px), rgb(91 104 200 / 0.2) ${pt(leading)})`,
+        backgroundImage: `repeating-linear-gradient(to bottom, transparent 0, transparent calc(${pt(leading)} - 1px), color-mix(in srgb, var(--bk-accent) 20%, transparent) calc(${pt(leading)} - 1px), color-mix(in srgb, var(--bk-accent) 20%, transparent) ${pt(leading)})`,
         backgroundOrigin: "content-box",
         backgroundClip: "content-box",
         backgroundPosition: `0 calc(50% + ${pt(size * 0.28)})`,
       }}
     >
       <p
-        className="w-[80%] text-center italic text-page-ink"
+        className="w-[80%] text-center italic text-(--bk-ink)"
         style={{
           fontFamily: SERIF,
           fontWeight: 500,
@@ -377,7 +394,7 @@ function OpenerWords({ chapter }: { chapter: Chapter | undefined }) {
       {chapter ? (
         <div
           aria-hidden
-          className="absolute flex items-center justify-center rounded-full bg-periwinkle text-white"
+          className="absolute flex items-center justify-center rounded-full bg-(--bk-accent) text-white"
           style={{
             left: pct(OPENER_STICKER.cx - OPENER_STICKER.r),
             top: pct(OPENER_STICKER.cy - OPENER_STICKER.r),
@@ -410,7 +427,7 @@ function OpenerWords({ chapter }: { chapter: Chapter | undefined }) {
       >
         {chapter?.dateLabel ? (
           <p
-            className="text-periwinkle"
+            className="text-(--bk-accent)"
             style={{
               fontFamily: HAND,
               fontWeight: 600,
@@ -424,7 +441,7 @@ function OpenerWords({ chapter }: { chapter: Chapter | undefined }) {
         ) : null}
 
         <p
-          className="text-page-ink"
+          className="text-(--bk-ink)"
           style={{
             fontFamily: SERIF,
             fontWeight: 600,
@@ -439,7 +456,7 @@ function OpenerWords({ chapter }: { chapter: Chapter | undefined }) {
         </p>
 
         <p
-          className="overflow-hidden text-page-ink-soft"
+          className="overflow-hidden text-(--bk-ink-soft)"
           style={{
             fontFamily: SERIF,
             fontWeight: 500,
@@ -479,7 +496,7 @@ function openerBlurbLines(chapter: Chapter | undefined): number {
 function ImprintWords({ meta }: { meta: BookMeta }) {
   return (
     <div
-      className="absolute inset-x-0 flex flex-col items-center text-center text-page-ink-faint"
+      className="absolute inset-x-0 flex flex-col items-center text-center text-(--bk-ink-faint)"
       style={{ bottom: pt(PAGE_PT * 0.13) }}
     >
       <p style={{ fontSize: pt(9), letterSpacing: pt(3.4) }}>
@@ -548,7 +565,7 @@ function PrintView({
       )}
       {print.caption ? (
         <p
-          className="absolute inset-x-0 text-center text-page-ink/80"
+          className="absolute inset-x-0 text-center text-(--bk-ink)/80"
           style={{
             bottom: pt(bottomPt * 0.34 - captionSize * 0.26),
             fontFamily: HAND,
