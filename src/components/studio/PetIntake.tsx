@@ -90,6 +90,12 @@ export function PetIntake({
           </p>
         ) : null}
 
+        {attempted && chosen && !name ? (
+          <p role="alert" className="mt-4 text-center text-xs text-red-600">
+            Enter their name to continue.
+          </p>
+        ) : null}
+
         {confirmed ? null : (
           <button
             type="submit"

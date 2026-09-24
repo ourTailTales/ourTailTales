@@ -260,9 +260,7 @@ export function BookStudio({
                 processing={processing}
               />
             </div>
-          ) : (
-            <ReadOnlyAside />
-          )}
+          ) : null}
         </aside>
 
         {/* Download, below the tools on narrow screens. No free-pages
@@ -281,34 +279,6 @@ export function BookStudio({
           ) : null}
         </div>
       </div>
-    </div>
-  );
-}
-
-/**
- * What the side panel says before there is an account.
- *
- * The call to action used to live here as a button of its own; it now floats
- * on the seam between the page and the carousel instead, so this is just the
- * short, honest list of what an account turns on. Naming the tools is what
- * makes the book feel like theirs to change rather than a file they were
- * handed.
- */
-function ReadOnlyAside() {
-  return (
-    <div>
-      <ul className="space-y-1.5 text-sm text-page-ink-soft">
-        {[
-          "Edit the cover, every chapter, any photo, and the dedication",
-          "Read the whole book, not just the free preview",
-          "Download the PDF and order the hardcover",
-        ].map((item) => (
-          <li key={item} className="flex gap-2">
-            <span aria-hidden className="mt-2 size-1 shrink-0 rounded-full bg-periwinkle" />
-            {item}
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }
