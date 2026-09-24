@@ -51,7 +51,7 @@ export function coverFontVar(fontId?: CoverFontId): string {
 
 /** Starting anchor for the pet's name on each layout — the customer can move it. */
 const DEFAULT_NAME_ANCHOR: Record<CoverLayoutId, CoverNameAnchor> = {
-  classic: "bottom-left",
+  classic: "bottom-center",
   minimal: "middle-center",
   editorial: "middle-center",
 };
@@ -64,7 +64,7 @@ export function defaultNameAnchor(layoutId: CoverLayoutId): CoverNameAnchor {
 const ANCHOR_Y: Record<string, number> = {
   top: 14,
   middle: 50,
-  bottom: 86,
+  bottom: 87,
 };
 
 /** Inset (%) from the cover edge for left/right-pinned text. */
@@ -133,7 +133,20 @@ export const COVER_NAME_ANCHORS: {
 ];
 
 /** Default cover-name size (rem) — one notch up from the old default, which read too small. */
-export const DEFAULT_COVER_NAME_SIZE = 2.5;
+export const DEFAULT_COVER_NAME_SIZE = 3.75;
+
+/**
+ * The classic cover's scrim, bottom (0) to top (1) of its band, which covers
+ * the bottom 36% of the cover. One definition for the CSS gradient and the
+ * PDF's embedded ramp, so the printed cover darkens exactly like the screen.
+ */
+export const CLASSIC_SCRIM_HEIGHT = 0.36;
+export const CLASSIC_SCRIM_STOPS = [
+  { at: 0, alpha: 0.72 },
+  { at: 0.42, alpha: 0.42 },
+  { at: 0.78, alpha: 0.1 },
+  { at: 1, alpha: 0 },
+] as const;
 
 /** Layouts whose name lands on a light (cream/paper) surface instead of
  * the photo — those need dark ink text instead of the usual white. None of

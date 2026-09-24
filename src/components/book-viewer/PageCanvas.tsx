@@ -4,7 +4,7 @@ import { useMemo } from "react";
 
 import { CoverFrontArt, coverImageUrl } from "@/components/book-viewer/CoverArt";
 import { BLEED_INCHES, FIXED_SLOTS, LAYOUTS, PAGE_INCHES, TRIM_INCHES } from "@/lib/book/layouts";
-import { CLOSING_LINE, possessivePetName } from "@/lib/book/pagination";
+import { CLOSING_LINE, possessivePetName, titlePageHeading } from "@/lib/book/pagination";
 import { getFullUrl } from "@/lib/photo/assetStore";
 import type { BookMeta, BookPage, Chapter, Slot } from "@/types/book";
 import type { PhotoAsset } from "@/types/photo";
@@ -173,7 +173,7 @@ function TitlePage({
         className="absolute inset-x-0 text-center font-display text-page-ink"
         style={{ bottom: pt(PAGE_PT * 0.74), fontSize: pt(46), lineHeight: 1 }}
       >
-        {meta.petName || "Their Story"}
+        {titlePageHeading(meta.petName)}
       </p>
       {years ? (
         <p

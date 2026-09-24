@@ -11,10 +11,13 @@ import { CLOSING_LINE } from "@/lib/book/pagination";
 import {
   DEFAULT_COVER_FONT,
   DEFAULT_COVER_LAYOUT,
+  CLASSIC_SCRIM_HEIGHT,
+  CLASSIC_SCRIM_STOPS,
   DEFAULT_COVER_NAME_SIZE,
   coverTextTone,
   defaultNameAnchor,
 } from "@/lib/book/coverLayouts";
+import { verticalAlphaRampPng } from "@/lib/book/gradient-png";
 import { brand, hexToRgb01 } from "@/lib/brand";
 import { expiryHeadline, formatExpiryDate } from "@/lib/drafts/expiry";
 import * as assetStore from "@/lib/photo/assetStore";
@@ -30,7 +33,6 @@ const PAPER = brandRgb(brand.colors.white);
 const INK = brandRgb(brand.colors.ink);
 const PAPER_SOFT = brandRgb(brand.colors.memoryBlue);
 const SCRIM = brandRgb(brand.colors.ink);
-const SCRIM_MAX_OPACITY = 0.72;
 
 /** Below this a spine is too narrow to carry legible type. */
 const MIN_SPINE_TEXT_PT = 22;
@@ -244,13 +246,23 @@ function drawCoverName(
 ): void {
   const { meta, layoutId, nameFont, artLeft, artWidth, artHeight } = args;
 
-  const petName = meta.petName || "Type name here";
+  const petName = meta.petName.trim();
+  // An unnamed book prints no name. The editor's "Type name here" prompt
+  // used to end up in the file.
+  if (!petName) return;
   const anchor = meta.coverNameAnchor ?? defaultNameAnchor(layoutId);
-  const nameSize = (meta.coverNameSize ?? DEFAULT_COVER_NAME_SIZE) * 15;
   const nameColor = coverTextTone(layoutId) === "dark" ? INK : PAPER;
 
+  // Large, but never wider than the cover: a long name steps down to fit
+  // rather than running off the edge.
+  let nameSize = (meta.coverNameSize ?? DEFAULT_COVER_NAME_SIZE) * 15;
+  const maxWidth = artWidth * 0.84;
+  while (nameFont.widthOfTextAtSize(petName, nameSize) > maxWidth && nameSize > 14) {
+    nameSize -= 1;
+  }
+
   const [row, col] = anchor.split("-") as [string, string];
-  const yPct = row === "top" ? 14 : row === "bottom" ? 86 : 50;
+  const yPct = row === "top" ? 14 : row === "bottom" ? 87 : 50;
   const EDGE_INSET_PCT = 8;
   const y = artHeight - (yPct / 100) * artHeight;
 
@@ -379,7 +391,7 @@ async function drawCoverLayout(
     default: {
       const rect: Rect = { x: artLeft, y: 0, width: artWidth, height: artHeight };
       await drawPhotoOrFallback(pdf, page, coverFile, targetPpi, rect);
-      drawScrim(page, artLeft, artWidth, artHeight * 0.36, 0);
+      await drawScrim(pdf, page, artLeft, artWidth, artHeight * CLASSIC_SCRIM_HEIGHT, 0);
       return;
     }
   }
@@ -414,34 +426,22 @@ async function drawPhotoOrFallback(
 }
 
 /**
- * PDF has no portable gradient primitive, so the scrim is stacked bands whose
- * opacity eases in. A single flat rectangle leaves a hard line printed across
- * the front cover. `baseY` lets the band sit above an inset photo's bottom
- * edge instead of always the page bottom.
+ * The classic scrim: one embedded alpha ramp stretched over the band. It used
+ * to be 28 stacked translucent bands, and wherever two overlapped the opacity
+ * doubled, so the "gradient" printed as a set of dark stripes.
  */
-function drawScrim(
+async function drawScrim(
+  pdf: PDFDocument,
   page: PDFPage,
   x: number,
   width: number,
   height: number,
   baseY: number,
-): void {
-  const bands = 28;
-  const bandHeight = height / bands;
-
-  for (let index = 0; index < bands; index += 1) {
-    // Bottom band is darkest; the top fades to nothing.
-    const t = 1 - index / bands;
-    page.drawRectangle({
-      x,
-      y: baseY + index * bandHeight,
-      width,
-      // Overlap by a hair so band seams never show as light lines.
-      height: bandHeight + 0.5,
-      color: SCRIM,
-      opacity: SCRIM_MAX_OPACITY * t * t,
-    });
-  }
+): Promise<void> {
+  const image = await pdf.embedPng(
+    verticalAlphaRampPng(hexToRgb01(brand.colors.ink), [...CLASSIC_SCRIM_STOPS]),
+  );
+  page.drawImage(image, { x, y: baseY, width, height });
 }
 
 function drawCenteredText(

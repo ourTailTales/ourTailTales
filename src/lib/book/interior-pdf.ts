@@ -9,7 +9,7 @@ import {
 
 import { drawExpiryNotice, drawFrontCoverPage } from "@/lib/book/cover-pdf";
 import { BLEED_INCHES, FIXED_SLOTS, LAYOUTS, PAGE_INCHES, TRIM_INCHES } from "@/lib/book/layouts";
-import { CLOSING_LINE, possessivePetName } from "@/lib/book/pagination";
+import { CLOSING_LINE, possessivePetName, titlePageHeading } from "@/lib/book/pagination";
 import { brand, hexToRgb01 } from "@/lib/brand";
 import * as assetStore from "@/lib/photo/assetStore";
 import { rasterizeForPlacement } from "@/lib/photo/pipeline";
@@ -321,7 +321,7 @@ async function drawPage(context: DrawContext): Promise<void> {
 async function drawTitlePage(context: DrawContext): Promise<void> {
   const { page, meta, fonts } = context;
 
-  drawCentered(page, meta.petName || "Their Story", {
+  drawCentered(page, titlePageHeading(meta.petName), {
     font: fonts.display,
     size: 46,
     color: INK,

@@ -2,6 +2,7 @@
 
 import { UploadCloud } from "lucide-react";
 
+import { CLASSIC_SCRIM_HEIGHT, CLASSIC_SCRIM_STOPS } from "@/lib/book/coverLayouts";
 import type { CoverLayoutId } from "@/types/book";
 
 const DOG_SILHOUETTE_SRC = "/marketing/dog_silhoutte.png";
@@ -88,10 +89,12 @@ export function CoverLayoutChrome({
           <Photo url={photoUrl} />
           <div
             aria-hidden
-            className="absolute inset-x-0 bottom-0 h-[36%]"
+            className="absolute inset-x-0 bottom-0"
             style={{
-              background:
-                "linear-gradient(to top, rgb(37 42 58 / 0.72) 0%, rgb(37 42 58 / 0.42) 42%, rgb(37 42 58 / 0.1) 78%, transparent 100%)",
+              height: `${CLASSIC_SCRIM_HEIGHT * 100}%`,
+              background: `linear-gradient(to top, ${CLASSIC_SCRIM_STOPS.map(
+                (stop) => `rgb(37 42 58 / ${stop.alpha}) ${stop.at * 100}%`,
+              ).join(", ")})`,
             }}
           />
         </div>

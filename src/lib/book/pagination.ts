@@ -164,3 +164,9 @@ export function withoutEmptyDedication(
     .filter((page) => page.kind !== "dedication")
     .map((page, index) => ({ ...page, pageNumber: index + 1 }));
 }
+
+/** The title page's heading: "For Biscuit". */
+export function titlePageHeading(petName: string): string {
+  const name = petName.trim();
+  return name ? `For ${name}` : "Their Story";
+}
