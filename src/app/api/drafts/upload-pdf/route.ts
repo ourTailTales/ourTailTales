@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { previewExpiryFrom } from "@/lib/drafts/expiry";
 import { resolveDraft } from "@/lib/drafts/resolve";
 import { routeError } from "@/lib/env";
 import { draftPdfPath, type DraftPdfKind } from "@/lib/drafts/storage";
@@ -51,8 +52,6 @@ import { PREVIEW_BUCKET, supabaseAdmin } from "@/lib/supabase/server";
  * reads as "not a book" and redirects. 60s is the Hobby ceiling.
  */
 export const maxDuration = 60;
-
-const DAYS_UNTIL_EXPIRY = 30;
 
 /**
  * Which book is being banked.
@@ -199,8 +198,7 @@ export async function PUT(request: Request): Promise<Response> {
     }
 
     const now = new Date();
-    const expiresAt = new Date(now);
-    expiresAt.setUTCDate(expiresAt.getUTCDate() + DAYS_UNTIL_EXPIRY);
+    const expiresAt = previewExpiryFrom(now);
 
     // A draft that has already been paid for keeps whatever it has: re-running
     // this must never re-watermark a bought book or revive its expiry.

@@ -6,8 +6,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { track } from "@/lib/analytics";
 
 import { CoverCanvas, PageCanvas } from "@/components/book-viewer/PageCanvas";
+import { ExpiryBanner } from "@/components/ExpiryBanner";
 import { PageZoom } from "@/components/book-viewer/PageZoom";
-import { ExpiryCountdown } from "@/components/studio/ExpiryCountdown";
 import { LockedWall } from "@/components/studio/LockedWall";
 import { PageFilmstrip } from "@/components/studio/PageFilmstrip";
 import { PageInspector } from "@/components/studio/PageInspector";
@@ -117,7 +117,19 @@ export function BookStudio({
   return (
     <div className="flex flex-col gap-5">
       {!unlocked && bookExpiresAt ? (
-        <ExpiryCountdown expiresAt={bookExpiresAt} />
+        <ExpiryBanner
+          expiresAt={bookExpiresAt}
+          petName={meta.petName}
+          action={
+            <button
+              type="button"
+              onClick={onUnlock}
+              className="inline-flex min-h-11 items-center justify-center rounded-xl bg-periwinkle px-6 text-sm font-semibold text-white shadow-lift transition-colors hover:bg-periwinkle-deep"
+            >
+              Create my free account
+            </button>
+          }
+        />
       ) : null}
 
       {notice ? (

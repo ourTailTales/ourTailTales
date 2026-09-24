@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { daysUntilExpiry, expiryLabel } from "@/lib/drafts/expiry";
+import {
+  DRAFT_TTL_DAYS,
+  daysUntilExpiry,
+  expiryHeadline,
+  expiryLabel,
+  previewExpiryFrom,
+} from "@/lib/drafts/expiry";
 
 const now = new Date("2026-09-23T12:00:00Z");
 
@@ -33,5 +39,25 @@ describe("expiryLabel", () => {
     expect(label).not.toContain("hurry");
     expect(label).not.toContain("last chance");
     expect(label).not.toContain("!");
+  });
+});
+
+describe("expiryHeadline", () => {
+  const now = new Date("2026-09-24T12:00:00Z");
+
+  it("shouts the day count", () => {
+    expect(expiryHeadline(new Date("2026-09-29T12:00:00Z"), now)).toBe(
+      "EXPIRES IN 5 DAYS",
+    );
+    expect(expiryHeadline(new Date("2026-09-25T06:00:00Z"), now)).toBe(
+      "EXPIRES TOMORROW",
+    );
+  });
+});
+
+describe("previewExpiryFrom", () => {
+  it("is DRAFT_TTL_DAYS after the start", () => {
+    const start = new Date("2026-09-24T12:00:00Z");
+    expect(daysUntilExpiry(previewExpiryFrom(start), start)).toBe(DRAFT_TTL_DAYS);
   });
 });

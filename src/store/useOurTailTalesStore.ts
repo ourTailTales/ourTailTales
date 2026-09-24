@@ -609,6 +609,10 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
       saveStatus: "saved",
       customCover: restored.customCover ?? null,
       originalBook: restored.originalBook ?? null,
+      bookExpiresAt: restored.bookExpiresAt
+        ? new Date(restored.bookExpiresAt)
+        : null,
+      bookUrl: restored.bookUrl ?? null,
     });
     return true;
   },

@@ -16,6 +16,7 @@ import {
   defaultNameAnchor,
 } from "@/lib/book/coverLayouts";
 import { brand, hexToRgb01 } from "@/lib/brand";
+import { expiryHeadline, formatExpiryDate } from "@/lib/drafts/expiry";
 import * as assetStore from "@/lib/photo/assetStore";
 import { rasterizeForPlacement } from "@/lib/photo/pipeline";
 import type { BookMeta, CoverFontId, CoverLayoutId } from "@/types/book";
@@ -543,4 +544,62 @@ function wrap(
   }
   if (current) lines.push(current);
   return lines;
+}
+
+const WARNING_RED = rgb(0.86, 0.15, 0.15);
+
+/**
+ * "EXPIRES IN 30 DAYS", in big red letters across the top of the teaser's
+ * cover, with a line under it saying how to keep the book.
+ *
+ * A file cannot count down, so the headline is true on the day it was made
+ * and the subtitle carries the absolute date, which stays true.
+ */
+export async function drawExpiryNotice(
+  pdf: PDFDocument,
+  page: PDFPage,
+  args: { expiresAt: Date; top: number; left: number; width: number },
+): Promise<void> {
+  const { expiresAt, top, left, width } = args;
+  const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const regular = await pdf.embedFont(StandardFonts.Helvetica);
+
+  const headline = expiryHeadline(expiresAt);
+  const subtitle = `Create a free account at ${brand.domain} to save this book — it expires ${formatExpiryDate(expiresAt)}.`;
+
+  const bandHeight = 92;
+  page.drawRectangle({
+    x: left,
+    y: top - bandHeight,
+    width,
+    height: bandHeight,
+    color: PAPER,
+    opacity: 0.94,
+  });
+
+  const maxWidth = width * 0.9;
+  let headlineSize = 40;
+  while (bold.widthOfTextAtSize(headline, headlineSize) > maxWidth && headlineSize > 18) {
+    headlineSize -= 1;
+  }
+  let subtitleSize = 11;
+  while (regular.widthOfTextAtSize(subtitle, subtitleSize) > maxWidth && subtitleSize > 7) {
+    subtitleSize -= 0.5;
+  }
+
+  const centerX = left + width / 2;
+  page.drawText(headline, {
+    x: centerX - bold.widthOfTextAtSize(headline, headlineSize) / 2,
+    y: top - 22 - headlineSize * 0.72,
+    size: headlineSize,
+    font: bold,
+    color: WARNING_RED,
+  });
+  page.drawText(subtitle, {
+    x: centerX - regular.widthOfTextAtSize(subtitle, subtitleSize) / 2,
+    y: top - bandHeight + 16,
+    size: subtitleSize,
+    font: regular,
+    color: INK,
+  });
 }

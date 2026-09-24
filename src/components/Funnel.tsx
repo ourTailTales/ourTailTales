@@ -22,6 +22,7 @@ import {
   type Ingestion,
 } from "@/lib/photo/process";
 import { makeVideoPreview } from "@/lib/photo/videoPreview";
+import { previewExpiryFrom } from "@/lib/drafts/expiry";
 import { persistLocalDraft } from "@/lib/drafts/local";
 import { saveBookProject } from "@/lib/books/cloud";
 import { bankBook } from "@/lib/drafts/upload";
@@ -175,6 +176,7 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
     store.photos,
     store.albumVideos,
     store.leadEmail,
+    store.bookExpiresAt,
   ]);
 
   // An edit followed by a close inside the debounce window was simply lost,
@@ -359,70 +361,58 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
     );
   }, []);
 
-  /**
-   * Renders the free ten pages, banks them, and mails them.
-   *
-   * Everything here is best effort and none of it is awaited by the customer:
-   * the book is already on their screen by the time this runs, so a failed
-   * upload costs them the email copy, not the book. The email exists for the
-   * person who closes the tab — it is the way back in, not the way through.
-   */
+  /** One teaser at a time: the reload check and a fresh book can race. */
+  const teaserInFlight = useRef(false);
   const deliverTeaser = useCallback(async (): Promise<void> => {
     const state = useOurTailTalesStore.getState();
-    if (state.pages.length === 0) return;
-
-    const teaser = summarizeTeaser(state.pages, state.chapters);
-    const pdf = await renderTeaserPdf({
-      pages: state.pages,
-      chapters: state.chapters,
-      meta: state.meta,
-      photos: photoMapOf(state.photos),
-    });
-
-    const banked = await bankBook({
-      pdf,
-      petName: state.meta.petName,
-      chapterCount: state.chapterCount,
-      kind: "teaser",
-      email: state.leadEmail,
-    });
-    useOurTailTalesStore.getState().setBookUrl(banked.url);
-    useOurTailTalesStore
-      .getState()
-      .setBookExpiresAt(banked.expiresAt ? new Date(banked.expiresAt) : null);
-    track("free_pdf_stored", { chapters: state.chapterCount });
-
-    const email = useOurTailTalesStore.getState().leadEmail;
-    if (!email) return;
-
-    const draft = loadStoredDraft(email);
-    if (!draft) return;
-
-    const response = await fetch("/api/email/send-sample", {
-      method: "POST",
-      headers: {
-        ...draftHeaders(draft.draftId, draft.secret),
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        email,
-        petName: state.meta.petName,
-        hiddenChapters: teaser.hiddenChapters,
-        hiddenPages: teaser.hiddenPages,
-      }),
-    });
-    const data = (await response.json().catch(() => ({}))) as {
-      sent?: boolean;
-      error?: string;
-    };
-    if (!response.ok || !data.sent) {
-      captureClientException(
-        new Error(data.error ?? "The book email was not sent."),
-      );
-      return;
+    if (state.pages.length === 0 || teaserInFlight.current) return;
+    teaserInFlight.current = true;
+    try {
+      await deliverTeaserOnce();
+    } finally {
+      teaserInFlight.current = false;
     }
-    track("teaser_email_sent", { chapters: state.chapterCount });
   }, []);
+
+  /**
+   * The expiry banner must be on every preview, including one reopened after
+   * a reload. A book saved before the browser kept the expiry has none, so
+   * ask the server once; a book that was never banked at all (the upload
+   * failed, or the tab closed first) is banked now, which starts its clock.
+   */
+  const expiryChecked = useRef<string | null>(null);
+  useEffect(() => {
+    if (!localReady || expiryChecked.current === emailKey) return;
+    expiryChecked.current = emailKey;
+
+    const state = useOurTailTalesStore.getState();
+    if (state.bookExpiresAt || state.pages.length === 0) return;
+    if (state.funnelState !== "editing") return;
+
+    const draft = loadStoredDraft(state.leadEmail);
+    void (async () => {
+      if (draft) {
+        const response = await fetch("/api/drafts/status", {
+          headers: draftHeaders(draft.draftId, draft.secret),
+        });
+        const data = (await response.json().catch(() => ({}))) as {
+          banked?: boolean;
+          expiresAt?: string | null;
+        };
+        if (!response.ok) return;
+        if (data.expiresAt) {
+          useOurTailTalesStore
+            .getState()
+            .setBookExpiresAt(new Date(data.expiresAt));
+          return;
+        }
+        // Banked with no expiry: bought, or kept by an account. Nothing
+        // is running out.
+        if (data.banked) return;
+      }
+      await deliverTeaser();
+    })().catch((error: unknown) => captureClientException(error));
+  }, [localReady, emailKey, deliverTeaser]);
 
   const handleCreateStory = useCallback(async () => {
     const state = useOurTailTalesStore.getState();
@@ -558,7 +548,10 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
       };
       const blob = unlocked
         ? await renderFullPreviewPdf(args)
-        : await renderTeaserPdf(args);
+        : await renderTeaserPdf({
+            ...args,
+            expiresAt: state.bookExpiresAt ?? previewExpiryFrom(),
+          });
 
       downloadBlob(
         blob,
@@ -733,6 +726,73 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
       )}
     </>
   );
+}
+
+/**
+ * Renders the free ten pages, banks them, and mails them.
+ *
+ * Everything here is best effort and none of it is awaited by the customer:
+ * the book is already on their screen by the time this runs, so a failed
+ * upload costs them the email copy, not the book. The email exists for the
+ * person who closes the tab — it is the way back in, not the way through.
+ */
+async function deliverTeaserOnce(): Promise<void> {
+  const state = useOurTailTalesStore.getState();
+  if (state.pages.length === 0) return;
+
+  const teaser = summarizeTeaser(state.pages, state.chapters);
+  const pdf = await renderTeaserPdf({
+    pages: state.pages,
+    chapters: state.chapters,
+    meta: state.meta,
+    photos: photoMapOf(state.photos),
+    // The server starts the same clock when this lands, a moment from now.
+    expiresAt: state.bookExpiresAt ?? previewExpiryFrom(),
+  });
+
+  const banked = await bankBook({
+    pdf,
+    petName: state.meta.petName,
+    chapterCount: state.chapterCount,
+    kind: "teaser",
+    email: state.leadEmail,
+  });
+  useOurTailTalesStore.getState().setBookUrl(banked.url);
+  useOurTailTalesStore
+    .getState()
+    .setBookExpiresAt(banked.expiresAt ? new Date(banked.expiresAt) : null);
+  track("free_pdf_stored", { chapters: state.chapterCount });
+
+  const email = useOurTailTalesStore.getState().leadEmail;
+  if (!email) return;
+
+  const draft = loadStoredDraft(email);
+  if (!draft) return;
+
+  const response = await fetch("/api/email/send-sample", {
+    method: "POST",
+    headers: {
+      ...draftHeaders(draft.draftId, draft.secret),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      email,
+      petName: state.meta.petName,
+      hiddenChapters: teaser.hiddenChapters,
+      hiddenPages: teaser.hiddenPages,
+    }),
+  });
+  const data = (await response.json().catch(() => ({}))) as {
+    sent?: boolean;
+    error?: string;
+  };
+  if (!response.ok || !data.sent) {
+    captureClientException(
+      new Error(data.error ?? "The book email was not sent."),
+    );
+    return;
+  }
+  track("teaser_email_sent", { chapters: state.chapterCount });
 }
 
 function downloadBlob(blob: Blob, fileName: string): void {

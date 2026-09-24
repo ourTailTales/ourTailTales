@@ -65,6 +65,13 @@ type StoredDraft = {
   previewPdf?: Blob;
   /** The book as generated, so "reset to original" survives a reload. */
   originalBook?: BookSnapshot;
+  /**
+   * When the banked free preview expires, and its link. Kept here so the
+   * expiry banner is still on screen after a reload — the upload that
+   * returns them only runs once, when the story is first written.
+   */
+  bookExpiresAt?: string | null;
+  bookUrl?: string | null;
 };
 
 export type LocalSaveResult = {
@@ -87,6 +94,8 @@ export type RestoredLocalDraft = Pick<
   | "chapters"
   | "pages"
   | "leadEmail"
+  | "bookExpiresAt"
+  | "bookUrl"
 > & {
   photos: PhotoAsset[];
   albumVideos: {
@@ -233,6 +242,8 @@ export async function persistLocalDraft(
     customCover,
     previewPdf: previewPdf ?? activePreviewPdf ?? undefined,
     originalBook: state.originalBook ?? undefined,
+    bookExpiresAt: state.bookExpiresAt?.toISOString() ?? null,
+    bookUrl: state.bookUrl,
   };
 
   const previousKey = activeDraftKey;
@@ -370,6 +381,8 @@ export async function restoreLocalDraft(
     customCover,
     previewPdf: stored.previewPdf,
     originalBook: stored.originalBook ?? null,
+    bookExpiresAt: stored.bookExpiresAt ?? null,
+    bookUrl: stored.bookUrl ?? null,
     missingPhotos,
   };
   });

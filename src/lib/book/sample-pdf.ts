@@ -27,6 +27,8 @@ export async function renderTeaserPdf(args: {
   chapters: Chapter[];
   meta: BookMeta;
   photos: Map<string, PhotoAsset>;
+  /** When the banked preview expires; printed in red across the cover. */
+  expiresAt?: Date;
   onProgress?: (completed: number, total: number) => void;
 }): Promise<Blob> {
   const summary = summarizeTeaser(args.pages, args.chapters);
@@ -41,6 +43,7 @@ export async function renderTeaserPdf(args: {
     jpegQuality: 0.82,
     frontCover: true,
     cropToTrim: true,
+    expiresAt: args.expiresAt,
     lockedNotice: summary.complete
       ? undefined
       : {

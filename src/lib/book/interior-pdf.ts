@@ -7,7 +7,7 @@ import {
   type PDFPage,
 } from "pdf-lib";
 
-import { drawFrontCoverPage } from "@/lib/book/cover-pdf";
+import { drawExpiryNotice, drawFrontCoverPage } from "@/lib/book/cover-pdf";
 import { BLEED_INCHES, FIXED_SLOTS, LAYOUTS, PAGE_INCHES, TRIM_INCHES } from "@/lib/book/layouts";
 import { CLOSING_LINE, possessivePetName } from "@/lib/book/pagination";
 import { brand, hexToRgb01 } from "@/lib/brand";
@@ -70,6 +70,12 @@ export type InteriorRenderOptions = {
   frontCover?: boolean;
   /** Close on a page saying what the rest of the book holds. */
   lockedNotice?: LockedNotice;
+  /**
+   * Stamp "EXPIRES IN N DAYS" across the top of the front cover. Free
+   * previews only: the file is the one copy of the book many people keep,
+   * and it has to say plainly that the book behind it will not wait.
+   */
+  expiresAt?: Date;
   placements?: VideoMemoryPlacement[];
   onProgress?: (completed: number, total: number) => void;
 };
@@ -109,6 +115,7 @@ export async function renderInteriorPdf(
     cropToTrim = false,
     frontCover = false,
     lockedNotice,
+    expiresAt,
     placements = [],
     onProgress,
   } = options;
@@ -138,6 +145,15 @@ export async function renderInteriorPdf(
   if (frontCover) {
     const page = addPage();
     await drawFrontCoverPage(pdf, page, { meta, targetPpi });
+    if (expiresAt) {
+      await drawExpiryNotice(pdf, page, {
+        expiresAt,
+        // Inside the trim, so cropping never cuts the warning in half.
+        top: PAGE_PT - (cropToTrim ? BLEED_PT : 0),
+        left: cropToTrim ? BLEED_PT : 0,
+        width: cropToTrim ? TRIM_PT : PAGE_PT,
+      });
+    }
     await nextTick();
   }
 

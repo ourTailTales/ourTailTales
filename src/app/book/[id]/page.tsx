@@ -1,14 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { CalendarClock, Download, ExternalLink, LockKeyhole } from "lucide-react";
+import { Download, ExternalLink, LockKeyhole } from "lucide-react";
 
 import { BrandMark } from "@/components/BrandMark";
+import { ExpiryBanner } from "@/components/ExpiryBanner";
 import { SavedBookSignIn } from "@/components/auth/SavedBookSignIn";
 import { BookViewAnalytics } from "@/components/create/BookViewAnalytics";
 import { UpgradeActions } from "./UpgradeActions";
 import { loadDraftPreview, type DraftPreview } from "@/lib/drafts/preview";
-import { expiryLabel } from "@/lib/drafts/expiry";
 import { BASE_PRICE, DIGITAL_PRICE } from "@/lib/pricing";
 import { createAuthServerClient } from "@/lib/supabase/auth-server";
 
@@ -212,6 +212,23 @@ function FreeBookPreview({
         </Link>
       </header>
 
+      {draft.expiresAt && !draft.purchased && !settling ? (
+        <div className="mt-8">
+          <ExpiryBanner
+            expiresAt={draft.expiresAt}
+            petName={draft.petName ?? ""}
+            action={
+              <Link
+                href={`/claim/${draft.draftId}?k=${encodeURIComponent(secret)}`}
+                className="inline-flex min-h-11 items-center justify-center rounded-xl bg-periwinkle px-6 text-sm font-semibold text-white shadow-lift hover:bg-periwinkle-deep"
+              >
+                Create my free account
+              </Link>
+            }
+          />
+        </div>
+      ) : null}
+
       <section className="mt-8 overflow-hidden rounded-[1.75rem] border border-white/80 bg-white/95 shadow-[0_24px_70px_-30px_rgb(25_32_58/0.55)]">
         <div className="flex flex-col gap-5 border-b border-page-line p-5 sm:flex-row sm:items-center sm:justify-between sm:p-7">
           <div>
@@ -226,12 +243,6 @@ function FreeBookPreview({
                 ? `${draft.chapterCount} chapters`
                 : "Their life, in chapters."}
             </p>
-            {draft.expiresAt && (
-              <p className="mt-2 flex items-center gap-1.5 text-xs text-page-ink-faint">
-                <CalendarClock aria-hidden className="size-3.5" />
-                {expiryLabel(draft.expiresAt)} · {formatExpiry(draft.expiresAt)}
-              </p>
-            )}
           </div>
           <a
             href={draft.pdfUrl}
@@ -302,11 +313,3 @@ function FreeBookPreview({
   );
 }
 
-function formatExpiry(date: Date): string {
-  return new Intl.DateTimeFormat("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-    timeZone: "UTC",
-  }).format(date);
-}
