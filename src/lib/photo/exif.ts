@@ -1,4 +1,6 @@
-import exifr from "exifr";
+// The lite bundle, not the bare "exifr" specifier — see
+// src/types/exifr-lite.d.ts for why.
+import exifr from "exifr/dist/lite.esm.js";
 
 export type ExifFacts = {
   capturedAt: number | null;

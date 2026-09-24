@@ -109,90 +109,16 @@ export function BookStudio({
 
   if (!slide) return null;
 
-  const wall = lockWallIndex(slides);
-  const readableCount = wall === null ? slides.length : wall;
+  // Only where "Continue to Edit" ever meant anything: a free page, read by
+  // someone with no account yet. A locked page already makes its own case in
+  // LockedWall, and an unlocked account has nothing left to continue to.
+  const showContinueToEdit = !slide.locked && !unlocked;
 
   return (
     <div className="flex flex-col gap-5">
       {!unlocked && bookExpiresAt ? (
         <ExpiryCountdown expiresAt={bookExpiresAt} />
       ) : null}
-
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="truncate font-display text-xl text-page-ink sm:text-2xl">
-            {meta.petName.trim() || "Your book"}
-          </h1>
-          <p className="mt-0.5 text-xs text-page-ink-faint">
-            {slide.label} · page {position + 1} of {slides.length}
-            {unlocked ? "" : ` · ${readableCount} readable for now`}
-          </p>
-        </div>
-
-        {/* Reset stays here at every width — it is rare and small. Download
-            and Order hardcover move to their own block below the carousel
-            and the tools on narrow screens, so this row is their desktop
-            copy only. */}
-        <div className="flex flex-wrap items-center gap-2">
-          {unlocked && originalBook ? (
-            confirmReset ? (
-              <span className="flex items-center gap-2 text-xs text-page-ink-soft">
-                Undo every change?
-                <button
-                  type="button"
-                  onClick={() => {
-                    resetToOriginal();
-                    setConfirmReset(false);
-                  }}
-                  className="rounded-lg border border-page-line bg-white px-2.5 py-1.5 font-semibold text-page-ink hover:border-periwinkle"
-                >
-                  Yes, reset
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConfirmReset(false)}
-                  className="underline underline-offset-4 hover:text-periwinkle-deep"
-                >
-                  Cancel
-                </button>
-              </span>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setConfirmReset(true)}
-                className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-page-line bg-white px-3 text-xs font-medium text-page-ink-soft transition-colors hover:border-periwinkle hover:text-periwinkle-deep"
-              >
-                <RotateCcw aria-hidden className="size-3.5" />
-                Reset to original
-              </button>
-            )
-          ) : null}
-
-          <div className="hidden items-center gap-2 lg:flex">
-            {/* No free-pages download — a signed-out reader downloads
-                nothing; the account is what turns this into a file. */}
-            {unlocked ? (
-              <button
-                type="button"
-                onClick={onDownload}
-                disabled={downloading}
-                className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-page-line bg-white px-3 text-xs font-medium text-page-ink-soft transition-colors hover:border-periwinkle hover:text-periwinkle-deep disabled:opacity-60"
-              >
-                <Download aria-hidden className="size-3.5" />
-                {downloading ? "Preparing…" : "Download PDF"}
-              </button>
-            ) : null}
-
-            <button
-              type="button"
-              onClick={onCheckout}
-              className="inline-flex min-h-10 items-center rounded-lg bg-periwinkle px-4 text-sm font-semibold text-white shadow-lift transition-colors hover:bg-periwinkle-deep"
-            >
-              Order hardcover · {formatUsd(price)}
-            </button>
-          </div>
-        </div>
-      </header>
 
       {notice ? (
         <p
@@ -203,14 +129,14 @@ export function BookStudio({
         </p>
       ) : null}
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_23rem] lg:items-start">
+      <div className="flex flex-col gap-5">
         {/* Viewport — one page at a time, at every width. The carousel's
             peek-at-the-neighbors treatment did not render the page correctly
             once it was squeezed to a partial-width slide on a phone, so this
             goes back to the same full-width page and chevrons on mobile as
             on desktop. */}
-        <div className="lg:col-start-1 lg:row-start-1">
-          <div className="relative mx-auto w-full max-w-[34rem]">
+        <div className="relative">
+          <div className="relative mx-auto w-full max-w-[min(100%,calc(100dvh-9rem))]">
             <div className="overflow-hidden rounded-xl bg-white shadow-[0_18px_50px_-24px_rgb(25_32_58/0.5)] ring-1 ring-page-line">
               <div className={slide.locked ? "blur-[7px] saturate-50" : ""}>
                 {slide.page ? (
@@ -281,11 +207,25 @@ export function BookStudio({
               onClose={() => setZoomed(false)}
             />
           ) : null}
+
+          {/* Floating on the seam between the page and the carousel below it
+              — the moment someone has just been reading is the moment this
+              is most worth catching their eye, not a panel further down the
+              page they may never scroll to. */}
+          {showContinueToEdit ? (
+            <button
+              type="button"
+              onClick={onUnlock}
+              className="absolute bottom-0 left-1/2 z-20 inline-flex -translate-x-1/2 translate-y-1/2 items-center justify-center whitespace-nowrap rounded-full bg-periwinkle px-6 py-3 text-sm font-semibold text-white shadow-lift transition-colors hover:bg-periwinkle-deep sm:px-8 sm:text-base"
+            >
+              Signup and Continue to Edit
+            </button>
+          ) : null}
         </div>
 
         {/* Filmstrip — under the page on every width, so switching pages and
             looking at one stay next to each other. */}
-        <div className="-mx-5 overflow-hidden sm:-mx-8 lg:col-start-1 lg:row-start-2 lg:mx-0 lg:rounded-xl lg:border lg:border-page-line">
+        <div className="-mx-5 overflow-hidden sm:-mx-8 lg:mx-0 lg:rounded-xl lg:border lg:border-page-line">
           <PageFilmstrip
             slides={slides}
             selected={position}
@@ -297,8 +237,11 @@ export function BookStudio({
           />
         </div>
 
-        {/* Tools for this page, or the way past the wall. */}
-        <aside className="lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:sticky lg:top-6">
+        {/* Tools for this page, or the way past the wall. Below the carousel
+            at every width now, rather than in a column beside it: the page is
+            what people came to look at, so it gets the whole width, and the
+            account CTA is what they read next, so it comes next. */}
+        <aside className="mx-auto w-full max-w-2xl">
           {slide.locked ? (
             <LockedWall
               petName={meta.petName}
@@ -318,22 +261,13 @@ export function BookStudio({
               />
             </div>
           ) : (
-            <ReadOnlyAside onUnlock={onUnlock} />
+            <ReadOnlyAside />
           )}
         </aside>
 
-        {/* Download and Order hardcover, on their own below the carousel and
-            the tools — the header row above carries these on wider screens,
-            where there is room for them next to the title. No free-pages
+        {/* Download, below the tools on narrow screens. No free-pages
             download here either: signed out, there is only the order. */}
-        <div className="flex flex-col gap-2.5 lg:hidden">
-          <button
-            type="button"
-            onClick={onCheckout}
-            className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-periwinkle px-6 text-base font-semibold text-white shadow-lift transition-colors hover:bg-periwinkle-deep"
-          >
-            Order hardcover · {formatUsd(price)}
-          </button>
+        <div className="mx-auto flex w-full max-w-2xl flex-col gap-2.5 lg:hidden">
           {unlocked ? (
             <button
               type="button"
@@ -354,22 +288,18 @@ export function BookStudio({
 /**
  * What the side panel says before there is an account.
  *
- * Reading comes first and editing comes after, so this is not a disabled
- * toolbar — it is a short, honest list of what the account turns on. Naming
- * the tools now is what makes the book feel like theirs to change rather than
- * a file they were handed.
+ * The call to action used to live here as a button of its own; it now floats
+ * on the seam between the page and the carousel instead, so this is just the
+ * short, honest list of what an account turns on. Naming the tools is what
+ * makes the book feel like theirs to change rather than a file they were
+ * handed.
  */
-function ReadOnlyAside({ onUnlock }: { onUnlock: () => void }) {
+function ReadOnlyAside() {
   return (
-    <div className="rounded-2xl border border-page-line bg-white/95 p-5">
-      <h2 className="font-display text-lg text-page-ink">This is your book</h2>
-      <p className="mt-1.5 text-sm leading-6 text-page-ink-soft">
-        We wrote every chapter from your photos. Nothing is fixed. Make an
-        account and you can:
-      </p>
-      <ul className="mt-3 space-y-1.5 text-sm text-page-ink-soft">
+    <div>
+      <ul className="space-y-1.5 text-sm text-page-ink-soft">
         {[
-          "Edit anything — the cover, every chapter, any photo, the dedication",
+          "Edit the cover, every chapter, any photo, and the dedication",
           "Read the whole book, not just the free preview",
           "Download the PDF and order the hardcover",
         ].map((item) => (
@@ -379,13 +309,6 @@ function ReadOnlyAside({ onUnlock }: { onUnlock: () => void }) {
           </li>
         ))}
       </ul>
-      <button
-        type="button"
-        onClick={onUnlock}
-        className="mt-5 inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-periwinkle px-5 text-sm font-semibold text-white shadow-lift transition-colors hover:bg-periwinkle-deep"
-      >
-        Save it and start editing
-      </button>
     </div>
   );
 }

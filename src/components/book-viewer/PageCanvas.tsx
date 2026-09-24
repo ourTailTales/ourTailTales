@@ -371,7 +371,15 @@ function PhotoPage({
         if (!slot) return null;
         return (
           <SlotPhoto
-            key={`${photoId}-${index}`}
+            // Keyed by slot position, not by which photo is in it. This list
+            // never reorders -- the slots are the fixed layout -- so the slot
+            // is the stable identity. Keying by photoId instead made React
+            // tear down and rebuild the <img> every time a page turned to a
+            // different photo, which meant the browser had to decode that
+            // photo from a blank start rather than just swapping `src` on an
+            // element that was already showing something: a flash of white
+            // on every "next page" while the new photo loaded.
+            key={index}
             slot={slot}
             photoId={photoId}
             photos={photos}

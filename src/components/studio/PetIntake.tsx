@@ -1,233 +1,217 @@
 "use client";
 
+import { Cat, Dog } from "lucide-react";
 import { useState } from "react";
 
 import { useOurTailTalesStore } from "@/store/useOurTailTalesStore";
 
 /**
- * The four things we cannot get from the photographs.
+ * Two cards, a name, and a button.
  *
- * Every chapter in the book is written from this plus the album, and a model
- * looking at four compressed thumbnails cannot tell a whippet from a
- * greyhound, cannot read a name off a collar, and cannot know whether the
- * animal in them is asleep upstairs or buried in the garden. Asked here rather
- * than guessed, because getting any of them wrong in a book about someone's
- * pet is the kind of mistake that cannot be edited away afterwards.
+ * The old intake was a form: name, species, whether the animal was still
+ * alive, the years, a free-text note. Five questions on the first screen
+ * anyone sees after handing over their address, and four of them optional,
+ * which is a long way of saying four of them were noise. This asks the two
+ * things the writer genuinely cannot get from the photographs and nothing
+ * else, and it asks them by tapping a picture rather than filling a field.
  *
- * Only the name is required. Everything else improves the writing and none of
- * it blocks anyone, which is the whole trade: one short screen of taps in
- * exchange for a book that is recognisably about their animal.
+ * The name is typed straight onto the chosen card, flat against it, so the
+ * card reads as the beginning of the cover rather than as an input with a
+ * picture next to it. Everything else the book needs stays editable from the
+ * title page once the book exists.
  */
 
-const SPECIES = ["Dog", "Cat"] as const;
+type Species = "dog" | "cat";
 
-export function PetIntake({ onDone }: { onDone: () => void }) {
+export function PetIntake({
+  onDone,
+  confirmed = false,
+}: {
+  onDone: () => void;
+  /**
+   * The animal has already been confirmed and the upload section is showing
+   * beneath this one. The cards and name stay editable — someone can still
+   * fix a typo or swap dog for cat — but the Confirm button's job is done, so
+   * it goes: a second, redundant button sitting above the photos would read
+   * as something still left to do.
+   */
+  confirmed?: boolean;
+}) {
   const meta = useOurTailTalesStore((state) => state.meta);
   const setMeta = useOurTailTalesStore((state) => state.setMeta);
 
-  const [otherOpen, setOtherOpen] = useState(
-    Boolean(meta.species) &&
-      !SPECIES.some((s) => s.toLowerCase() === meta.species?.toLowerCase()),
-  );
   const [attempted, setAttempted] = useState(false);
 
   const name = meta.petName.trim();
-  const stillHere = meta.stillHere;
-  const chosenSpecies = meta.species?.toLowerCase();
+  const chosen = (meta.species?.toLowerCase() ?? "") as Species | "";
+  const ready = Boolean(chosen) && Boolean(name);
 
   const submit = (): void => {
     setAttempted(true);
-    if (!name) return;
+    if (!ready) return;
     onDone();
   };
 
   return (
-    <div className="mx-auto flex min-h-[60dvh] w-full max-w-lg flex-col justify-center py-8">
-      <h1 className="font-display text-3xl leading-tight text-page-ink">
+    <div className="mx-auto flex w-full max-w-3xl flex-col justify-center py-10">
+      <h1 className="text-center font-display text-3xl leading-tight text-page-ink sm:text-4xl">
         Who is the book about?
       </h1>
-      <p className="mt-2 text-sm leading-6 text-page-ink-soft">
-        We write every chapter from these and your photos.
-        It takes about thirty seconds.
+      <p className="mt-3 text-center text-sm leading-6 text-page-ink-soft">
+        Pick one, then type their name.
       </p>
 
       <form
-        className="mt-7 space-y-6"
+        className="mt-9"
         onSubmit={(event) => {
           event.preventDefault();
           submit();
         }}
       >
-        <div>
-          <label
-            htmlFor="petName"
-            className="block text-sm font-medium text-page-ink"
-          >
-            Their name
-          </label>
-          <input
-            id="petName"
-            type="text"
-            autoFocus
-            value={meta.petName}
-            onChange={(event) => setMeta({ petName: event.target.value.slice(0, 60) })}
-            placeholder="Biscuit"
-            aria-invalid={attempted && !name}
-            className="mt-1.5 min-h-12 w-full rounded-xl border border-page-line bg-white px-3.5 text-base text-page-ink outline-none transition-colors placeholder:text-page-ink-faint focus:border-periwinkle focus:ring-2 focus:ring-periwinkle/20"
-          />
-          {attempted && !name ? (
-            <p role="alert" className="mt-1.5 text-xs text-red-600">
-              We need their name. It goes on the cover.
-            </p>
-          ) : null}
+        <div className="grid grid-cols-2 gap-4 sm:gap-6">
+          {(["dog", "cat"] as const).map((species) => (
+            <PetCard
+              key={species}
+              species={species}
+              selected={chosen === species}
+              dimmed={Boolean(chosen) && chosen !== species}
+              name={meta.petName}
+              onSelect={() => setMeta({ species })}
+              onName={(value) => setMeta({ petName: value.slice(0, 60) })}
+              onSubmit={submit}
+              invalid={attempted && chosen === species && !name}
+            />
+          ))}
         </div>
 
-        <div>
-          <span className="block text-sm font-medium text-page-ink">
-            What are they?
-          </span>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {SPECIES.map((option) => (
-              <Chip
-                key={option}
-                label={option}
-                active={!otherOpen && chosenSpecies === option.toLowerCase()}
-                onClick={() => {
-                  setOtherOpen(false);
-                  setMeta({ species: option.toLowerCase() });
-                }}
-              />
-            ))}
-            <Chip
-              label="Something else"
-              active={otherOpen}
-              onClick={() => {
-                setOtherOpen(true);
-                setMeta({ species: "" });
-              }}
-            />
-          </div>
-          {otherOpen ? (
-            <input
-              type="text"
-              value={meta.species ?? ""}
-              onChange={(event) => setMeta({ species: event.target.value.slice(0, 40) })}
-              placeholder="Rabbit, horse, parrot"
-              aria-label="What kind of animal"
-              className="mt-2 min-h-11 w-full rounded-xl border border-page-line bg-white px-3.5 text-sm text-page-ink outline-none transition-colors placeholder:text-page-ink-faint focus:border-periwinkle focus:ring-2 focus:ring-periwinkle/20"
-            />
-          ) : null}
-        </div>
-
-        <div>
-          <span className="block text-sm font-medium text-page-ink">
-            Are they still with you?
-          </span>
-          <div className="mt-2 flex flex-wrap gap-2">
-            <Chip
-              label="Yes, still here"
-              active={stillHere === true}
-              onClick={() => setMeta({ stillHere: true, deathYear: "" })}
-            />
-            <Chip
-              label="No, they've passed"
-              active={stillHere === false}
-              onClick={() => setMeta({ stillHere: false })}
-            />
-          </div>
-
-          {stillHere !== undefined ? (
-            <div className="mt-3 grid grid-cols-2 gap-3">
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-medium text-page-ink-soft">
-                  Year they were born
-                </span>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={meta.birthYear}
-                  onChange={(event) =>
-                    setMeta({ birthYear: digitsOnly(event.target.value) })
-                  }
-                  placeholder="2011"
-                  className="min-h-11 w-full rounded-xl border border-page-line bg-white px-3.5 text-sm text-page-ink outline-none transition-colors placeholder:text-page-ink-faint focus:border-periwinkle focus:ring-2 focus:ring-periwinkle/20"
-                />
-              </label>
-              {stillHere === false ? (
-                <label className="block">
-                  <span className="mb-1.5 block text-xs font-medium text-page-ink-soft">
-                    Year they passed
-                  </span>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={meta.deathYear}
-                    onChange={(event) =>
-                      setMeta({ deathYear: digitsOnly(event.target.value) })
-                    }
-                    placeholder="2024"
-                    className="min-h-11 w-full rounded-xl border border-page-line bg-white px-3.5 text-sm text-page-ink outline-none transition-colors placeholder:text-page-ink-faint focus:border-periwinkle focus:ring-2 focus:ring-periwinkle/20"
-                  />
-                </label>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
-
-        <div>
-          <label htmlFor="petNotes" className="block text-sm font-medium text-page-ink">
-            Anything we should know about {name || "them"}?
-          </label>
-          <input
-            id="petNotes"
-            type="text"
-            value={meta.notes ?? ""}
-            onChange={(event) => setMeta({ notes: event.target.value.slice(0, 240) })}
-            placeholder="Terrified of the vacuum. Would swim in anything."
-            className="mt-1.5 min-h-11 w-full rounded-xl border border-page-line bg-white px-3.5 text-sm text-page-ink outline-none transition-colors placeholder:text-page-ink-faint focus:border-periwinkle focus:ring-2 focus:ring-periwinkle/20"
-          />
-          <p className="mt-1.5 text-xs text-page-ink-faint">
-            Optional. This is usually what makes the book sound like them.
+        {attempted && !chosen ? (
+          <p role="alert" className="mt-4 text-center text-xs text-red-600">
+            Pick a dog or a cat to start.
           </p>
-        </div>
+        ) : null}
 
-        <button
-          type="submit"
-          className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-periwinkle px-6 text-base font-semibold text-white shadow-lift transition-colors hover:bg-periwinkle-deep"
-        >
-          Next: add their photos
-        </button>
+        {confirmed ? null : (
+          <button
+            type="submit"
+            disabled={!ready}
+            className="mt-8 inline-flex min-h-13 w-full items-center justify-center rounded-xl bg-periwinkle px-6 text-base font-semibold text-white shadow-lift transition-all duration-300 hover:bg-periwinkle-deep disabled:cursor-not-allowed disabled:bg-page-line disabled:text-page-ink-faint disabled:shadow-none"
+          >
+            Confirm
+          </button>
+        )}
       </form>
     </div>
   );
 }
 
-function Chip({
-  label,
-  active,
-  onClick,
+/**
+ * One animal, with the name written on it once it is the chosen one.
+ *
+ * The input is a sibling of the card button rather than a child of it, which
+ * is what lets someone type on the card without the click landing on the
+ * card's own control, and it carries no border, no fill and no shadow: the
+ * card is the surface, and the name sits on it.
+ */
+function PetCard({
+  species,
+  selected,
+  dimmed,
+  name,
+  onSelect,
+  onName,
+  onSubmit,
+  invalid,
 }: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
+  species: Species;
+  selected: boolean;
+  dimmed: boolean;
+  name: string;
+  onSelect: () => void;
+  onName: (value: string) => void;
+  onSubmit: () => void;
+  invalid: boolean;
 }) {
+  const label = species === "dog" ? "Dog" : "Cat";
+
+  // Written on the card, so it has to fit the card. A long name steps down
+  // rather than scrolling half of itself out of sight.
+  const nameSize =
+    name.trim().length > 13
+      ? "text-base sm:text-xl"
+      : name.trim().length > 8
+        ? "text-lg sm:text-2xl"
+        : "text-2xl sm:text-3xl";
+
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={`min-h-11 rounded-xl border px-4 text-sm font-medium transition-colors ${
-        active
-          ? "border-periwinkle bg-periwinkle text-white"
-          : "border-page-line bg-white text-page-ink-soft hover:border-periwinkle hover:text-periwinkle-deep"
-      }`}
-    >
-      {label}
-    </button>
+    <div className="relative">
+      <button
+        type="button"
+        onClick={onSelect}
+        aria-pressed={selected}
+        aria-label={label}
+        className={`flex aspect-4/5 w-full flex-col items-center justify-center gap-4 rounded-3xl border bg-white transition-all duration-300 ease-out ${
+          selected
+            ? "border-periwinkle ring-2 ring-periwinkle/25"
+            : "border-page-line hover:border-periwinkle hover:-translate-y-0.5"
+        } ${dimmed ? "opacity-45 saturate-50" : "opacity-100"}`}
+      >
+        <PetGlyph
+          species={species}
+          className={`h-1/2 w-1/2 max-h-32 max-w-32 transition-colors duration-300 ${
+            selected ? "text-periwinkle" : "text-page-ink/30"
+          }`}
+        />
+        <span
+          className={`font-display text-lg transition-opacity duration-200 ${
+            selected ? "opacity-0" : "text-page-ink-soft opacity-100"
+          }`}
+          aria-hidden={selected}
+        >
+          {label}
+        </span>
+      </button>
+
+      {selected ? (
+        <div className="pointer-events-none absolute inset-x-2.5 bottom-6 sm:inset-x-5">
+          <input
+            type="text"
+            autoFocus
+            value={name}
+            onChange={(event) => onName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter") return;
+              event.preventDefault();
+              onSubmit();
+            }}
+            placeholder="Their name"
+            aria-label={`Your ${species}'s name`}
+            aria-invalid={invalid}
+            className={`pointer-events-auto w-full border-0 bg-transparent p-0 text-center font-display text-page-ink shadow-none outline-none placeholder:font-sans placeholder:text-base placeholder:font-normal placeholder:text-page-ink-faint focus:outline-none ${nameSize}`}
+          />
+          <span
+            aria-hidden
+            className={`mx-auto mt-2 block h-px w-16 transition-colors duration-300 ${
+              invalid ? "bg-red-400" : "bg-page-line"
+            }`}
+          />
+        </div>
+      ) : null}
+    </div>
   );
 }
 
-/** Years only — a date picker for a birth year nobody is certain of is worse. */
-function digitsOnly(value: string): string {
-  return value.replace(/\D/g, "").slice(0, 4);
+/**
+ * Dog or cat, from lucide's icon set rather than drawn by hand — the same
+ * library every other icon in this app already comes from, so this pairs
+ * with the rest of the UI instead of introducing its own style.
+ */
+function PetGlyph({
+  species,
+  className,
+}: {
+  species: Species;
+  className?: string;
+}) {
+  const Icon = species === "cat" ? Cat : Dog;
+  return <Icon aria-hidden className={className} strokeWidth={1.25} />;
 }

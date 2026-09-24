@@ -38,7 +38,12 @@ if (token && host) {
     api_host: host,
     defaults: "2026-01-30",
     capture_exceptions: true,
-    debug: process.env.NODE_ENV === "development",
+    // Every event on localhost is dropped just below, so debug mode there
+    // would only ever print "this event was rejected" — never anything
+    // worth debugging, and PostHog logs that rejection loudly to the
+    // console on every single event. Off on localhost, on anywhere debug
+    // output might actually say something.
+    debug: process.env.NODE_ENV === "development" && !isLocalhost(),
     before_send: (event) => {
       if (isLocalhost()) return null;
       // Autocapture and pageviews land here too, not only this app's own

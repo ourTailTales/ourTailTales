@@ -78,6 +78,15 @@ html {
   scroll-behavior: smooth;
   /* Stop rubber-band pull past the top/bottom; keep normal page scroll. */
   overscroll-behavior-y: none;
+  /* The page itself only ever scrolls vertically. Without this, a stray
+     sub-pixel of horizontal scroll range — a border, a rounded width, a
+     shadow's blur radius pushing a box a hair past the viewport — is enough
+     for touch to rubber-band the whole page sideways, which reads as "the
+     page slides" even though nothing is actually there to scroll to. The
+     filmstrip's own left-right drag is unaffected: it scrolls itself, not
+     the page, via its own `overflow-x-auto`. */
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
 }
 
 body {
@@ -85,6 +94,7 @@ body {
   color: var(--color-ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
 }
 
 ::selection {

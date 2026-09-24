@@ -4,10 +4,10 @@ import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 
 import { BookStudio } from "@/components/studio/BookStudio";
 import { PetIntake } from "@/components/studio/PetIntake";
-import { UploadMediaModal } from "@/components/editor/UploadMediaModal";
+import { UploadMedia } from "@/components/editor/UploadMedia";
 import { nextBookStep } from "@/lib/book/progress";
 import { filesFromDataTransfer } from "@/lib/photo/process";
-import { bookSpec, MIN_PHOTOS_FOR_BOOK } from "@/lib/pricing";
+import { bookSpec } from "@/lib/pricing";
 import { track } from "@/lib/analytics";
 import {
   summarizeAlbum,
@@ -66,6 +66,8 @@ export function BookFlow({
   const setLeadEmail = useOurTailTalesStore((state) => state.setLeadEmail);
   const confirmBookSize = useOurTailTalesStore((state) => state.confirmBookSize);
   const goToEditing = useOurTailTalesStore((state) => state.goToEditing);
+  const removeAlbumPhoto = useOurTailTalesStore((state) => state.removeAlbumPhoto);
+  const removeAlbumVideo = useOurTailTalesStore((state) => state.removeAlbumVideo);
 
   const summary = useMemo(() => summarizeAlbum(photos), [photos]);
   const mediaCount = summary.placeable + albumVideos.length;
@@ -77,18 +79,6 @@ export function BookFlow({
   const [intakeDone, setIntakeDone] = useState(() => Boolean(petName.trim()));
 
   const processing = funnelState === "processing" || dropping;
-  const atStart = funnelState === "idle" && mediaCount === 0;
-  const showIntake = atStart && !intakeDone;
-
-  // The picker opens itself once, on arriving with nothing to show, and is
-  // otherwise opened on request — which is what lets a half-filled album ask
-  // for more. Latched so dismissing it does not immediately reopen it.
-  const pickerOffered = useRef(false);
-  useEffect(() => {
-    if (!atStart || !intakeDone || pickerOffered.current) return;
-    pickerOffered.current = true;
-    setUploadOpen(true);
-  }, [atStart, intakeDone]);
 
   const unwritten = chapters.filter(
     (chapter) => chapter.aiStatus !== "done",
@@ -101,6 +91,36 @@ export function BookFlow({
     photoCount: summary.placeable,
   });
   const shortOfPhotos = step === "needPhotos";
+
+  // Nothing to build with yet, whether that is because nothing has arrived
+  // or because what arrived wasn't enough. Either way the answer is the same
+  // album step, not a hand-off to a screen that only repeats the "add at
+  // least N" line already sitting under the drop target.
+  const atStart = (funnelState === "idle" && mediaCount === 0) || shortOfPhotos;
+  const showIntake = atStart;
+
+  /**
+   * Confirming the animal does not replace the screen, it extends it.
+   *
+   * The upload step used to be a modal that opened itself over the intake the
+   * moment the intake was answered, which is two screens fighting over the
+   * same moment. Now the album step is simply the next thing down the page
+   * and the page travels to it, so the intake stays where it was and the
+   * motion says where the flow went.
+   */
+  const uploadRef = useRef<HTMLDivElement>(null);
+  // A restored draft arrives with the intake already answered. It should find
+  // the page where it left it, not be thrown down it on load.
+  const confirmedOnArrival = useRef(intakeDone);
+  useEffect(() => {
+    if (!atStart || !intakeDone || confirmedOnArrival.current) return;
+    const node = uploadRef.current;
+    if (!node) return;
+    const frame = requestAnimationFrame(() => {
+      node.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [atStart, intakeDone]);
 
   /**
    * Gets the book from wherever it is to written, in one place.
@@ -199,22 +219,53 @@ export function BookFlow({
       }}
       onDrop={handleDrop}
     >
-      {uploadOpen && !showIntake ? (
-        <UploadMediaModal
-          onFiles={(files) => {
-            setUploadOpen(false);
-            onFiles(files);
-          }}
-          processing={processing}
-          onClose={() => setUploadOpen(false)}
-          email={leadEmail}
-          onEmailChange={setLeadEmail}
-        />
-      ) : null}
-
       <div className="mx-auto w-full max-w-[90rem] px-5 py-6 sm:px-8 sm:py-8">
         {showIntake ? (
-          <PetIntake onDone={() => setIntakeDone(true)} />
+          <>
+            <PetIntake onDone={() => setIntakeDone(true)} confirmed={intakeDone} />
+            {intakeDone ? (
+              <div
+                ref={uploadRef}
+                className="flex animate-fade-up scroll-mt-6 flex-col justify-center border-t border-page-line/70 py-10"
+              >
+                <UploadMedia
+                  heading={
+                    petName.trim()
+                      ? `Now ${petName.trim()}\u2019s photos`
+                      : "Now their photos"
+                  }
+                  onFiles={onFiles}
+                  processing={processing}
+                  email={leadEmail}
+                  onEmailChange={setLeadEmail}
+                  photoCount={summary.placeable}
+                  photos={photos}
+                  videos={albumVideos}
+                  onRemovePhoto={removeAlbumPhoto}
+                  onRemoveVideo={removeAlbumVideo}
+                />
+              </div>
+            ) : null}
+          </>
+        ) : uploadOpen && !reading ? (
+          <div className="flex flex-col justify-center py-10">
+            <UploadMedia
+              heading="Add more photos"
+              onFiles={(files) => {
+                setUploadOpen(false);
+                onFiles(files);
+              }}
+              processing={processing}
+              email={leadEmail}
+              onEmailChange={setLeadEmail}
+              onCancel={() => setUploadOpen(false)}
+              photoCount={summary.placeable}
+              photos={photos}
+              videos={albumVideos}
+              onRemovePhoto={removeAlbumPhoto}
+              onRemoveVideo={removeAlbumVideo}
+            />
+          </div>
         ) : reading ? (
           <>
             <BookStudio
@@ -242,9 +293,7 @@ export function BookFlow({
         ) : (
           <Waiting
             funnelState={funnelState}
-            shortOfPhotos={shortOfPhotos}
             mediaCount={mediaCount}
-            photoCount={summary.placeable}
             processed={progress.processed}
             total={progress.total}
             chaptersDone={chapters.filter((chapter) => chapter.aiStatus === "done").length}
@@ -271,9 +320,7 @@ export function BookFlow({
  */
 function Waiting({
   funnelState,
-  shortOfPhotos,
   mediaCount,
-  photoCount,
   onStartOver,
   onStopStory,
   error,
@@ -286,10 +333,7 @@ function Waiting({
   petName,
 }: {
   funnelState: string;
-  shortOfPhotos: boolean;
   mediaCount: number;
-  /** Usable photographs on their own. */
-  photoCount: number;
   onStartOver: () => void;
   onStopStory: () => void;
   /** Reading the album failed. */
@@ -360,51 +404,6 @@ function Waiting({
             The {mediaCount} we did read are still here.
           </p>
         ) : null}
-      </div>
-    );
-  }
-
-  // Enough photos arrived to start, but not enough to fill a book. Says how
-  // many are missing and opens the picker — the alternative was a spinner that
-  // never resolved, for a reason nobody could see.
-  if (shortOfPhotos && !readingPhotos && funnelState !== "idle") {
-    const missing = Math.max(0, MIN_PHOTOS_FOR_BOOK - photoCount);
-    return (
-      <div className="flex min-h-[55dvh] flex-col items-center justify-center gap-4 text-center">
-        <h1 className="font-display text-2xl text-page-ink">
-          {photoCount === 0
-            ? "We need photographs to make the book"
-            : missing === 1
-              ? "One more photo and we can start"
-              : `${missing} more photos and we can start`}
-        </h1>
-        <p className="max-w-sm text-sm leading-6 text-page-ink-soft">
-          {photoCount === 0 ? (
-            <>
-              The chapters are written from pictures, so an album of videos
-              alone has nothing to build from. Add some photographs and the
-              videos will still be there.
-            </>
-          ) : (
-            <>
-              A book needs at least {MIN_PHOTOS_FOR_BOOK} photographs to fill
-              five chapters. You have {photoCount}
-              {mediaCount > photoCount
-                ? `, plus ${mediaCount - photoCount} video${
-                    mediaCount - photoCount === 1 ? "" : "s"
-                  } we will keep`
-                : ""}
-              .
-            </>
-          )}
-        </p>
-        <button
-          type="button"
-          onClick={onOpenUpload}
-          className="mt-1 inline-flex min-h-12 items-center rounded-xl bg-periwinkle px-6 text-base font-semibold text-white shadow-lift hover:bg-periwinkle-deep"
-        >
-          Add more photos
-        </button>
       </div>
     );
   }

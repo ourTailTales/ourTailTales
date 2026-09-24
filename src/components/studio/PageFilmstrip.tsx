@@ -72,13 +72,51 @@ export function PageFilmstrip({
   const scrolling = useRef(false);
   const scrollIdleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  /**
+   * True for as long as the effect below is still animating its own
+   * `scrollIntoView` call.
+   *
+   * That animated scroll fires the same native `scroll` events a customer's
+   * own drag would, and the leading-edge check in `handleScroll` used to
+   * treat every one of those the same way — recomputing "whichever thumbnail
+   * is closest" mid-flight and calling `onSelect` with whatever the strip
+   * happened to be passing at that instant. A keyboard or chevron press,
+   * which can jump several thumbnails in one smooth scroll, would flash
+   * through the pages in between before landing on the right one. A drag
+   * never had this problem: `scrolling` was already true before the effect
+   * could run, so the effect stayed out of the way instead of starting a
+   * second, competing scroll. This flag gives the effect's own scroll the
+   * same protection in the other direction, so it doesn't get second-guessed
+   * by the very check it's driving.
+   */
+  const syncingSelection = useRef(false);
+  const syncingSelectionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     // While anything is moving the strip — a JS-driven pointer drag, or a
     // native touch scroll this component never gets a start/end signal for —
     // this would drag the active thumbnail back toward the edge mid-gesture,
     // on top of whatever the customer's own hand is doing.
     if (panning.current || scrolling.current) return;
-    activeRef.current?.scrollIntoView({
+    const strip = stripRef.current;
+    const node = activeRef.current;
+    if (!node) return;
+
+    if (strip) {
+      syncingSelection.current = true;
+      if (syncingSelectionTimer.current) clearTimeout(syncingSelectionTimer.current);
+      const stopSyncing = (): void => {
+        syncingSelection.current = false;
+        strip.removeEventListener("scrollend", stopSyncing);
+      };
+      strip.addEventListener("scrollend", stopSyncing);
+      // Safety net: a browser that skips `scrollend` when the thumbnail is
+      // already at the leading edge (nothing to animate) would otherwise
+      // leave this flag stuck on.
+      syncingSelectionTimer.current = setTimeout(stopSyncing, 600);
+    }
+
+    node.scrollIntoView({
       behavior: "smooth",
       block: "nearest",
       inline: "start",
@@ -88,7 +126,7 @@ export function PageFilmstrip({
       // preventScroll: the scrollIntoView above already handles bringing the
       // thumbnail into view, smoothly; a plain .focus() would additionally
       // jump the browser's own scroll anchoring and fight it.
-      activeRef.current?.focus({ preventScroll: true });
+      node.focus({ preventScroll: true });
     }
   }, [selected]);
 
@@ -116,6 +154,11 @@ export function PageFilmstrip({
     scrollIdleTimer.current = setTimeout(() => {
       scrolling.current = false;
     }, SCROLL_IDLE_MS);
+
+    // This scroll is the sync effect's own doing, not the customer's — the
+    // selection it's animating toward is already correct, so don't re-derive
+    // it from wherever the strip happens to be mid-animation.
+    if (syncingSelection.current) return;
 
     if (scrollFrame.current !== null) return;
     scrollFrame.current = requestAnimationFrame(() => {
