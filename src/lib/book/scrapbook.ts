@@ -1,5 +1,5 @@
 import { FIXED_SLOTS, LAYOUTS } from "@/lib/book/layouts";
-import { brand } from "@/lib/brand";
+import type { BookPalette } from "@/lib/book/palette";
 import type { BookPage, Slot } from "@/types/book";
 import type { Orientation } from "@/types/photo";
 
@@ -79,29 +79,14 @@ export type PageDesign = {
 export type DesignContext = {
   orientationOf: (photoId: string) => Orientation | undefined;
   captionOf: (photoId: string) => string | null;
+  /** The book's colors — chosen for this pet (see `palette.ts`). */
+  palette: BookPalette;
 };
 
 /* ------------------------------ palette ------------------------------ */
 
-export const PAPER = brand.colors.cream;
-export const CARD = brand.colors.white;
-const TAPE_COLORS = [
-  brand.colors.lavender,
-  brand.colors.sage,
-  brand.colors.petal,
-  brand.colors.memoryBlue,
-] as const;
-const SCRAP_COLORS = [
-  brand.colors.memoryBlue,
-  brand.colors.lavender,
-  brand.colors.sage,
-  brand.colors.periwinkleWash,
-] as const;
-const DOODLE_COLORS = [
-  brand.colors.periwinkle,
-  brand.colors.periwinkle,
-  brand.colors.sageDeep,
-] as const;
+/** Cards are always white: they are the paper the words are written on. */
+export const CARD = "#ffffff";
 
 /** Nothing decorative gets closer to the page edge than this. */
 export const DECOR_EDGE = 0.055;
@@ -259,11 +244,12 @@ type TapeStyle = "top" | "corners" | "diagonal";
 function tapesFor(
   print: Box & { rotation: number },
   random: () => number,
+  palette: BookPalette,
   style: TapeStyle = pick(random, ["top", "top", "corners", "diagonal"] as const),
 ): Tape[] {
   const length = Math.min(Math.max(print.w * 0.3, 0.07), 0.14);
   const thickness = Math.max(length * 0.3, 0.024);
-  const color = pick(random, TAPE_COLORS);
+  const color = pick(random, palette.tape);
 
   const place = (dx: number, dy: number, turn: number): Tape => {
     const point = rotateAround(print.cx, print.cy, dx, dy, print.rotation);
@@ -337,7 +323,7 @@ function heroPrint(args: {
     bottom,
     photoId: args.photoId,
     caption: args.polaroid && args.photoId ? args.context.captionOf(args.photoId) : null,
-    tapes: tapesFor(base, args.random, args.tapeStyle),
+    tapes: tapesFor(base, args.random, args.context.palette, args.tapeStyle),
   };
 }
 
@@ -374,13 +360,13 @@ function slotPrint(args: {
     bottom,
     photoId: args.photoId,
     caption: args.polaroid && args.photoId ? args.context.captionOf(args.photoId) : null,
-    tapes: tapesFor(base, random),
+    tapes: tapesFor(base, random, args.context.palette),
   };
 }
 
 /* ------------------------------ scraps & doodles ------------------------------ */
 
-function paperScrap(random: () => number): Scrap {
+function paperScrap(random: () => number, palette: BookPalette): Scrap {
   // Anchored to a corner and running off the page, like a torn sheet tucked
   // under the prints.
   const corner = Math.floor(random() * 4);
@@ -394,7 +380,7 @@ function paperScrap(random: () => number): Scrap {
     w,
     h,
     rotation: between(random, -5, 5),
-    color: pick(random, SCRAP_COLORS),
+    color: pick(random, palette.scraps),
     opacity: 0.55,
   };
 }
@@ -426,6 +412,7 @@ function overlaps(
 
 function doodlesFor(
   random: () => number,
+  palette: BookPalette,
   occupied: (Box & { rotation: number })[],
   count: number,
   kinds: readonly DoodleKind[] = ["heart", "star", "sparkle", "sparkle", "loop", "wave", "paw"],
@@ -444,7 +431,7 @@ function doodlesFor(
       cy,
       size,
       rotation: between(random, -18, 18),
-      color: pick(random, DOODLE_COLORS),
+      color: pick(random, [palette.doodle, palette.doodle, palette.accent]),
     });
   }
   return doodles;
@@ -485,10 +472,10 @@ export function designPage(page: BookPage, context: DesignContext): PageDesign {
         tapeStyle: "top",
       });
       return {
-        paper: PAPER,
+        paper: context.palette.paper,
         scraps: [],
         prints: [print],
-        doodles: doodlesFor(random, [...occupiedBy([print]), titleTextBox()], 2, [
+        doodles: doodlesFor(random, context.palette, [...occupiedBy([print]), titleTextBox()], 2, [
           "sparkle",
           "heart",
           "star",
@@ -498,14 +485,14 @@ export function designPage(page: BookPage, context: DesignContext): PageDesign {
 
     case "dedication": {
       return {
-        paper: PAPER,
+        paper: context.palette.paper,
         scraps: [
           {
             ...DEDICATION_CARD,
             w: DEDICATION_CARD.w + 0.05,
             h: DEDICATION_CARD.h + 0.04,
             rotation: -3,
-            color: brand.colors.lavender,
+            color: context.palette.scraps[1] ?? context.palette.scraps[0]!,
             opacity: 0.6,
           },
         ],
@@ -517,7 +504,7 @@ export function designPage(page: BookPage, context: DesignContext): PageDesign {
             cy: DEDICATION_CARD.cy + DEDICATION_CARD.h / 2 + 0.08,
             size: 0.045,
             rotation: -8,
-            color: brand.colors.periwinkle,
+            color: context.palette.doodle,
           },
         ],
       };
@@ -540,19 +527,19 @@ export function designPage(page: BookPage, context: DesignContext): PageDesign {
         tapeStyle: "corners",
       });
       return {
-        paper: PAPER,
+        paper: context.palette.paper,
         scraps: [
           {
             ...OPENER_CARD,
             w: OPENER_CARD.w + 0.04,
             h: OPENER_CARD.h + 0.035,
             rotation: (random() < 0.5 ? -1 : 1) * between(random, 1.8, 3),
-            color: pick(random, SCRAP_COLORS),
+            color: pick(random, context.palette.scraps),
             opacity: 0.7,
           },
         ],
         prints: [print],
-        doodles: doodlesFor(random, [...occupiedBy([print]), { ...OPENER_CARD, w: OPENER_CARD.w + 0.06, h: OPENER_CARD.h + 0.06, rotation: 0 }], 1),
+        doodles: doodlesFor(random, context.palette, [...occupiedBy([print]), { ...OPENER_CARD, w: OPENER_CARD.w + 0.06, h: OPENER_CARD.h + 0.06, rotation: 0 }], 1),
       };
     }
 
@@ -573,11 +560,10 @@ export function designPage(page: BookPage, context: DesignContext): PageDesign {
         tapeStyle: "top",
       });
       return {
-        paper: PAPER,
+        paper: context.palette.paper,
         scraps: [],
         prints: [print],
-        doodles: doodlesFor(
-          random,
+        doodles: doodlesFor(random, context.palette,
           [...occupiedBy([print]), { cx: 0.5, cy: CLOSING_TEXT.baseline - 0.02, w: 0.7, h: 0.08, rotation: 0 }],
           1,
           ["heart", "sparkle"],
@@ -586,10 +572,10 @@ export function designPage(page: BookPage, context: DesignContext): PageDesign {
     }
 
     case "imprint":
-      return { paper: PAPER, scraps: [], prints: [], doodles: [] };
+      return { paper: context.palette.paper, scraps: [], prints: [], doodles: [] };
 
     default: {
-      if (!page.layoutId) return { paper: PAPER, scraps: [], prints: [], doodles: [] };
+      if (!page.layoutId) return { paper: context.palette.paper, scraps: [], prints: [], doodles: [] };
       const layout = LAYOUTS[page.layoutId];
       const polaroid = page.photoIds.length <= 2;
 
@@ -618,12 +604,12 @@ export function designPage(page: BookPage, context: DesignContext): PageDesign {
                 : [];
             });
 
-      const scraps = random() < 0.6 ? [paperScrap(random)] : [];
+      const scraps = random() < 0.6 ? [paperScrap(random, context.palette)] : [];
       return {
-        paper: PAPER,
+        paper: context.palette.paper,
         scraps,
         prints,
-        doodles: doodlesFor(random, occupiedBy(prints), doodleCount(random)),
+        doodles: doodlesFor(random, context.palette, occupiedBy(prints), doodleCount(random)),
       };
     }
   }

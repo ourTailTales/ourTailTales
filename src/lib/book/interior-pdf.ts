@@ -2,6 +2,7 @@ import {
   PDFDocument,
   degrees,
   rgb,
+  type RGB,
   type PDFFont,
   type PDFImage,
   type PDFPage,
@@ -9,6 +10,7 @@ import {
 
 import { drawExpiryNotice, drawFrontCoverPage } from "@/lib/book/cover-pdf";
 import { BLEED_INCHES, PAGE_INCHES, TRIM_INCHES } from "@/lib/book/layouts";
+import { resolvePalette, type BookPalette } from "@/lib/book/palette";
 import { drawable, loadBookFonts, type BookFonts } from "@/lib/book/pdf-fonts";
 import {
   CLOSING_TEXT,
@@ -17,7 +19,6 @@ import {
   OPENER_STICKER,
   OPENER_TEXT,
   OPENER_TYPE,
-  PAPER as SCRAPBOOK_PAPER,
   TITLE_TEXT,
   dedicationType,
   designPage,
@@ -56,7 +57,6 @@ function brandRgb(hex: string) {
 const PAPER = brandRgb(brand.colors.white);
 const INK = brandRgb(brand.colors.ink);
 const INK_SOFT = brandRgb(brand.colors.inkSoft);
-const INK_FAINT = brandRgb(brand.colors.inkFaint);
 const ACCENT = brandRgb(brand.colors.periwinkle);
 
 /** Below this effective resolution a placement is flagged to the customer. */
@@ -158,6 +158,8 @@ export async function renderInteriorPdf(
   pdf.setCreator("ourTailTales");
 
   const fonts = await loadBookFonts(pdf);
+  const palette = resolvePalette(meta);
+  const colors = pageColors(palette);
 
   const chaptersById = new Map(chapters.map((chapter) => [chapter.id, chapter]));
   const selected: (BookPage | null)[] = pageLimit
@@ -198,7 +200,7 @@ export async function renderInteriorPdf(
       y: 0,
       width: PAGE_PT,
       height: PAGE_PT,
-      color: bookPage ? hex(SCRAPBOOK_PAPER) : PAPER,
+      color: bookPage ? hex(palette.paper) : PAPER,
     });
 
     if (bookPage) {
@@ -215,6 +217,8 @@ export async function renderInteriorPdf(
         targetPpi,
         jpegQuality,
         lowResWarnings,
+        palette,
+        colors,
       });
 
       drawVideoMemoryPlaceholders(
@@ -233,8 +237,8 @@ export async function renderInteriorPdf(
 
   if (lockedNotice) {
     const page = addPage();
-    page.drawRectangle({ x: 0, y: 0, width: PAGE_PT, height: PAGE_PT, color: hex(SCRAPBOOK_PAPER) });
-    drawLockedPage(page, fonts, meta, lockedNotice);
+    page.drawRectangle({ x: 0, y: 0, width: PAGE_PT, height: PAGE_PT, color: hex(palette.paper) });
+    drawLockedPage(page, fonts, colors, meta, lockedNotice);
   }
 
   return {
@@ -253,6 +257,7 @@ export async function renderInteriorPdf(
 function drawLockedPage(
   page: PDFPage,
   fonts: Fonts,
+  colors: PageColors,
   meta: BookMeta,
   notice: LockedNotice,
 ): void {
@@ -261,14 +266,14 @@ function drawLockedPage(
   drawCentered(page, name ? `${possessivePetName(name)} story` : "Their story", {
     font: fonts.serifBold,
     size: 30,
-    color: INK,
+    color: colors.ink,
     baseline: PAGE_PT * 0.62,
   });
 
   drawCentered(page, "continues", {
     font: fonts.serifItalic,
     size: 30,
-    color: INK,
+    color: colors.ink,
     baseline: PAGE_PT * 0.555,
   });
 
@@ -277,7 +282,7 @@ function drawLockedPage(
     y: PAGE_PT * 0.5,
     width: PAGE_PT * 0.16,
     height: 1,
-    color: ACCENT,
+    color: colors.accent,
     opacity: 0.5,
   });
 
@@ -289,21 +294,21 @@ function drawLockedPage(
   drawCentered(page, `${chapters} — ${pagesLine} — are written and waiting.`, {
     font: fonts.sans,
     size: 12,
-    color: INK_SOFT,
+    color: colors.inkSoft,
     baseline: PAGE_PT * 0.44,
   });
 
   drawCentered(page, "Open the link in your email to read the rest.", {
     font: fonts.sans,
     size: 12,
-    color: INK_SOFT,
+    color: colors.inkSoft,
     baseline: PAGE_PT * 0.405,
   });
 
   drawCentered(page, brand.domain, {
     font: fonts.sans,
     size: 9,
-    color: INK_FAINT,
+    color: colors.inkFaint,
     baseline: PAGE_PT * 0.16,
   });
 }
@@ -321,7 +326,21 @@ type DrawContext = {
   targetPpi: number;
   jpegQuality: number;
   lowResWarnings: LowResWarning[];
+  palette: BookPalette;
+  colors: PageColors;
 };
+
+/** The palette's text colors, as pdf-lib colors. */
+type PageColors = { ink: RGB; inkSoft: RGB; inkFaint: RGB; accent: RGB };
+
+function pageColors(palette: BookPalette): PageColors {
+  return {
+    ink: hex(palette.ink),
+    inkSoft: hex(palette.inkSoft),
+    inkFaint: hex(palette.inkFaint),
+    accent: hex(palette.accent),
+  };
+}
 
 /**
  * Every page is drawn from its scrapbook design (`scrapbook.ts`): paper
@@ -329,7 +348,7 @@ type DrawContext = {
  * page's words. The same design drives the on-screen page, so the two agree.
  */
 async function drawPage(context: DrawContext): Promise<void> {
-  const design = designPage(context.bookPage, designContextFor(context.photos));
+  const design = designPage(context.bookPage, designContextFor(context.photos, context.palette));
   const frame = { page: context.page, pagePt: PAGE_PT };
 
   for (const scrap of design.scraps) drawScrap(frame, scrap);
@@ -357,7 +376,7 @@ async function drawPage(context: DrawContext): Promise<void> {
       w: 0.13,
       h: 0.036,
       rotation: -3,
-      color: brand.colors.sage,
+      color: context.palette.tape[1] ?? context.palette.tape[0]!,
       opacity: 0.82,
     });
   }
@@ -379,14 +398,19 @@ async function drawPage(context: DrawContext): Promise<void> {
   }
 }
 
-export function designContextFor(photos: Map<string, PhotoAsset>): DesignContext {
+export function designContextFor(
+  photos: Map<string, PhotoAsset>,
+  palette: BookPalette,
+): DesignContext {
   return {
+    palette,
     orientationOf: (id) => photos.get(id)?.orientation,
     captionOf: (id) => photoCaption(photos.get(id)?.capturedAt),
   };
 }
 
 function drawTitleText(context: DrawContext): void {
+  const colors = context.colors;
   const { page, meta, fonts } = context;
 
   const heading = drawable(fonts.hand, titlePageHeading(meta.petName));
@@ -397,7 +421,7 @@ function drawTitleText(context: DrawContext): void {
   drawCentered(page, heading, {
     font: fonts.hand,
     size,
-    color: INK,
+    color: colors.ink,
     baseline: PAGE_PT * (1 - TITLE_TEXT.headingBaseline),
   });
 
@@ -419,7 +443,7 @@ function drawTitleText(context: DrawContext): void {
       {
         x: (PAGE_PT - stampW) / 2,
         y: centerY + stampH / 2,
-        borderColor: ACCENT,
+        borderColor: colors.accent,
         borderWidth: 1,
         borderOpacity: 0.8,
       },
@@ -427,7 +451,7 @@ function drawTitleText(context: DrawContext): void {
     drawCenteredTracked(page, text, {
       font: fonts.sans,
       size: textSize,
-      color: ACCENT,
+      color: colors.accent,
       tracking,
       baseline: centerY - textSize * 0.35,
     });
@@ -436,13 +460,14 @@ function drawTitleText(context: DrawContext): void {
   drawCenteredTracked(page, "ourTailTales", {
     font: fonts.sans,
     size: 8.5,
-    color: INK_FAINT,
+    color: colors.inkFaint,
     tracking: 3.4,
     baseline: PAGE_PT * (1 - TITLE_TEXT.brandBaseline),
   });
 }
 
 function drawDedicationText(context: DrawContext): void {
+  const colors = context.colors;
   const { page, meta, fonts } = context;
   const text = drawable(fonts.serifItalic, meta.dedication.trim());
   // No dedication, no page: pagination leaves it out.
@@ -468,19 +493,20 @@ function drawDedicationText(context: DrawContext): void {
       start: { x: PAGE_PT * (card.cx - card.w / 2) + 26, y: rule },
       end: { x: PAGE_PT * (card.cx + card.w / 2) - 26, y: rule },
       thickness: 0.5,
-      color: ACCENT,
+      color: colors.accent,
       opacity: 0.2,
     });
   }
 
   let baseline = firstBaseline;
   for (const line of lines) {
-    drawCentered(page, line, { font: fonts.serifItalic, size, color: INK, baseline });
+    drawCentered(page, line, { font: fonts.serifItalic, size, color: colors.ink, baseline });
     baseline -= leading;
   }
 }
 
 function drawOpenerText(context: DrawContext): void {
+  const colors = context.colors;
   const { page, chapter, fonts } = context;
   const box = OPENER_TEXT;
   const left = (box.cx - box.w / 2) * PAGE_PT;
@@ -492,7 +518,7 @@ function drawOpenerText(context: DrawContext): void {
     drawSticker(
       { page, pagePt: PAGE_PT },
       OPENER_STICKER,
-      { text: String(chapter.index + 1), font: fonts.handBold, color: brand.colors.periwinkle },
+      { text: String(chapter.index + 1), font: fonts.handBold, color: context.palette.accent },
     );
   }
 
@@ -504,7 +530,7 @@ function drawOpenerText(context: DrawContext): void {
       y: cursor,
       font: fonts.hand,
       size: OPENER_TYPE.date,
-      color: ACCENT,
+      color: colors.accent,
     });
     cursor -= OPENER_TYPE.title + 8;
   } else {
@@ -519,7 +545,7 @@ function drawOpenerText(context: DrawContext): void {
       y: cursor,
       font: fonts.serifBold,
       size: OPENER_TYPE.title,
-      color: INK,
+      color: colors.ink,
     });
     cursor -= OPENER_TYPE.titleLeading;
   }
@@ -534,7 +560,7 @@ function drawOpenerText(context: DrawContext): void {
       y: cursor,
       font: fonts.serif,
       size: OPENER_TYPE.blurb,
-      color: INK_SOFT,
+      color: colors.inkSoft,
     });
     cursor -= OPENER_TYPE.blurbLeading;
   }
@@ -563,22 +589,24 @@ function fitLines(
 }
 
 function drawClosingText(context: DrawContext): void {
+  const colors = context.colors;
   const { page, fonts } = context;
   drawCentered(page, CLOSING_LINE, {
     font: fonts.hand,
     size: CLOSING_TEXT.size,
-    color: INK,
+    color: colors.ink,
     baseline: PAGE_PT * (1 - CLOSING_TEXT.baseline),
   });
 }
 
 async function drawImprintPage(context: DrawContext): Promise<void> {
+  const colors = context.colors;
   const { page, meta, fonts } = context;
 
   drawCenteredTracked(page, "ourTailTales", {
     font: fonts.sans,
     size: 9,
-    color: INK_FAINT,
+    color: colors.inkFaint,
     tracking: 3.4,
     baseline: PAGE_PT * 0.22,
   });
@@ -592,7 +620,7 @@ async function drawImprintPage(context: DrawContext): Promise<void> {
     drawCentered(page, line, {
       font: fonts.sans,
       size: 9,
-      color: INK_FAINT,
+      color: colors.inkFaint,
       baseline,
     });
     baseline -= 14;

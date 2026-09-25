@@ -3,13 +3,15 @@ import * as assetStore from "@/lib/photo/assetStore";
 import { renderAiThumbnail } from "@/lib/photo/pipeline";
 import type { Chapter, PlaceLabel } from "@/types/book";
 import type { PhotoAsset } from "@/types/photo";
-import type { StoryDraft, StoryRequest } from "@/types/story";
+import type { PetProfile, StoryDraft, StoryRequest } from "@/types/story";
 
 /**
  * Representative thumbnails sent per chapter. The product promise is three to
- * five, and `/api/story` rejects more than five.
+ * five, and `/api/story` rejects more than five. Five, because the writing is
+ * built on details it can see, and a fourth picture of the same couch is
+ * worth less than one more scene.
  */
-const AI_SAMPLES = 4;
+const AI_SAMPLES = 5;
 
 export type StoryContext = {
   petName: string;
@@ -18,6 +20,7 @@ export type StoryContext = {
   species?: string;
   stillHere?: boolean;
   notes?: string;
+  profile?: PetProfile;
 };
 
 /**
@@ -55,6 +58,13 @@ export async function generateChapterStory(
     species: context.species,
     stillHere: context.stillHere,
     notes: context.notes,
+    profile: context.profile
+      ? {
+          appearance: context.profile.appearance,
+          accessories: context.profile.accessories,
+          motifs: context.profile.motifs,
+        }
+      : undefined,
     lifespan: [context.birthYear, context.deathYear].filter(Boolean).join("–"),
     dateLabel: chapter.dateLabel,
     photoCount: chapter.candidateIds.length,
@@ -89,13 +99,19 @@ function pickSamples(
     .map((id) => photos.get(id))
     .filter((photo): photo is PhotoAsset => photo !== undefined);
 
-  if (available.length <= AI_SAMPLES) return available;
+  const hero = chapter.heroPhotoId ? photos.get(chapter.heroPhotoId) : undefined;
+  const rest = available.filter((photo) => photo.id !== hero?.id);
+  const wanted = hero ? AI_SAMPLES - 1 : AI_SAMPLES;
 
-  const step = available.length / AI_SAMPLES;
-  return Array.from(
-    { length: AI_SAMPLES },
-    (_, index) => available[Math.floor(index * step)],
-  );
+  // The opener's big photo leads: it is the one the introduction sits on.
+  const spread =
+    rest.length <= wanted
+      ? rest
+      : Array.from(
+          { length: wanted },
+          (_, index) => rest[Math.floor((index * rest.length) / wanted)]!,
+        );
+  return hero ? [hero, ...spread] : spread;
 }
 
 async function resolvePlaces(
@@ -134,7 +150,7 @@ async function resolvePlaces(
   }
 }
 
-async function blobToDataUrl(blob: Blob): Promise<string> {
+export async function blobToDataUrl(blob: Blob): Promise<string> {
   const buffer = await blob.arrayBuffer();
   const bytes = new Uint8Array(buffer);
   let binary = "";

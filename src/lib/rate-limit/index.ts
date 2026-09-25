@@ -37,6 +37,11 @@ export const LIMITS = {
    * regenerated from the editor afterwards.
    */
   story: { name: "story", limit: MAX_CHAPTERS + 30, windowSeconds: 60 * 10 },
+  /**
+   * The one look at the pet before a book is written: one call per book,
+   * plus a few for retries and people starting over.
+   */
+  profile: { name: "profile", limit: 10, windowSeconds: 60 * 10 },
   /** Lulu API calls against our quota. */
   lulu: { name: "lulu", limit: 60, windowSeconds: 60 * 10 },
   /** Rows in our database, and the start of every funnel. */
