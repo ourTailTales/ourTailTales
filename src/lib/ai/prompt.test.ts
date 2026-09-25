@@ -53,7 +53,7 @@ describe("buildStoryPrompt", () => {
 describe("storySystemPrompt", () => {
   it("writes about the pet, and forbids the caption voice it used to ask for", () => {
     const prompt = storySystemPrompt({ stillHere: true });
-    expect(prompt).toContain("Write about the pet, never about the pictures");
+    expect(prompt).toContain("Write about the pet, never the pictures");
     expect(prompt).not.toMatch(/Prefer evidential phrasing/);
     // The Rocket blurb is quoted only as the thing never to write.
     expect(prompt).toContain("Too flat");
@@ -119,5 +119,33 @@ describe("soundsLikeACaption", () => {
         "Spring meant one thing: the lawn. Rocket rolled until his red collar vanished into the grass.",
       ),
     ).toBe(false);
+  });
+});
+
+describe("cohesion and the shape of the story", () => {
+  it("asks for one small story, not an inventory, and quotes the list it must not write", () => {
+    const prompt = storySystemPrompt({ stillHere: true });
+    expect(prompt).toContain("Tell one small story, not an inventory");
+    expect(prompt).toContain("a list of descriptors, not a story");
+    expect(prompt).toContain("25 to 40 words");
+  });
+
+  it("reads the first period of a young animal as a homecoming", () => {
+    const prompt = buildStoryPrompt(chapterOf({ chapterNumber: 1, chapterCount: 5 }));
+    expect(prompt).toContain("This is period 1 of 5");
+    expect(prompt).toContain("tell it as a homecoming");
+  });
+
+  it("does not restart the story later on", () => {
+    expect(buildStoryPrompt(chapterOf({ chapterNumber: 3, chapterCount: 5 }))).toContain(
+      "don't restart it",
+    );
+    expect(buildStoryPrompt(chapterOf({ chapterNumber: 5, chapterCount: 5 }))).toContain(
+      "This is the last period",
+    );
+  });
+
+  it("says nothing about position when it is not known", () => {
+    expect(buildStoryPrompt(chapterOf())).not.toContain("This is period");
   });
 });

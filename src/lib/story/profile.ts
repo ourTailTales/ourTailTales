@@ -1,4 +1,5 @@
 import * as assetStore from "@/lib/photo/assetStore";
+import { postHogHeaders } from "@/lib/posthog-client";
 import { selectablePhotos } from "@/lib/photo/dedupe";
 import { renderAiThumbnail } from "@/lib/photo/pipeline";
 import { blobToDataUrl } from "@/lib/story/client";
@@ -6,8 +7,11 @@ import type { BookMeta, Chapter } from "@/types/book";
 import type { PhotoAsset } from "@/types/photo";
 import type { PetProfile } from "@/types/story";
 
-/** Photographs the profile look gets; `/api/profile` accepts at most six. */
-const PROFILE_SAMPLES = 6;
+/**
+ * Photographs the profile look gets: the cover plus three across the album.
+ * Enough to see the coat and what they wear; each extra picture is paid for.
+ */
+const PROFILE_SAMPLES = 4;
 
 /**
  * Looks at the pet once, before the chapters are written.
@@ -40,7 +44,7 @@ export async function generatePetProfile(
 
   const response = await fetch("/api/profile", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { ...postHogHeaders(), "Content-Type": "application/json" },
     signal,
     body: JSON.stringify({
       petName: args.meta.petName,

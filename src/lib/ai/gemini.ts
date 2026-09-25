@@ -1,17 +1,30 @@
-import { GoogleGenAI, Type, type Part, type Schema } from "@google/genai";
+import {
+  GoogleGenAI,
+  MediaResolution,
+  ThinkingLevel,
+  Type,
+  type Part,
+  type Schema,
+} from "@google/genai";
 
 import { PROFILE_SYSTEM_PROMPT, buildProfilePrompt } from "@/lib/ai/profile-prompt";
 import { buildStoryPrompt, soundsLikeACaption, storySystemPrompt } from "@/lib/ai/prompt";
-import { parsePetProfile, parseStoryDraft, type StoryProvider } from "@/lib/ai/provider";
+import {
+  parsePetProfile,
+  parseStoryDraft,
+  type AiUsage,
+  type StoryProvider,
+} from "@/lib/ai/provider";
 import { readEnv, requireEnv } from "@/lib/env";
 
 const PROVIDER_ID = "gemini";
 /**
- * A full Flash model rather than Flash-Lite. Lite wrote serviceable captions
- * and flat prose; the chapter copy is the part of the book people read aloud,
- * and the difference costs a few cents a book. `AI_MODEL` overrides it.
+ * The cheapest model that writes well enough, with thinking turned down and
+ * images read at low resolution (see `generate` below). The flat copy Lite
+ * used to produce came from the prompt, not the model. Set `AI_MODEL` to a
+ * Flash model to trade cost for polish; it keeps the same cost settings.
  */
-const DEFAULT_MODEL = "gemini-flash-latest";
+const DEFAULT_MODEL = "gemini-flash-lite-latest";
 
 /** Only these arrive from the browser's thumbnail renderer. */
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
@@ -38,7 +51,7 @@ const RESPONSE_SCHEMA: Schema = {
     blurb: {
       type: Type.STRING,
       description:
-        "A warm, specific 35 to 60 word introduction (two or three sentences) about the pet, built on details visible in the attached pictures. Never about the photographs themselves.",
+        "A warm, cohesive 25 to 40 word introduction (two or three sentences): one small story about the pet built on at most two connected details visible in the pictures. Never a list, never about the photographs.",
     },
   },
   required: ["title", "dateLabel", "blurb"],
@@ -109,46 +122,99 @@ export function createGeminiProvider(): StoryProvider {
   const model = readEnv("AI_MODEL") ?? DEFAULT_MODEL;
   const client = new GoogleGenAI({ apiKey });
 
+  /**
+   * One call, configured for cost. Two settings do most of the work:
+   *
+   * - Minimal thinking. A Flash model thinks by default and bills it as
+   *   output — around 8k of the 9k output tokens a book used to cost, for
+   *   copy that is 150 tokens long.
+   * - Low media resolution. Gemini bills an image by this setting, not by
+   *   its pixels: ~280 tokens at LOW against ~1,100 by default.
+   *
+   * A model that rejects the thinking setting is asked again without it
+   * rather than failing the chapter.
+   */
+  const generate = async (args: {
+    kind: AiUsage["kind"];
+    prompt: string;
+    thumbnails: string[];
+    systemInstruction: string;
+    responseSchema: Schema;
+    temperature: number;
+    maxOutputTokens: number;
+    signal?: AbortSignal;
+    onUsage?: (usage: AiUsage) => void;
+  }): Promise<string> => {
+    const images = imageParts(args.thumbnails);
+    const request = (withThinking: boolean) =>
+      client.models.generateContent({
+        model,
+        contents: [{ role: "user", parts: [{ text: args.prompt }, ...images] }],
+        config: {
+          // The rules travel with every request — not AI Studio state.
+          systemInstruction: args.systemInstruction,
+          responseMimeType: "application/json",
+          responseSchema: args.responseSchema,
+          temperature: args.temperature,
+          maxOutputTokens: args.maxOutputTokens,
+          mediaResolution: MediaResolution.MEDIA_RESOLUTION_LOW,
+          ...(withThinking
+            ? { thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL } }
+            : {}),
+          // Tools are intentionally unset, which keeps this call free of
+          // Google Search, Maps, code execution, and URL context.
+          abortSignal: args.signal,
+        },
+      });
+
+    let response;
+    try {
+      response = await request(true);
+    } catch (error) {
+      if (!rejectedThinking(error) || args.signal?.aborted) throw error;
+      response = await request(false);
+    }
+
+    const usage = response.usageMetadata;
+    args.onUsage?.({
+      kind: args.kind,
+      model,
+      inputTokens: usage?.promptTokenCount ?? 0,
+      outputTokens: usage?.candidatesTokenCount ?? 0,
+      thinkingTokens: usage?.thoughtsTokenCount ?? 0,
+      images: images.length,
+    });
+
+    const text = response.text;
+    if (!text) {
+      throw new Error(`Gemini returned no ${args.kind} text. It may have declined this request.`);
+    }
+    return text;
+  };
+
   return {
     id: PROVIDER_ID,
     model,
 
-    async generateStory(chapter, signal) {
-      const write = async (): Promise<ReturnType<typeof parseStoryDraft>> => {
-        const response = await client.models.generateContent({
-          model,
-          contents: [
-            {
-              role: "user",
-              parts: [
-                { text: buildStoryPrompt(chapter) },
-                ...imageParts(chapter.thumbnails),
-              ],
-            },
-          ],
-          config: {
-            // The writing rules travel with every request — not AI Studio state.
+    async generateStory(chapter, signal, options) {
+      const write = async (): Promise<ReturnType<typeof parseStoryDraft>> =>
+        parseStoryDraft(
+          await generate({
+            kind: "chapter",
+            prompt: buildStoryPrompt(chapter),
+            thumbnails: chapter.thumbnails,
             systemInstruction: storySystemPrompt({ stillHere: chapter.stillHere }),
-            responseMimeType: "application/json",
             responseSchema: RESPONSE_SCHEMA,
             // Higher than a factual task wants: the same album should not
-            // produce the same three sentence shapes chapter after chapter.
+            // produce the same sentence shapes chapter after chapter.
             temperature: 0.9,
-            maxOutputTokens: 4000,
-            // Tools are intentionally unset, which keeps this call free of
-            // Google Search, Maps, code execution, and URL context.
-            abortSignal: signal,
-          },
-        });
-
-        const text = response.text;
-        if (!text) {
-          throw new Error(
-            "Gemini returned no story text. It may have declined this chapter.",
-          );
-        }
-        return parseStoryDraft(text, PROVIDER_ID);
-      };
+            // Copy is ~150 tokens; the cap leaves room for a little thinking.
+            maxOutputTokens: 800,
+            signal,
+            onUsage: options?.onUsage,
+          }),
+          PROVIDER_ID,
+        );
 
       const draft = await write();
       // One more try if it still writes a caption about the photographs; if
@@ -158,33 +224,29 @@ export function createGeminiProvider(): StoryProvider {
       return soundsLikeACaption(second.blurb) ? draft : second;
     },
 
-    async generateProfile(request, signal) {
-      const response = await client.models.generateContent({
-        model,
-        contents: [
-          {
-            role: "user",
-            parts: [
-              { text: buildProfilePrompt(request) },
-              ...imageParts(request.thumbnails),
-            ],
-          },
-        ],
-        config: {
+    async generateProfile(request, signal, options) {
+      return parsePetProfile(
+        await generate({
+          kind: "profile",
+          prompt: buildProfilePrompt(request),
+          thumbnails: request.thumbnails,
           systemInstruction: PROFILE_SYSTEM_PROMPT,
-          responseMimeType: "application/json",
           responseSchema: PROFILE_SCHEMA,
           temperature: 0.6,
-          maxOutputTokens: 4000,
-          abortSignal: signal,
-        },
-      });
-
-      const text = response.text;
-      if (!text) throw new Error("Gemini returned no profile.");
-      return parsePetProfile(text, PROVIDER_ID);
+          maxOutputTokens: 1500,
+          signal,
+          onUsage: options?.onUsage,
+        }),
+        PROVIDER_ID,
+      );
     },
   };
+}
+
+/** A 400 about the thinking config: this model does not take that setting. */
+function rejectedThinking(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /thinking/i.test(message) && /400|invalid|not supported|unsupported/i.test(message);
 }
 
 /**

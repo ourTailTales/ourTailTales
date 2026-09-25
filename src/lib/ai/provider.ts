@@ -23,12 +23,29 @@ export type StoryProvider = {
   generateStory(
     chapter: StoryRequest,
     signal?: AbortSignal,
+    options?: GenerateOptions,
   ): Promise<StoryDraft>;
   /** One look at the pet: appearance, what they wear, and book palettes. */
   generateProfile(
     request: ProfileRequest,
     signal?: AbortSignal,
+    options?: GenerateOptions,
   ): Promise<PetProfile>;
+};
+
+/** What one model call cost, so spend per book can be measured. */
+export type AiUsage = {
+  kind: "chapter" | "profile";
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  thinkingTokens: number;
+  images: number;
+};
+
+export type GenerateOptions = {
+  /** Called once per model call, including a retry. */
+  onUsage?: (usage: AiUsage) => void;
 };
 
 /**

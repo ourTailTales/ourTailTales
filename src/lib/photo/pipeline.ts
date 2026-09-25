@@ -13,10 +13,11 @@ import type { ProcessedPhoto } from "@/types/photo";
 export const BROWSE_THUMB_EDGE = 256;
 
 /**
- * Larger thumbnail generated on demand for the 3-5 AI representatives —
- * large enough that a collar, a tag or a bandana is legible to the writer.
+ * Thumbnail generated on demand for the AI representatives. The model reads
+ * images at low media resolution (billed per image, not per pixel), so
+ * anything larger only costs upload time.
  */
-export const AI_THUMB_EDGE = 640;
+export const AI_THUMB_EDGE = 512;
 
 const HASH_WIDTH = 9;
 const HASH_HEIGHT = 8;
@@ -179,7 +180,7 @@ export async function renderAiThumbnail(file: File): Promise<Blob> {
   let bitmap: ImageBitmap | null = null;
   try {
     bitmap = await createImageBitmap(file);
-    return await renderThumbnail(bitmap, AI_THUMB_EDGE, 0.75);
+    return await renderThumbnail(bitmap, AI_THUMB_EDGE, 0.7);
   } finally {
     bitmap?.close();
   }
