@@ -1,7 +1,7 @@
 "use client";
 
 import { Cat, Dog } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 
 import { useOurTailTalesStore } from "@/store/useOurTailTalesStore";
 
@@ -166,6 +166,13 @@ function PetCard({
   invalid: boolean;
 }) {
   const label = species === "dog" ? "Dog" : "Cat";
+  const errorId = useId();
+
+  // The name is required, and a field that only says so after Confirm is
+  // pressed is easy to miss: once someone has been in it and left it empty,
+  // it says so there and then.
+  const [touched, setTouched] = useState(false);
+  const showError = invalid || (touched && !name.trim());
 
   // Written on the card, so it has to fit the card. A long name steps down
   // rather than scrolling half of itself out of sight.
@@ -206,28 +213,50 @@ function PetCard({
       </button>
 
       {selected ? (
-        <div className="pointer-events-none absolute inset-x-2.5 bottom-6 sm:inset-x-5">
+        <div className="group pointer-events-none absolute inset-x-2.5 bottom-5 sm:inset-x-5 sm:bottom-6">
           <input
             type="text"
             autoFocus
+            required
+            aria-required
             value={name}
             onChange={(event) => onName(event.target.value)}
+            onBlur={() => setTouched(true)}
             onKeyDown={(event) => {
               if (event.key !== "Enter") return;
               event.preventDefault();
               onSubmit();
             }}
             placeholder="Their name"
-            aria-label={`Your ${species}'s name`}
-            aria-invalid={invalid}
-            className={`pointer-events-auto w-full border-0 bg-transparent p-0 text-center font-display text-page-ink shadow-none outline-none placeholder:font-sans placeholder:text-base placeholder:font-normal placeholder:text-page-ink-faint focus:outline-none ${nameSize}`}
+            aria-label={`Your ${species}'s name (required)`}
+            aria-invalid={showError}
+            aria-describedby={showError ? errorId : undefined}
+            className={`pointer-events-auto w-full border-0 bg-transparent p-0 text-center font-display text-page-ink shadow-none outline-none placeholder:font-sans placeholder:text-xl placeholder:font-normal placeholder:text-page-ink-faint focus:outline-none sm:placeholder:text-2xl ${nameSize}`}
           />
-          <span
-            aria-hidden
-            className={`mx-auto mt-2 block h-px w-16 transition-colors duration-300 ${
-              invalid ? "bg-red-400" : "bg-page-line"
-            }`}
-          />
+          <div className="relative mx-auto mt-2 w-24">
+            <span
+              aria-hidden
+              className={`block h-0.5 w-full rounded-full transition-colors duration-300 ${
+                showError
+                  ? "bg-red-500"
+                  : "bg-page-ink/30 group-focus-within:bg-periwinkle"
+              }`}
+            />
+            {showError ? (
+              // Required, and still empty after they moved on.
+              <span
+                aria-hidden
+                className="absolute -right-4 -top-8 text-2xl font-semibold leading-none text-red-600"
+              >
+                *
+              </span>
+            ) : null}
+          </div>
+          {showError ? (
+            <p id={errorId} className="mt-1.5 text-center text-xs text-red-600">
+              Their name is required
+            </p>
+          ) : null}
         </div>
       ) : null}
     </div>
