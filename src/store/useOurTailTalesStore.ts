@@ -5,6 +5,7 @@ import { create } from "zustand";
 import { proposeChapters } from "@/lib/photo/cluster";
 import { groupDuplicates, selectablePhotos } from "@/lib/photo/dedupe";
 import {
+  applyPageLayout,
   hasDedication,
   paginateBook,
   withoutEmptyDedication,
@@ -25,6 +26,7 @@ import type {
   BookPage,
   Chapter,
   CustomCoverMeta,
+  PhotoLayoutId,
   PlaceLabel,
 } from "@/types/book";
 import type { StoryDraft } from "@/types/story";
@@ -137,6 +139,15 @@ type Actions = {
   ) => void;
   setCoverPhoto: (photoId: string) => void;
   setChapterHero: (chapterId: string, photoId: string) => void;
+  /**
+   * Gives one of a chapter's photo pages a layout from the design's
+   * catalogue, or hands it back to the book with `null`.
+   */
+  setPageLayout: (
+    chapterId: string,
+    pageIndex: number,
+    layoutId: PhotoLayoutId | null,
+  ) => void;
 
   setLeadEmail: (email: string) => void;
   setExporting: (message: string | null) => void;
@@ -482,6 +493,19 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
       const chapters = state.chapters.map((chapter) =>
         chapter.id === chapterId && chapter.photoIds.includes(photoId)
           ? { ...chapter, heroPhotoId: photoId }
+          : chapter,
+      );
+      return {
+        chapters,
+        pages: paginateBook(state.meta, chapters, orientationsOf(state.photos)),
+      };
+    }),
+
+  setPageLayout: (chapterId, pageIndex, layoutId) =>
+    set((state) => {
+      const chapters = state.chapters.map((chapter) =>
+        chapter.id === chapterId
+          ? applyPageLayout(chapter, pageIndex, layoutId)
           : chapter,
       );
       return {

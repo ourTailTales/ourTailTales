@@ -25,16 +25,33 @@ export type Chapter = {
   heroPhotoId: string | null;
   aiStatus: AiStatus;
   aiError?: string;
+  /**
+   * Layouts the customer chose for this chapter's photo pages, by page
+   * (0 is the first page after the opener). Null or missing means "let the
+   * book decide". Kept on the chapter rather than on the page because pages
+   * are rebuilt from chapters on every edit, and a chosen layout has to
+   * survive that.
+   */
+  pageLayouts?: (PhotoLayoutId | null)[];
 };
 
-export type LayoutId =
+/** The ten photo-page layouts every design offers (see `lib/book/layouts`). */
+export type PhotoLayoutId =
   | "full-bleed"
-  | "one-large-two-small"
+  | "single-framed"
   | "two-vertical"
   | "two-horizontal"
+  | "one-large-two-small"
   | "three-editorial"
   | "four-grid"
-  | "chapter-opener";
+  | "one-large-three-small"
+  | "five-mosaic"
+  | "six-grid";
+
+export type LayoutId = PhotoLayoutId | "chapter-opener";
+
+/** The look of the whole book's pages (see `lib/book/design`). */
+export type DesignId = "scrapbook" | "classic" | "modern" | "vintage";
 
 export type PageKind =
   | "title"
@@ -54,17 +71,6 @@ export type Slot = {
 
 export type SlotShape = "portrait" | "landscape" | "square" | "any";
 
-export type LayoutDefinition = {
-  id: LayoutId;
-  slots: Slot[];
-  /** Preferred orientation of each slot, used to match photos to layouts. */
-  slotShapes: SlotShape[];
-  /** Text region for the chapter opener, in the same normalized space. */
-  textBox?: Slot;
-  /** True when slots run to the page edge and must not be inset. */
-  fullBleed?: boolean;
-};
-
 export type BookPage = {
   id: string;
   kind: PageKind;
@@ -74,6 +80,8 @@ export type BookPage = {
   photoIds: string[];
   chapterId?: string;
   chapterIndex?: number;
+  /** Which of its chapter's photo pages this is, from 0 — photo pages only. */
+  chapterPageIndex?: number;
 };
 
 /** Free position on the front cover, as a percentage of width/height (0–100), anchored at its center. */
@@ -140,6 +148,12 @@ export type BookMeta = {
    * that makes it sound like their pet.
    */
   notes?: string;
+  /**
+   * The page design. Optional — falls back to Scrapbook, which is also what
+   * every free preview is printed in; the other designs are for account
+   * holders to switch to.
+   */
+  designId?: DesignId;
   /** Optional — falls back to DEFAULT_COVER_LAYOUT (see lib/book/coverLayouts). */
   coverLayoutId?: CoverLayoutId;
   /** Optional — falls back to DEFAULT_COVER_FONT. */

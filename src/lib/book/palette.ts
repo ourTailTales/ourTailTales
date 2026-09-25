@@ -213,3 +213,12 @@ function ensureContrast(
   }
   return candidate;
 }
+
+/** Mixes two colors, `t` of the way from `a` to `b`. Unreadable input returns `a`. */
+export function mixHex(a: string, b: string, t: number): string {
+  const from = parseHex(a);
+  const to = parseHex(b);
+  if (!from || !to) return a;
+  const mix = (x: number, y: number): number => x + (y - x) * t;
+  return toHex({ r: mix(from.r, to.r), g: mix(from.g, to.g), b: mix(from.b, to.b) });
+}

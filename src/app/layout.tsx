@@ -32,11 +32,15 @@ const body = Inter({
   subsets: ["latin"],
 });
 
-/** Extra cover-font options, offered in the cover editor alongside display/cover/body. */
+/**
+ * Extra cover-font options, offered in the cover editor alongside
+ * display/cover/body. 400 and 700 also set the Modern and Vintage book
+ * designs' headings, matching the faces the PDF embeds.
+ */
 const playfair = Playfair_Display({
   variable: "--font-playfair",
   subsets: ["latin"],
-  weight: ["600", "700"],
+  weight: ["400", "600", "700"],
 });
 
 const caveat = Caveat({
