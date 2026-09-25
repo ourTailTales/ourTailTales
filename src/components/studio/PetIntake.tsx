@@ -242,15 +242,6 @@ function PetCard({
                   : "bg-page-ink/30 group-focus-within:bg-periwinkle"
               }`}
             />
-            {showError ? (
-              // Required, and still empty after they moved on.
-              <span
-                aria-hidden
-                className="absolute -right-4 -top-8 text-2xl font-semibold leading-none text-red-600"
-              >
-                *
-              </span>
-            ) : null}
           </div>
           {showError ? (
             <p id={errorId} className="mt-1.5 text-center text-xs text-red-600">
