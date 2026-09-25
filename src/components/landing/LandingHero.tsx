@@ -52,7 +52,6 @@ export function LandingHero() {
               inputId="hero-email"
               buttonLabel="Get their Free Story"
               theme="dark"
-              alwaysAskEmail
             />
           </div>
         </div>

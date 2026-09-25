@@ -52,12 +52,10 @@ export function EmailCaptureCta({
   theme = "light",
   className = "",
   inputWidthClassName = "flex-[2]",
-  alwaysAskEmail = false,
 }: EmailCaptureCtaProps) {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "working" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
-  const isAuthenticated = useIsAuthenticated();
   const router = useRouter();
 
   const isValidEmail = EMAIL_RE.test(email.trim());
@@ -78,24 +76,6 @@ export function EmailCaptureCta({
   };
 
   const isDark = theme === "dark";
-
-  // Signed-in visitors skip the email capture and go straight to /create —
-  // everywhere but the hero, which always makes the same offer to everybody.
-  if (isAuthenticated && !alwaysAskEmail) {
-    return (
-      <div className={className}>
-        <a
-          href="/create"
-          className={`inline-flex w-fit items-center gap-3 rounded-2xl bg-periwinkle px-12 py-6 text-xl font-semibold shadow-lift transition-colors hover:bg-periwinkle-deep ${
-            isDark ? "text-white" : "text-page-ink"
-          }`}
-        >
-          Create your Book
-
-        </a>
-      </div>
-    );
-  }
 
   const inputClassName = isDark
     ? `min-w-0 w-full grow-1 ${inputWidthClassName} rounded-2xl border-2 border-white/40 bg-white px-7 py-6 text-xl text-page-ink placeholder:text-page-ink-faint outline-none transition-colors focus:border-periwinkle focus:ring-2 focus:ring-periwinkle/30`
