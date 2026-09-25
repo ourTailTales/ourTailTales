@@ -578,12 +578,37 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
       assetStore.releaseAsset(id);
       const photos = state.photos.filter((photo) => photo.id !== id);
       const empty = photos.length === 0 && state.albumVideos.length === 0;
+      const meta =
+        state.meta.coverPhotoId === id
+          ? { ...state.meta, coverPhotoId: null }
+          : state.meta;
+      // A photograph that has left the album has left the book with it. This
+      // used to take it out of the album alone, which was harmless while the
+      // only way to remove one was from the album step — but the editor can
+      // remove a photograph that is on a page, and a chapter still pointing
+      // at a released asset prints a hole where the picture was. The page
+      // plan needs no help: `reconcilePlan` drops what is no longer there.
+      const chapters = state.chapters.map((chapter) =>
+        chapter.photoIds.includes(id) ||
+        chapter.candidateIds.includes(id) ||
+        chapter.heroPhotoId === id
+          ? {
+              ...chapter,
+              photoIds: chapter.photoIds.filter((photoId) => photoId !== id),
+              candidateIds: chapter.candidateIds.filter((photoId) => photoId !== id),
+              heroPhotoId: chapter.heroPhotoId === id ? null : chapter.heroPhotoId,
+            }
+          : chapter,
+      );
       return {
         photos,
-        meta:
-          state.meta.coverPhotoId === id
-            ? { ...state.meta, coverPhotoId: null }
-            : state.meta,
+        meta,
+        chapters,
+        // Before there is a book there is nothing to repaginate, and building
+        // pages here would conjure one out of an album still being gathered.
+        ...(state.chapters.length > 0
+          ? { pages: paginateBook(meta, chapters, photoFactsOf(photos)) }
+          : {}),
         funnelState:
           empty && state.funnelState === "album_ready"
             ? "idle"

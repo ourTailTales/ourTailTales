@@ -11,17 +11,24 @@ import { MIN_PHOTOS_FOR_BOOK } from "@/lib/pricing";
  * Cover panel's Text/Media tabs instead of a separate gallery — the Media
  * tab already shows the photo picker, so this only needs to get new files
  * in, not redisplay them.
+ *
+ * `compact` is the same control inside a panel that is already a list of
+ * photographs — under the photos on a page, say. There the framed box and the
+ * album's running totals are noise: the photographs are right there to count,
+ * and what is needed is the one button that adds more.
  */
 export function AddMediaControl({
   onFiles,
   processing,
   readyCount,
   videoCount,
+  compact = false,
 }: {
   onFiles: (files: File[]) => void;
   processing: boolean;
   readyCount: number;
   videoCount: number;
+  compact?: boolean;
 }) {
   const photosRef = useRef<HTMLInputElement>(null);
   const folderRef = useRef<HTMLInputElement>(null);
@@ -41,7 +48,13 @@ export function AddMediaControl({
   const hasMedia = mediaCount > 0;
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-dashed border-line bg-lavender/20 p-3">
+    <div
+      className={
+        compact
+          ? "flex flex-col gap-1"
+          : "flex flex-col gap-3 rounded-lg border border-dashed border-line bg-lavender/20 p-3"
+      }
+    >
       <input
         ref={photosRef}
         type="file"
@@ -71,27 +84,33 @@ export function AddMediaControl({
         <button
           type="button"
           onClick={() => folderRef.current?.click()}
-          className="min-h-11 cursor-pointer px-2 text-center text-sm font-medium text-periwinkle underline decoration-line underline-offset-4 hover:text-periwinkle-deep"
+          className={
+            compact
+              ? "min-h-9 cursor-pointer px-2 text-center text-xs font-medium text-periwinkle underline decoration-line underline-offset-4 hover:text-periwinkle-deep"
+              : "min-h-11 cursor-pointer px-2 text-center text-sm font-medium text-periwinkle underline decoration-line underline-offset-4 hover:text-periwinkle-deep"
+          }
         >
           or choose a folder
         </button>
       </div>
 
-      <p className="text-center text-xs leading-5 text-ink-soft">
-        {hasMedia ? (
-          <>
-            {readyCount.toLocaleString()} usable{" "}
-            {readyCount === 1 ? "photo" : "photos"} ·{" "}
-            {videoCount.toLocaleString()} usable{" "}
-            {videoCount === 1 ? "video" : "videos"}
-            {remaining > 0
-              ? ` · ${remaining.toLocaleString()} more to start a book`
-              : ""}
-          </>
-        ) : (
-          <>At least {MIN_PHOTOS_FOR_BOOK} photos & videos to make a book.</>
-        )}
-      </p>
+      {compact ? null : (
+        <p className="text-center text-xs leading-5 text-ink-soft">
+          {hasMedia ? (
+            <>
+              {readyCount.toLocaleString()} usable{" "}
+              {readyCount === 1 ? "photo" : "photos"} ·{" "}
+              {videoCount.toLocaleString()} usable{" "}
+              {videoCount === 1 ? "video" : "videos"}
+              {remaining > 0
+                ? ` · ${remaining.toLocaleString()} more to start a book`
+                : ""}
+            </>
+          ) : (
+            <>At least {MIN_PHOTOS_FOR_BOOK} photos & videos to make a book.</>
+          )}
+        </p>
+      )}
     </div>
   );
 }

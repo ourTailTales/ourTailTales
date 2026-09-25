@@ -232,3 +232,36 @@ body {
   user-select: none;
   -webkit-user-select: none;
 }
+
+/* The book itself scrolls sideways, one page at a time.
+   Mandatory snap points are what make it one page and never a page and a
+   half, whatever did the scrolling — a finger, a trackpad, a shift-wheel, or
+   the drag handler in `BookStudio`, which switches snapping off for the
+   length of a drag so the book can follow the hand between two pages. */
+.page-carousel {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  /* A swipe past the last page is the end of the book, not the browser's
+     go-back gesture. */
+  overscroll-behavior-x: contain;
+  /* The drag handler moves scrollLeft directly; smooth scrolling would fight
+     it. Anything that wants an animated move asks for one by name. */
+  scroll-behavior: auto;
+  /* A finger scrolls the book sideways and the page up and down; the JS
+     handler sits out touch entirely so the two never double up. */
+  touch-action: pan-x pan-y;
+}
+
+.page-carousel::-webkit-scrollbar {
+  display: none;
+}
+
+/* A photograph dragged with a mouse must not become a file being dragged out
+   of the window: that cancels the pointer stream that is turning the page.
+   `onDragStart` in `BookStudio` says the same thing to browsers that do not
+   read this one. */
+.page-carousel img {
+  -webkit-user-drag: none;
+  user-select: none;
+  -webkit-user-select: none;
+}

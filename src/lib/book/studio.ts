@@ -93,6 +93,49 @@ function labelFor(page: BookPage, chapterNumber: number | undefined): string {
   }
 }
 
+/**
+ * Where the reader lands when the book is repaginated under them.
+ *
+ * Every edit rebuilds the pages from the chapters, and a chapter is only as
+ * long as its photographs: give one of its pages a layout that takes four of
+ * them and the chapter can run out before its last page, which then is not
+ * printed at all. A selection held as an index into that list quietly comes to
+ * mean whatever moved up into the gap — the next chapter's opening page — so
+ * somebody who had just chosen a layout was thrown into the next chapter.
+ *
+ * The page is followed by its own identity instead. If it survived the rebuild
+ * at a new index, that is where they go. If it is gone, its photographs went
+ * onto the pages before it in the same chapter, so the last page of that
+ * chapter is where they go: the page that absorbed what they were looking at,
+ * never the next chapter.
+ */
+export function followSelection(
+  before: readonly StudioSlide[],
+  after: readonly StudioSlide[],
+  selected: number,
+): number {
+  if (after.length === 0) return 0;
+  const last = after.length - 1;
+  const was = before[Math.min(Math.max(selected, 0), Math.max(0, before.length - 1))];
+  if (!was) return Math.min(Math.max(selected, 0), last);
+
+  const again = after.findIndex((slide) => slide.key === was.key);
+  if (again !== -1) return again;
+
+  const chapter = was.chapterId;
+  if (chapter) {
+    const home = after.reduce(
+      (found, slide, index) => (slide.chapterId === chapter ? index : found),
+      -1,
+    );
+    if (home !== -1) return home;
+  }
+
+  // Not a chapter page, or a chapter that has gone entirely: the page before
+  // is the nearest thing to where they were.
+  return Math.min(Math.max(selected - 1, 0), last);
+}
+
 /** The last slide a signed-out reader can see, and the first they cannot. */
 export function lockWallIndex(slides: StudioSlide[]): number | null {
   const index = slides.findIndex((slide) => slide.locked);

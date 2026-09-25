@@ -1,7 +1,7 @@
 "use client";
 
 import { cloneElement, isValidElement, useId, useMemo, useState } from "react";
-import { Info, RefreshCw } from "lucide-react";
+import { Info, RefreshCw, Trash2 } from "lucide-react";
 
 import { AddMediaControl } from "@/components/editor/AddMediaControl";
 import { CustomCoverPanel } from "@/components/editor/CustomCoverPanel";
@@ -109,7 +109,14 @@ export function PageInspector({
         />
       );
     default:
-      return <PhotoPagePanel slide={slide} photos={photos} />;
+      return (
+        <PhotoPagePanel
+          slide={slide}
+          photos={photos}
+          onFiles={onFiles}
+          processing={processing}
+        />
+      );
   }
 }
 
@@ -579,13 +586,18 @@ function ChapterPanel({
 function PhotoPagePanel({
   slide,
   photos,
+  onFiles,
+  processing,
 }: {
   slide: StudioSlide;
   photos: PhotoAsset[];
+  onFiles: (files: File[]) => void;
+  processing: boolean;
 }) {
   const meta = useOurTailTalesStore((state) => state.meta);
   const chapters = useOurTailTalesStore((state) => state.chapters);
   const swapChapterPhoto = useOurTailTalesStore((state) => state.swapChapterPhoto);
+  const removeAlbumPhoto = useOurTailTalesStore((state) => state.removeAlbumPhoto);
   const setPageLayout = useOurTailTalesStore((state) => state.setPageLayout);
   const setPageNote = useOurTailTalesStore((state) => state.setPageNote);
 
@@ -677,6 +689,18 @@ function PhotoPagePanel({
       </Field>
     ) : null;
 
+  // One control, whether the page has photographs on it or has run out of
+  // them: adding more is the answer to an empty page as much as to a full one.
+  const addMedia = (
+    <AddMediaControl
+      compact
+      onFiles={onFiles}
+      processing={processing}
+      readyCount={photos.length}
+      videoCount={0}
+    />
+  );
+
   if (onPage.length === 0) {
     return (
       <Panel
@@ -689,6 +713,7 @@ function PhotoPagePanel({
       >
         {layoutField}
         {notesField}
+        <Field label="Add to the album">{addMedia}</Field>
       </Panel>
     );
   }
@@ -700,10 +725,13 @@ function PhotoPagePanel({
       {layoutField}
       {notesField}
 
-      <Field label={onPage.length === 1 ? "Photo on this page" : "Photos on this page"}>
+      <Field
+        label={onPage.length === 1 ? "Photo on this page" : "Photos on this page"}
+        note="Taking one out takes it out of the album, and the book closes up around it."
+      >
         <ol className="flex flex-wrap gap-2">
           {onPage.map((photo, index) => (
-            <li key={photo.id}>
+            <li key={photo.id} className="relative">
               <button
                 type="button"
                 onClick={() => setSlotIndex(index)}
@@ -721,9 +749,21 @@ function PhotoPagePanel({
                   className="h-full w-full object-cover"
                 />
               </button>
+              {/* Beside the picture rather than buried in a gallery: the one
+                  place somebody is already looking at the photograph they have
+                  decided against. */}
+              <button
+                type="button"
+                onClick={() => removeAlbumPhoto(photo.id)}
+                aria-label="Remove this photo from the book"
+                className="absolute right-0.5 top-0.5 inline-flex size-6 items-center justify-center rounded-full bg-page-ink/70 text-white transition-colors hover:bg-red-600"
+              >
+                <Trash2 aria-hidden className="size-3" />
+              </button>
             </li>
           ))}
         </ol>
+        <div className="mt-3">{addMedia}</div>
       </Field>
 
       <Field label="Replace it with">

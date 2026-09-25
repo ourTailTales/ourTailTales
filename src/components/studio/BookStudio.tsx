@@ -25,7 +25,7 @@ import { PageFilmstrip } from "@/components/studio/PageFilmstrip";
 import { PageInspector } from "@/components/studio/PageInspector";
 import { ToolsDock, type ToolSection } from "@/components/studio/ToolsDock";
 import { TEASER_DESIGN_ID, withDesign } from "@/lib/book/design";
-import { buildSlides } from "@/lib/book/studio";
+import { buildSlides, followSelection } from "@/lib/book/studio";
 import { summarizeTeaser } from "@/lib/book/teaser";
 import { selectablePhotos } from "@/lib/photo/dedupe";
 import { formatUsd } from "@/lib/pricing";
@@ -42,6 +42,19 @@ import { photoMapOf, useOurTailTalesStore } from "@/store/useOurTailTalesStore";
  * fills in as the customer moves.
  */
 const CANVAS_WINDOW = 2;
+
+/** Pixels of travel before a press on the page counts as a drag, not a click. */
+const PAN_SLOP = 5;
+
+/**
+ * How long the carousel must sit still before it counts as having stopped.
+ *
+ * `scrollend` would say this exactly, and is still missing from browsers this
+ * book has to open in; a moment of quiet after the last scroll event says the
+ * same thing everywhere, and once a page has snapped there is nothing left to
+ * move.
+ */
+const SETTLE_MS = 120;
 
 /**
  * The book, page by page, with the tools for whichever page is open.
@@ -92,8 +105,6 @@ export function BookStudio({
   const [selected, setSelected] = useState(0);
   const [confirmReset, setConfirmReset] = useState(false);
   const [zoomed, setZoomed] = useState(false);
-  /** How far the page has been dragged sideways, in pixels. */
-  const [drag, setDrag] = useState(0);
 
   const photoMap = useMemo(() => photoMapOf(photos), [photos]);
   const photoList = useMemo(() => selectablePhotos(photos), [photos]);
@@ -121,57 +132,170 @@ export function BookStudio({
   );
 
   /**
-   * Turning the page by pushing it.
+   * Moving the book sideways.
    *
-   * The same gesture the strip below already answers to, on the thing people
-   * actually look at: drag or swipe the book sideways and it follows your
-   * hand — the page you are leaving going out one side, the next one coming
-   * in the other — and letting go past a quarter of a page turns it. Anything
-   * short of that springs back, so a hesitant swipe never loses your place.
-   * Vertical movement is left alone — the page still scrolls under a thumb.
+   * The carousel is a scroller, not a slideshow the page is posted into, so
+   * every way of scrolling something horizontally moves the book: a finger, a
+   * trackpad, a shift-wheel, a scrollbar gesture on a tablet. Mandatory snap
+   * points mean it can only ever come to rest on one whole page, whichever of
+   * those did the moving. Before this it answered to one hand-rolled pointer
+   * drag and nothing else — the arrows and the strip turned pages and the page
+   * itself could not be pushed at all on a trackpad.
+   *
+   * A mouse has no horizontal scroll of its own, so a press and a pull still
+   * drives the scroller directly, the same way the filmstrip's does. Snapping
+   * is switched off for the length of that drag: with it on, every `scrollLeft`
+   * the handler writes is pulled straight back to the nearest page, so the
+   * book jumped a page at a time instead of following the hand. Putting it
+   * back at the end of the drag is also what settles the book on one page.
    */
-  const swipe = useRef<{ x: number; y: number; active: boolean } | null>(null);
+  const carouselRef = useRef<HTMLDivElement>(null);
+  /** Set while the customer is dragging the carousel with a pointer. */
+  const panning = useRef(false);
+  /** Where the drag began, and how far it has travelled. */
+  const panOrigin = useRef({ x: 0, scrollLeft: 0, moved: 0 });
   /** True from the end of a drag until the click it would otherwise fire. */
-  const justSwiped = useRef(false);
-  const SWIPE_SLOP = 8;
+  const justPanned = useRef(false);
+  /**
+   * Set when the selection changed because the carousel scrolled.
+   *
+   * The two follow each other — scrolling picks the page, and picking a page
+   * scrolls to it — so one of the directions has to say so, or a scroll would
+   * be answered by a scroll back to where it started.
+   */
+  const fromScroll = useRef(false);
+  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const onPagePointerDown = (event: React.PointerEvent<HTMLDivElement>): void => {
-    if (event.button !== 0 || zoomed) return;
-    swipe.current = { x: event.clientX, y: event.clientY, active: false };
+  /**
+   * A page's width, which is the window's.
+   *
+   * Measured rather than taken from `clientWidth`, which is rounded to whole
+   * pixels: the book's column is a share of the viewport and lands on
+   * fractions of one, and a third of a pixel per page is four pixels out by
+   * page twelve — enough for the carousel and the page it thinks it is on to
+   * start correcting each other.
+   */
+  const pageWidth = (el: HTMLDivElement): number =>
+    el.getBoundingClientRect().width || el.clientWidth || 1;
+
+  /** Which page the carousel is resting on, if it is resting on one. */
+  const pageUnderWindow = (el: HTMLDivElement): number =>
+    Math.min(
+      Math.max(Math.round(el.scrollLeft / pageWidth(el)), 0),
+      slides.length - 1,
+    );
+
+  /**
+   * Whatever page the carousel came to rest on is the page being read.
+   *
+   * Read once the movement has stopped rather than on every scroll frame. A
+   * frame reader answers a smooth scroll of its own making with the page it
+   * happens to be passing through, so one press of a chevron selected the page
+   * in between and then the page asked for — the label, the tools and the
+   * strip all flickering through a page nobody chose.
+   */
+  const settle = (): void => {
+    const el = carouselRef.current;
+    if (!el || el.clientWidth === 0) return;
+    const page = pageUnderWindow(el);
+    if (page === position) return;
+    fromScroll.current = true;
+    setSelected(page);
   };
 
-  const onPagePointerMove = (event: React.PointerEvent<HTMLDivElement>): void => {
-    const start = swipe.current;
-    if (!start) return;
-    const dx = event.clientX - start.x;
-    const dy = event.clientY - start.y;
-    // A gesture is a page turn only once it is clearly sideways; until then
-    // it may still be a scroll, and the page must not swallow it.
-    if (!start.active) {
-      if (Math.abs(dx) < SWIPE_SLOP || Math.abs(dx) <= Math.abs(dy)) return;
-      start.active = true;
-      event.currentTarget.setPointerCapture(event.pointerId);
-    }
-    // Resistance at the ends: the first and last pages give a little and
-    // stop, the way a real book does.
-    const atEnd = (dx > 0 && position === 0) || (dx < 0 && position >= slides.length - 1);
-    setDrag(atEnd ? dx * 0.25 : dx);
+  const onCarouselScroll = (): void => {
+    if (settleTimer.current) clearTimeout(settleTimer.current);
+    settleTimer.current = setTimeout(settle, SETTLE_MS);
   };
 
-  const endPageSwipe = (event: React.PointerEvent<HTMLDivElement>): void => {
-    const start = swipe.current;
-    swipe.current = null;
-    if (start?.active && event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    if (!start?.active) return;
+  const startPan = (event: React.PointerEvent<HTMLDivElement>): void => {
+    // A finger already scrolls this natively; driving scrollLeft as well moves
+    // it twice as far as the hand and fights the momentum.
+    if (event.button !== 0 || event.pointerType === "touch" || zoomed) return;
+    const el = carouselRef.current;
+    if (!el) return;
+    panning.current = true;
+    panOrigin.current = { x: event.clientX, scrollLeft: el.scrollLeft, moved: 0 };
+  };
+
+  const pan = (event: React.PointerEvent<HTMLDivElement>): void => {
+    const el = carouselRef.current;
+    if (!panning.current || !el) return;
+    const travelled = event.clientX - panOrigin.current.x;
+    panOrigin.current.moved = Math.max(panOrigin.current.moved, Math.abs(travelled));
+    // Until it is clearly a drag it may still be a click on the page.
+    if (panOrigin.current.moved <= PAN_SLOP) return;
+    if (!el.hasPointerCapture(event.pointerId)) el.setPointerCapture(event.pointerId);
+    el.style.scrollSnapType = "none";
+    el.scrollLeft = panOrigin.current.scrollLeft - travelled;
+  };
+
+  const endPan = (event: React.PointerEvent<HTMLDivElement>): void => {
+    const el = carouselRef.current;
+    if (el?.hasPointerCapture(event.pointerId)) el.releasePointerCapture(event.pointerId);
+    if (!panning.current) return;
+    panning.current = false;
+    const dragged = panOrigin.current.moved > PAN_SLOP;
     // The click this pointer is about to fire belongs to the drag, not to
     // whatever it happened to finish on top of.
-    justSwiped.current = true;
-    const width = event.currentTarget.clientWidth || 1;
-    if (Math.abs(drag) > Math.min(width * 0.25, 120)) move(drag < 0 ? 1 : -1);
-    setDrag(0);
+    justPanned.current = dragged;
+    if (!el || !dragged) return;
+    const page = pageUnderWindow(el);
+    el.style.scrollSnapType = "";
+    // Restoring the snap settles it, but on our terms rather than every
+    // browser's: whichever page the window is most of the way onto.
+    el.scrollTo({ left: page * pageWidth(el), behavior: "smooth" });
   };
+
+  /**
+   * The carousel follows the selection — from the arrows, the strip, the
+   * keyboard, or a page that has just been repaginated out from under it.
+   *
+   * A move of one page is worth watching; a jump of twenty is twenty blank
+   * pages flickering past, so anything further than a neighbour simply lands.
+   */
+  useEffect(() => {
+    const el = carouselRef.current;
+    if (!el || el.clientWidth === 0) return;
+    // This selection came from the scroller; scrolling it again would be an
+    // argument with the hand that is still moving it.
+    if (fromScroll.current) {
+      fromScroll.current = false;
+      return;
+    }
+    if (panning.current) return;
+    const width = pageWidth(el);
+    const target = position * width;
+    const away = Math.abs(el.scrollLeft - target);
+    // Under half a pixel out is the carousel already being where it belongs.
+    if (away < 0.5) return;
+    el.scrollTo({ left: target, behavior: away > width * 1.5 ? "auto" : "smooth" });
+  }, [position]);
+
+  useEffect(
+    () => () => {
+      if (settleTimer.current) clearTimeout(settleTimer.current);
+    },
+    [],
+  );
+
+  /**
+   * Staying on the page you are editing while the book is repaginated.
+   *
+   * Every edit rebuilds the pages, and a page can come out of that rebuild at
+   * a different index or not come out of it at all — `followSelection` is
+   * where that is worked out. Without it, choosing a layout that used up the
+   * chapter's last page left the selection meaning the next chapter's opener,
+   * and the editor jumped there while somebody was still working.
+   */
+  const shelf = useRef(slides);
+  useEffect(() => {
+    const before = shelf.current;
+    shelf.current = slides;
+    if (before === slides) return;
+    const next = followSelection(before, slides, selected);
+    if (next !== selected) setSelected(next);
+  }, [slides, selected]);
 
   // The moment someone runs out of free book is the number worth watching.
   const wallSeen = useRef(false);
@@ -358,30 +482,26 @@ export function BookStudio({
         <div className="mx-auto flex w-full max-w-[min(100%,calc(100dvh-9rem))] flex-col gap-4">
         <div className="relative">
           <div
-            className="relative w-full touch-pan-y select-none"
-            onPointerDown={onPagePointerDown}
-            onPointerMove={onPagePointerMove}
-            onPointerUp={endPageSwipe}
-            onPointerCancel={endPageSwipe}
+            className="relative w-full select-none"
             // A drag that ends on the zoom button, or on a chevron, was a
             // drag and not a tap.
             onClickCapture={(event) => {
-              if (!justSwiped.current) return;
-              justSwiped.current = false;
+              if (!justPanned.current) return;
+              justPanned.current = false;
               event.preventDefault();
               event.stopPropagation();
             }}
           >
             {/*
              * The carousel: the book's pages in one long row, each exactly a
-             * page wide, behind a window exactly one page wide.
+             * page wide, in a scroller whose window is exactly one page wide.
              *
              * The page used to be the only thing rendered, so turning one
              * swapped the canvas underneath and the neighbour was never there
-             * to see — a swipe slid the page you were leaving off an empty
-             * background. The pages either side are really in the track now,
-             * so pushing the book sideways brings the next one in under your
-             * thumb and letting go carries it the rest of the way.
+             * to see. The pages either side are really in the row now, and the
+             * row is scrolled rather than posted from page to page, so every
+             * way of moving something sideways moves the book and mandatory
+             * snap points stop it anywhere but on one whole page.
              *
              * One page in the window, at every width. The peek-at-the-
              * neighbours treatment this replaces sized each slide to a
@@ -389,80 +509,82 @@ export function BookStudio({
              * `cqw` — a page squeezed into a partial-width slide came out set
              * for a page that width, which is not the book anyone is buying.
              */}
-            <div className="relative overflow-hidden rounded-xl bg-white shadow-[0_18px_50px_-24px_rgb(25_32_58/0.5)] ring-1 ring-page-line">
-              {/* The row itself. Its width is the window's, so one page of
-                  travel is one hundred per cent of it, and the drag rides on
-                  top of that in pixels. */}
-              <div
-                className="flex w-full"
-                style={{
-                  transform: `translateX(calc(${position * -100}% + ${drag}px))`,
-                  transition: drag ? "none" : "transform 220ms cubic-bezier(0.22, 1, 0.36, 1)",
-                }}
-              >
-                {slides.map((item, index) => (
-                  <div
-                    key={item.key}
-                    // Each page clips its own: a locked neighbour is blurred,
-                    // and a blur paints past the box it is on — without this
-                    // the page being read picks up a smear of the next one
-                    // along its edge.
-                    className="relative w-full shrink-0 overflow-hidden"
-                    // Only the page in the window is being read. The rest are
-                    // off its edges, and a five-hundred-page book read out in
-                    // sequence is nobody's idea of this screen.
-                    aria-hidden={index !== position}
-                  >
-                    <div className={item.locked ? "blur-[7px] saturate-50" : ""}>
-                      {Math.abs(index - position) > CANVAS_WINDOW ? (
-                        // Its place, held at the same size, until it is close
-                        // enough to be worth drawing. A whole book of real
-                        // canvases would decode every photograph in it to fill
-                        // a row that shows one page.
-                        <div className="aspect-square w-full bg-white" />
-                      ) : item.page ? (
-                        <PageCanvas
-                          page={item.page}
-                          meta={meta}
-                          chapters={chapters}
-                          photos={photoMap}
-                          placeholder={item.locked}
-                        />
-                      ) : (
-                        <CoverCanvas meta={meta} photos={photoList} />
-                      )}
-                    </div>
-
-                    {item.locked ? (
-                      // A label, not a control — the actual way through is the
-                      // account CTA below (LockedWall or, here, the sidebar),
-                      // never two competing buttons on the same locked page.
-                      <div className="absolute inset-0 flex items-center justify-center bg-white/45 p-5">
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-white/90 px-4 py-2 text-sm font-semibold text-page-ink-soft shadow-sm">
-                          <Lock aria-hidden className="size-3.5" />
-                          Sign up to view this page
-                        </span>
-                      </div>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-
-              {/* Set body text on a page this size reads around six pixels on
-                  a phone. This is the way to actually read it. One button for
-                  whatever is in the window, sitting still while the pages move
-                  under it, rather than one per page riding past with them. */}
-              {slide.locked ? null : (
-                <button
-                  type="button"
-                  onClick={() => setZoomed(true)}
-                  aria-label={`Read ${slide.label} full size`}
-                  className="absolute bottom-2.5 right-2.5 flex size-9 items-center justify-center rounded-full bg-white/90 text-page-ink-soft shadow-sm backdrop-blur transition-colors hover:text-periwinkle-deep"
+            <div
+              ref={carouselRef}
+              onScroll={onCarouselScroll}
+              onPointerDown={startPan}
+              onPointerMove={pan}
+              onPointerUp={endPan}
+              onPointerCancel={endPan}
+              // A page's own photograph is an image, and an image dragged with
+              // a mouse starts a native drag-and-drop, which cancels the
+              // pointer stream the pan above is following.
+              onDragStart={(event) => event.preventDefault()}
+              className="page-carousel flex w-full cursor-grab snap-x snap-mandatory overflow-x-auto overflow-y-hidden rounded-xl bg-white shadow-[0_18px_50px_-24px_rgb(25_32_58/0.5)] ring-1 ring-page-line active:cursor-grabbing"
+            >
+              {slides.map((item, index) => (
+                <div
+                  key={item.key}
+                  // Each page clips its own: a locked neighbour is blurred,
+                  // and a blur paints past the box it is on — without this
+                  // the page being read picks up a smear of the next one
+                  // along its edge.
+                  className="relative w-full shrink-0 snap-start overflow-hidden"
+                  // Only the page in the window is being read. The rest are
+                  // off its edges, and a five-hundred-page book read out in
+                  // sequence is nobody's idea of this screen.
+                  aria-hidden={index !== position}
                 >
-                  <Maximize2 aria-hidden className="size-4" strokeWidth={2.25} />
-                </button>
-              )}
+                  <div className={item.locked ? "blur-[7px] saturate-50" : ""}>
+                    {Math.abs(index - position) > CANVAS_WINDOW ? (
+                      // Its place, held at the same size, until it is close
+                      // enough to be worth drawing. A whole book of real
+                      // canvases would decode every photograph in it to fill
+                      // a row that shows one page.
+                      <div className="aspect-square w-full bg-white" />
+                    ) : item.page ? (
+                      <PageCanvas
+                        page={item.page}
+                        meta={meta}
+                        chapters={chapters}
+                        photos={photoMap}
+                        placeholder={item.locked}
+                      />
+                    ) : (
+                      <CoverCanvas meta={meta} photos={photoList} />
+                    )}
+                  </div>
+
+                  {item.locked ? (
+                    // A label, not a control — the actual way through is the
+                    // account CTA below (LockedWall or, here, the sidebar),
+                    // never two competing buttons on the same locked page.
+                    <div className="absolute inset-0 flex items-center justify-center bg-white/45 p-5">
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-white/90 px-4 py-2 text-sm font-semibold text-page-ink-soft shadow-sm">
+                        <Lock aria-hidden className="size-3.5" />
+                        Sign up to view this page
+                      </span>
+                    </div>
+                  ) : null}
+                </div>
+              ))}
             </div>
+
+            {/* Set body text on a page this size reads around six pixels on a
+                phone. This is the way to actually read it. One button for
+                whatever is in the window, and outside the scroller rather than
+                in it: anything positioned inside a scroller scrolls away with
+                the pages. */}
+            {slide.locked ? null : (
+              <button
+                type="button"
+                onClick={() => setZoomed(true)}
+                aria-label={`Read ${slide.label} full size`}
+                className="absolute bottom-2.5 right-2.5 flex size-9 items-center justify-center rounded-full bg-white/90 text-page-ink-soft shadow-sm backdrop-blur transition-colors hover:text-periwinkle-deep"
+              >
+                <Maximize2 aria-hidden className="size-4" strokeWidth={2.25} />
+              </button>
+            )}
 
             <button
               type="button"
