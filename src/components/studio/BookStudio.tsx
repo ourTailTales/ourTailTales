@@ -32,6 +32,18 @@ import { formatUsd } from "@/lib/pricing";
 import { photoMapOf, useOurTailTalesStore } from "@/store/useOurTailTalesStore";
 
 /**
+ * How many pages either side of the one in the window are really drawn.
+ *
+ * The carousel holds every page of the book so that a swipe has somewhere to
+ * go and the row's arithmetic stays the page's index; a fifty-chapter book is
+ * over five hundred of them, and drawing every one with its photographs to
+ * show one page would decode a couple of thousand images. Everything further
+ * out than this holds its place with an empty square of the same size and
+ * fills in as the customer moves.
+ */
+const CANVAS_WINDOW = 2;
+
+/**
  * The book, page by page, with the tools for whichever page is open.
  *
  * One component serves both the signed-out reader and the signed-in editor.
@@ -112,8 +124,9 @@ export function BookStudio({
    * Turning the page by pushing it.
    *
    * The same gesture the strip below already answers to, on the thing people
-   * actually look at: drag or swipe the page sideways and it follows your
-   * hand, let go past a quarter of its width and the book turns. Anything
+   * actually look at: drag or swipe the book sideways and it follows your
+   * hand — the page you are leaving going out one side, the next one coming
+   * in the other — and letting go past a quarter of a page turns it. Anything
    * short of that springs back, so a hesitant swipe never loses your place.
    * Vertical movement is left alone — the page still scrolls under a thumb.
    */
@@ -245,9 +258,9 @@ export function BookStudio({
             panel: coverPanel,
           };
 
-  // The book design sits under the strip on a wide screen, where it belongs
-  // to the whole book rather than to this page; on a phone, where there is
-  // no room under anything, it stays in the dock.
+  // The book design sits under the carousel on a wide screen, where it
+  // belongs to the whole book rather than to this page; on a phone, where
+  // there is no room under anything, it stays in the dock.
   const showDesignBelow = unlocked && !slide.locked;
   const dockSections: ToolSection[] = [
     ...(pageSection ? [pageSection] : []),
@@ -305,20 +318,25 @@ export function BookStudio({
               // left over instead, the column centred the page inside itself,
               // which put ninety pixels between the tools and the book and
               // sixteen everywhere else.
-              "lg:grid lg:grid-cols-[21rem_minmax(0,calc(100dvh-9rem))] lg:justify-center lg:gap-4"
+              // `items-stretch` is what keeps the tools flush with the book:
+              // the first row is as tall as the page and the carousel, and
+              // the tools' cell is stretched to it whatever the panel holds.
+              "lg:grid lg:grid-cols-[21rem_minmax(0,calc(100dvh-9rem))] lg:items-stretch lg:justify-center lg:gap-4"
             : ""
         }
       >
         {/*
-         * The tools, flush with the book beside them: top of the page to the
-         * foot of the last panel, exactly.
+         * The tools, flush with the book beside them: the top of the page to
+         * the foot of the carousel, exactly, at whatever height the book
+         * takes.
          *
          * The panel inside is taken out of the flow — absolute inside a
          * stretched grid cell — so its own height can never set the height of
          * the row. It used to: the cover's panel is twice the height of a
          * photo page's, so turning a page resized the whole layout and the
          * book jumped under the reader while they were moving sideways
-         * through it. Now the book decides the height and the tools fit
+         * through it. Now the book decides the height — the page and the
+         * carousel, the only things sharing this row — and the tools fit
          * themselves into it, scrolling inside if there is more of them.
          */}
         <aside className="relative hidden select-none lg:block [&_input]:select-text [&_textarea]:select-text">
@@ -333,11 +351,10 @@ export function BookStudio({
         {/* The page and the strip of pages under it, at one width: the strip
             is the book's own pages, so it is as wide as a page is.
 
-            Viewport — one page at a time, at every width. The carousel's
-            peek-at-the-neighbors treatment did not render the page correctly
-            once it was squeezed to a partial-width slide on a phone, so this
-            goes back to the same full-width page and chevrons on mobile as
-            on desktop. */}
+            One page in view at every width, chevrons either side of it on a
+            phone as on a desktop. What the carousel below never does is show
+            a slice of the next page beside it: a page drawn narrower than the
+            window is a page set for the wrong trim. */}
         <div className="mx-auto flex w-full max-w-[min(100%,calc(100dvh-9rem))] flex-col gap-4">
         <div className="relative">
           <div
@@ -355,40 +372,87 @@ export function BookStudio({
               event.stopPropagation();
             }}
           >
-            <div
-              className="overflow-hidden rounded-xl bg-white shadow-[0_18px_50px_-24px_rgb(25_32_58/0.5)] ring-1 ring-page-line"
-              style={{
-                transform: drag ? `translateX(${drag}px)` : undefined,
-                transition: drag ? "none" : "transform 220ms cubic-bezier(0.22, 1, 0.36, 1)",
-              }}
-            >
-              <div className={slide.locked ? "blur-[7px] saturate-50" : ""}>
-                {slide.page ? (
-                  <PageCanvas
-                    page={slide.page}
-                    meta={meta}
-                    chapters={chapters}
-                    photos={photoMap}
-                    placeholder={slide.locked}
-                  />
-                ) : (
-                  <CoverCanvas meta={meta} photos={photoList} />
-                )}
+            {/*
+             * The carousel: the book's pages in one long row, each exactly a
+             * page wide, behind a window exactly one page wide.
+             *
+             * The page used to be the only thing rendered, so turning one
+             * swapped the canvas underneath and the neighbour was never there
+             * to see — a swipe slid the page you were leaving off an empty
+             * background. The pages either side are really in the track now,
+             * so pushing the book sideways brings the next one in under your
+             * thumb and letting go carries it the rest of the way.
+             *
+             * One page in the window, at every width. The peek-at-the-
+             * neighbours treatment this replaces sized each slide to a
+             * fraction of the viewport, and `PageCanvas` measures its type in
+             * `cqw` — a page squeezed into a partial-width slide came out set
+             * for a page that width, which is not the book anyone is buying.
+             */}
+            <div className="relative overflow-hidden rounded-xl bg-white shadow-[0_18px_50px_-24px_rgb(25_32_58/0.5)] ring-1 ring-page-line">
+              {/* The row itself. Its width is the window's, so one page of
+                  travel is one hundred per cent of it, and the drag rides on
+                  top of that in pixels. */}
+              <div
+                className="flex w-full"
+                style={{
+                  transform: `translateX(calc(${position * -100}% + ${drag}px))`,
+                  transition: drag ? "none" : "transform 220ms cubic-bezier(0.22, 1, 0.36, 1)",
+                }}
+              >
+                {slides.map((item, index) => (
+                  <div
+                    key={item.key}
+                    // Each page clips its own: a locked neighbour is blurred,
+                    // and a blur paints past the box it is on — without this
+                    // the page being read picks up a smear of the next one
+                    // along its edge.
+                    className="relative w-full shrink-0 overflow-hidden"
+                    // Only the page in the window is being read. The rest are
+                    // off its edges, and a five-hundred-page book read out in
+                    // sequence is nobody's idea of this screen.
+                    aria-hidden={index !== position}
+                  >
+                    <div className={item.locked ? "blur-[7px] saturate-50" : ""}>
+                      {Math.abs(index - position) > CANVAS_WINDOW ? (
+                        // Its place, held at the same size, until it is close
+                        // enough to be worth drawing. A whole book of real
+                        // canvases would decode every photograph in it to fill
+                        // a row that shows one page.
+                        <div className="aspect-square w-full bg-white" />
+                      ) : item.page ? (
+                        <PageCanvas
+                          page={item.page}
+                          meta={meta}
+                          chapters={chapters}
+                          photos={photoMap}
+                          placeholder={item.locked}
+                        />
+                      ) : (
+                        <CoverCanvas meta={meta} photos={photoList} />
+                      )}
+                    </div>
+
+                    {item.locked ? (
+                      // A label, not a control — the actual way through is the
+                      // account CTA below (LockedWall or, here, the sidebar),
+                      // never two competing buttons on the same locked page.
+                      <div className="absolute inset-0 flex items-center justify-center bg-white/45 p-5">
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-white/90 px-4 py-2 text-sm font-semibold text-page-ink-soft shadow-sm">
+                          <Lock aria-hidden className="size-3.5" />
+                          Sign up to view this page
+                        </span>
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
               </div>
 
-              {slide.locked ? (
-                // A label, not a control — the actual way through is the
-                // account CTA below (LockedWall or, here, the sidebar),
-                // never two competing buttons on the same locked page.
-                <div className="absolute inset-0 flex items-center justify-center bg-white/45 p-5">
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-white/90 px-4 py-2 text-sm font-semibold text-page-ink-soft shadow-sm">
-                    <Lock aria-hidden className="size-3.5" />
-                    Sign up to view this page
-                  </span>
-                </div>
-              ) : (
-                // Set body text on a page this size reads around six pixels
-                // on a phone. This is the way to actually read it.
+              {/* Set body text on a page this size reads around six pixels on
+                  a phone. This is the way to actually read it. One button for
+                  whatever is in the window, sitting still while the pages move
+                  under it, rather than one per page riding past with them. */}
+              {slide.locked ? null : (
                 <button
                   type="button"
                   onClick={() => setZoomed(true)}
@@ -460,14 +524,6 @@ export function BookStudio({
             photoList={photoList}
           />
         </div>
-
-        {/* The design belongs to the whole book, so it sits under the whole
-            book rather than in the column of tools for one page. */}
-        {showDesignBelow ? (
-          <div className="hidden select-none rounded-2xl border border-page-line bg-white/95 p-5 lg:block">
-            {designPanel()}
-          </div>
-        ) : null}
         </div>
 
         {slide.locked ? (
@@ -501,6 +557,17 @@ export function BookStudio({
             is never under it. */}
           {dockSections.length > 0 ? <div aria-hidden className="h-16 lg:hidden" /> : null}
         </div>
+
+        {/* The design belongs to the whole book, so it sits under the whole
+            book — a second row of the editor, under the carousel and under
+            the tools, spanning both. Keeping it out of the book's own column
+            is also what lets the tools end level with the carousel instead of
+            running on down the side of a panel that is not theirs. */}
+        {showDesignBelow ? (
+          <div className="hidden select-none rounded-2xl border border-page-line bg-white/95 p-5 lg:col-span-2 lg:block">
+            {designPanel()}
+          </div>
+        ) : null}
       </div>
 
       <ToolsDock sections={dockSections} />
