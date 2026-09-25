@@ -6,6 +6,8 @@ import {
   isEmptyNote,
   lineAt,
   noteParagraphs,
+  notePageNote,
+  notePageParagraphs,
   pageNotes,
   textHeight,
   type BookDesign,
@@ -22,7 +24,13 @@ import {
   type Print,
   type Shape,
 } from "@/lib/book/design/primitives";
-import { gridSlots, isCaptionLayout, isPhotoLayout, layoutRegions } from "@/lib/book/layouts";
+import {
+  gridSlots,
+  isCaptionLayout,
+  isNotePage,
+  isPhotoLayout,
+  layoutRegions,
+} from "@/lib/book/layouts";
 import { CLOSING_LINE, titlePageHeading } from "@/lib/book/pagination";
 import { mixHex } from "@/lib/book/palette";
 import type { BookPage, PhotoLayoutId, Slot } from "@/types/book";
@@ -303,7 +311,9 @@ function designPage(page: BookPage, context: DesignContext): PageDesign {
       return design;
 
     default: {
-      if (!isPhotoLayout(page.layoutId) || page.photoIds.length === 0) return design;
+      if (!isPhotoLayout(page.layoutId)) return design;
+      if (isNotePage(page.layoutId)) return writingPage(page, context, design);
+      if (page.photoIds.length === 0) return design;
       if (isCaptionLayout(page.layoutId)) return captionPage(page, context, random, design);
       const captioned = page.photoIds.length <= 2;
       const slots = gridSlots(page.layoutId, FRAME, GRID);
@@ -370,6 +380,38 @@ function captionPage(
     design.texts.push(block);
   });
 
+  return design;
+}
+
+/** An album page kept for writing on, between two flourishes. */
+function writingPage(page: BookPage, context: DesignContext, design: PageDesign): PageDesign {
+  const { palette } = context;
+  const note = notePageNote(page, context);
+  if (!note) return design;
+  const written = Boolean(note.text);
+
+  const paragraphs = notePageParagraphs(note, {
+    body: { font: "serifItalic", size: 17, leading: 27, color: palette.ink },
+    meta: { font: "serif", size: 11, tracking: 2, uppercase: true, color: palette.inkSoft },
+    alone: { font: "serif", size: 11, color: palette.inkSoft },
+    align: "center",
+  });
+  if (paragraphs.length === 0) return design;
+
+  design.under.push(...flourish(0.255, context, 0.06));
+  design.texts = [
+    {
+      x: MARGIN + 0.05,
+      y: 0.31,
+      w: 1 - (MARGIN + 0.05) * 2,
+      h: 0.44,
+      valign: written ? "middle" : "top",
+      // Rules are an invitation to write, so a page that has been written on
+      // does not carry them.
+      ...(written ? {} : { ruled: { color: palette.inkSoft, opacity: 0.2 } }),
+      paragraphs,
+    },
+  ];
   return design;
 }
 

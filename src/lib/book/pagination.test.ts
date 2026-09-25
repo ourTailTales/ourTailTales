@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   isCaptionLayout,
+  isNotePage,
   isPhotoLayout,
   layoutNoteCount,
   layoutPhotoCount,
@@ -269,6 +270,26 @@ describe("a book that does not look machine-made", () => {
     const teaser = pages.slice(0, 9).filter((page) => page.kind === "photos");
     expect(new Set(teaser.map((page) => page.layoutId)).size).toBe(teaser.length);
     expect(teaser.some((page) => isCaptionLayout(page.layoutId))).toBe(true);
+  });
+
+  it("gives a thin chapter pages to write on rather than blank paper", () => {
+    // Five photos a chapter — the smallest album the shop sells — against
+    // nine photo pages a chapter. Every page the photographs cannot reach is
+    // a page for words, and none of them is blank.
+    const { pages } = fullBook(5);
+    const photoPages = pages.filter((page) => page.kind === "photos");
+
+    expect(photoPages.every((page) => page.layoutId !== null)).toBe(true);
+    const writing = photoPages.filter((page) => isNotePage(page.layoutId));
+    expect(writing.length).toBeGreaterThan(0);
+    for (const page of writing) expect(page.photoIds).toEqual([]);
+
+    // The pages that do have a photograph keep room for words beside it.
+    const withPhotos = photoPages.filter((page) => page.photoIds.length > 0);
+    expect(withPhotos.length).toBe(5 * 4);
+    expect(withPhotos.filter((page) => isCaptionLayout(page.layoutId)).length).toBeGreaterThan(
+      withPhotos.length / 2,
+    );
   });
 
   it("never repeats a layout twice running, and never leaves a page empty", () => {

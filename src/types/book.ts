@@ -75,7 +75,8 @@ export type PhotoLayoutId =
   | "caption-below-1"
   | "caption-below-2"
   | "caption-below-3"
-  | "caption-below-4";
+  | "caption-below-4"
+  | "note-page";
 
 export type LayoutId = PhotoLayoutId | "chapter-opener";
 

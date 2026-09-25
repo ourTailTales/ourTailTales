@@ -6,6 +6,8 @@ import {
   isEmptyNote,
   lineAt,
   noteParagraphs,
+  notePageNote,
+  notePageParagraphs,
   pageNotes,
   textHeight,
   toPt,
@@ -39,6 +41,7 @@ import {
   STANDARD_GUTTER,
   gridSlots,
   isCaptionLayout,
+  isNotePage,
   isPhotoLayout,
   layoutRegions,
 } from "@/lib/book/layouts";
@@ -707,7 +710,9 @@ function photoPage(
   random: () => number,
   design: PageDesign,
 ): PageDesign {
-  if (!isPhotoLayout(page.layoutId) || page.photoIds.length === 0) return design;
+  if (!isPhotoLayout(page.layoutId)) return design;
+  if (isNotePage(page.layoutId)) return writingPage(page, context, random, design);
+  if (page.photoIds.length === 0) return design;
   if (isCaptionLayout(page.layoutId)) return captionPage(page, context, random, design);
 
   const polaroid = page.photoIds.length <= 2;
@@ -810,6 +815,84 @@ function captionPage(
     random,
     palette,
     [...occupiedBy(prints), ...cards],
+    doodleCount(random),
+    NOTE_DOODLE_KINDS,
+  );
+  return design;
+}
+
+/**
+ * A page with no photograph: one big card, taped down and ruled, carrying
+ * whatever the owner wrote — or waiting for them to write it in pen.
+ */
+function writingPage(
+  page: BookPage,
+  context: DesignContext,
+  random: () => number,
+  design: PageDesign,
+): PageDesign {
+  const { palette } = context;
+  const note = notePageNote(page, context);
+  if (!note) return design;
+
+  const written = Boolean(note.text);
+  const card: Box = { cx: 0.5, cy: 0.5, w: 0.76, h: 0.66 };
+  const rotation = (random() < 0.5 ? -1 : 1) * between(random, 0.8, 2);
+  const pad = fromPt(NOTE_PAD * 1.6);
+
+  const paragraphs = notePageParagraphs(note, {
+    body: { font: "hand", size: 22, leading: 30, color: palette.ink },
+    meta: { font: "sans", size: 8.5, tracking: 2.4, uppercase: true, color: palette.accent },
+    alone: { font: "hand", size: 24, color: palette.accent },
+    align: written ? "center" : "left",
+  });
+  if (paragraphs.length === 0) return design;
+
+  const held = (dx: number): { x: number; y: number } =>
+    rotateAround(card.cx, card.cy, dx * card.w, -card.h / 2, rotation);
+
+  design.under = [
+    paperScrap(random, palette),
+    {
+      kind: "rect",
+      ...card,
+      w: card.w + 0.03,
+      h: card.h + 0.025,
+      rotation: rotation * 2.2,
+      fill: pick(random, palette.scraps),
+      opacity: 0.6,
+    },
+    { kind: "rect", ...card, rotation, fill: CARD, shadow: true },
+  ];
+  design.over = [-0.28, 0.28].map((dx) => {
+    const point = held(dx);
+    return {
+      kind: "tape" as const,
+      cx: point.x,
+      cy: point.y,
+      w: 0.12,
+      h: 0.032,
+      rotation: rotation + between(random, -8, 8),
+      color: pick(random, palette.tape),
+      opacity: 0.82,
+    };
+  });
+  design.texts = [
+    {
+      x: card.cx - card.w / 2 + pad,
+      y: card.cy - card.h / 2 + pad,
+      w: card.w - pad * 2,
+      h: card.h - pad * 2,
+      valign: written ? "middle" : "top",
+      rotation,
+      ruled: { color: palette.accent, opacity: written ? 0.16 : 0.24 },
+      paragraphs,
+    },
+  ];
+  design.doodles = doodlesFor(
+    random,
+    palette,
+    [{ ...card, rotation }],
     doodleCount(random),
     NOTE_DOODLE_KINDS,
   );

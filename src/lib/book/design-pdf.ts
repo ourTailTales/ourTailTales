@@ -305,6 +305,30 @@ export function drawDoodle(frame: Frame, doodle: Doodle): void {
 }
 
 /**
+ * The size a line has to be set at to stay inside its box.
+ *
+ * Lines are measured and broken in the book's own typefaces
+ * (`design/font-metrics`). If the face that actually embedded is a wider one
+ * — a font file that fails to load falls back to Helvetica or Times — the
+ * words would run out of their box and across the page. They are set a
+ * little smaller instead, which is invisible next to text lying over a
+ * photograph.
+ */
+export function fitToWidth(
+  size: number,
+  maxWidth: number,
+  span: (size: number) => number,
+): number {
+  let fitted = size;
+  let width = span(fitted);
+  for (let attempt = 0; attempt < 4 && width > maxWidth && fitted > 4; attempt += 1) {
+    fitted *= maxWidth / width;
+    width = span(fitted);
+  }
+  return fitted;
+}
+
+/**
  * Draws the lines `layoutTextBlock` laid out. Line breaks and baselines come
  * from the shared layout; only the horizontal placement inside each line uses
  * the embedded font's own widths, so centred text is centred exactly.
@@ -349,20 +373,25 @@ export function drawTextBlock(frame: Frame, block: TextBlock, fonts: BookFonts):
       const text = drawable(font, line.text);
       if (!text) continue;
       const characters = [...text];
-      const width = font.widthOfTextAtSize(text, line.size) + line.tracking * Math.max(0, characters.length - 1);
+      const span = (size: number): number =>
+        font.widthOfTextAtSize(text, size) + line.tracking * Math.max(0, characters.length - 1);
+
+      const size = fitToWidth(line.size, line.width, span);
+      const width = span(size);
+
       const x =
         line.align === "center"
           ? line.left + (line.width - width) / 2
           : line.align === "right"
             ? line.left + line.width - width
             : line.left;
-      const options = { font, size: line.size, color: hex(line.color), opacity: line.opacity };
+      const options = { font, size, color: hex(line.color), opacity: line.opacity };
       if (line.tracking) {
         // pdf-lib has no letter-spacing, so tracked text is set glyph by glyph.
         let cursor = x;
         for (const character of characters) {
           page.drawText(character, { ...options, x: fx(cursor), y: fy(line.baseline) });
-          cursor += font.widthOfTextAtSize(character, line.size) + line.tracking;
+          cursor += font.widthOfTextAtSize(character, size) + line.tracking;
         }
       } else {
         page.drawText(text, { ...options, x: fx(x), y: fy(line.baseline) });

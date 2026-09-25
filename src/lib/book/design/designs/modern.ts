@@ -6,6 +6,8 @@ import {
   isEmptyNote,
   lineAt,
   noteParagraphs,
+  notePageNote,
+  notePageParagraphs,
   pageNotes,
   textHeight,
   type BookDesign,
@@ -18,7 +20,14 @@ import {
   type PageDesign,
   type RectShape,
 } from "@/lib/book/design/primitives";
-import { SAFE, gridSlots, isCaptionLayout, isPhotoLayout, layoutRegions } from "@/lib/book/layouts";
+import {
+  SAFE,
+  gridSlots,
+  isCaptionLayout,
+  isNotePage,
+  isPhotoLayout,
+  layoutRegions,
+} from "@/lib/book/layouts";
 import { CLOSING_LINE } from "@/lib/book/pagination";
 import type { BookPage, PhotoLayoutId, Slot } from "@/types/book";
 
@@ -181,7 +190,9 @@ function designPage(page: BookPage, context: DesignContext): PageDesign {
 }
 
 function photoPage(page: BookPage, context: DesignContext, design: PageDesign): PageDesign {
-  if (!isPhotoLayout(page.layoutId) || page.photoIds.length === 0) return design;
+  if (!isPhotoLayout(page.layoutId)) return design;
+  if (isNotePage(page.layoutId)) return writingPage(page, context, design);
+  if (page.photoIds.length === 0) return design;
 
   if (isCaptionLayout(page.layoutId)) return captionPage(page, context, design);
 
@@ -258,6 +269,37 @@ function captionPage(page: BookPage, context: DesignContext, design: PageDesign)
     design.texts.push(block);
   });
 
+  return design;
+}
+
+/** A page of words: the accent bar, then the writing, ranged left. */
+function writingPage(page: BookPage, context: DesignContext, design: PageDesign): PageDesign {
+  const { palette } = context;
+  const note = notePageNote(page, context);
+  if (!note) return design;
+  const written = Boolean(note.text);
+
+  const paragraphs = notePageParagraphs(note, {
+    body: { font: "display", size: 19, leading: 29, color: palette.ink },
+    meta: { font: "sansBold", size: 8.5, tracking: 2.6, uppercase: true, color: palette.accent },
+    alone: { font: "sansBold", size: 8.5, color: palette.accent },
+  });
+  if (paragraphs.length === 0) return design;
+
+  design.under = [bar(context, 0.245)];
+  design.texts = [
+    {
+      x: SAFE,
+      y: 0.3,
+      w: 1 - SAFE * 2,
+      h: 0.46,
+      valign: written ? "middle" : "top",
+      // Rules are an invitation to write, so a page that has been written on
+      // does not carry them.
+      ...(written ? {} : { ruled: { color: palette.inkSoft, opacity: 0.18 } }),
+      paragraphs,
+    },
+  ];
   return design;
 }
 

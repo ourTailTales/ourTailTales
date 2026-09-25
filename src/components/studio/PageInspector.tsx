@@ -17,7 +17,7 @@ import {
   defaultNameAnchor,
 } from "@/lib/book/coverLayouts";
 import { track } from "@/lib/analytics";
-import { layoutNoteCount } from "@/lib/book/layouts";
+import { isNotePage, layoutNoteCount } from "@/lib/book/layouts";
 import {
   MAX_NOTE_LENGTH,
   chapterPageLayouts,
@@ -32,7 +32,7 @@ import type { CoverFontId } from "@/types/book";
 import type { PhotoAsset } from "@/types/photo";
 
 const NAME_SIZES = [
-  1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3, 3.25, 3.5, 3.75, 4, 4.5, 5,
+  1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8, 9, 10,
 ] as const;
 
 const inputClass =
@@ -618,11 +618,23 @@ function PhotoPagePanel({
   const noteSlots = layoutNoteCount(page.layoutId);
   const written = chapter && pageIndex !== null ? (chapterPageNotes(chapter)[pageIndex] ?? []) : [];
 
+  const writingPage = isNotePage(page.layoutId);
+
   const notesField =
     chapter && pageIndex !== null && noteSlots > 0 ? (
       <Field
-        label={noteSlots === 1 ? "Words on this page" : "Words beside each photo"}
-        note="Leave it empty and the page keeps the month the photos were taken."
+        label={
+          writingPage
+            ? "Your words on this page"
+            : noteSlots === 1
+              ? "Words on this page"
+              : "Words beside each photo"
+        }
+        note={
+          writingPage
+            ? "Leave it empty and the page prints with faint rules, to write on by hand."
+            : "Leave it empty and the page keeps the month the photos were taken."
+        }
       >
         <div className="flex flex-col gap-2">
           {Array.from({ length: noteSlots }, (_, slot) => (
@@ -675,13 +687,15 @@ function PhotoPagePanel({
       <Panel
         title={slide.label}
         hint={
-          layoutField
-            ? "This page has no photos yet. Pick a layout to fill it from this chapter."
-            : "This page has no photos on it. The chapter ran out before reaching it."
+          writingPage
+            ? "A page for words. This chapter had no photo left for it, so it is yours to write on — here, or by hand once the book arrives."
+            : layoutField
+              ? "This page has no photos yet. Pick a layout to fill it from this chapter."
+              : "This page has no photos on it. The chapter ran out before reaching it."
         }
       >
-        {layoutField}
         {notesField}
+        {layoutField}
       </Panel>
     );
   }

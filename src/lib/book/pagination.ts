@@ -1,6 +1,7 @@
 import {
   MAX_NOTES_PER_PAGE,
   MAX_PHOTOS_PER_PAGE,
+  NOTE_PAGE,
   assignToSlots,
   chooseLayout,
   isPhotoLayout,
@@ -86,30 +87,39 @@ export function paginateBook(
     const chosen = chapterPageLayouts(chapter);
     const notes = chapterPageNotes(chapter);
     const { counts } = planChapterPages(body.length, chosen, chapter.id);
+    // A chapter with fewer photographs than pages leans on its words: every
+    // page that does have a photograph keeps room to say something about it.
+    const sparse = body.length < PHOTO_PAGES_PER_CHAPTER;
 
     for (let index = 0; index < PHOTO_PAGES_PER_CHAPTER; index += 1) {
       const slice = body.splice(0, counts[index]!);
       const wanted = chosen[index];
       const pageId = `page-${chapter.id}-${index}`;
 
-      const layoutId: PhotoLayoutId | null =
+      const layoutId: PhotoLayoutId =
         slice.length === 0
-          ? null
+          ? // Never a blank sheet of paper: a page the chapter has no
+            // photograph for becomes a page for words.
+            NOTE_PAGE
           : wanted && layoutPhotoCount(wanted) === slice.length
             ? wanted
             : chooseLayout(
                 slice.map((id) => orientations.get(id) ?? "landscape"),
-                { recent, seed: pageId, wantsWords: wantsWords(photoPages) },
+                {
+                  recent,
+                  seed: pageId,
+                  wantsWords: sparse ? true : wantsWords(photoPages),
+                },
               );
 
-      if (layoutId) {
+      if (slice.length > 0) {
         recent.push(layoutId);
         if (recent.length > RECENT_MEMORY) recent.shift();
         photoPages += 1;
       }
 
       const ordered =
-        layoutId && slice.length > 1
+        slice.length > 1
           ? assignToSlots(
               layoutId,
               slice.map((id) => ({
@@ -119,7 +129,7 @@ export function paginateBook(
             )
           : slice;
 
-      const pageNotes = layoutId ? notesForPage(notes[index], layoutNoteCount(layoutId)) : null;
+      const pageNotes = notesForPage(notes[index], layoutNoteCount(layoutId));
 
       push({
         id: pageId,

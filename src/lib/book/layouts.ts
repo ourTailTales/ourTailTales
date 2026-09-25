@@ -140,7 +140,32 @@ export const PHOTO_LAYOUTS: readonly PhotoLayoutSpec[] = [
     noteCount: 0,
   },
   ...CAPTION_LAYOUTS,
+  /**
+   * A page with no photograph on it.
+   *
+   * Every chapter is ten pages whatever the album holds, so a chapter with
+   * six photographs used to end in four empty sheets of paper. This is what
+   * those pages are instead: the owner's words if they wrote any, and if they
+   * did not, a page ruled faintly enough to write on by hand once the book
+   * arrives — which is what the empty pages at the back of an album have
+   * always been for.
+   */
+  {
+    id: "note-page",
+    photoCount: 0,
+    label: "Words only",
+    slotShapes: [],
+    noteCount: 1,
+  },
 ];
+
+/** The layout a page takes when its chapter has no photograph left for it. */
+export const NOTE_PAGE: PhotoLayoutId = "note-page";
+
+/** True for the page that is words and paper alone. */
+export function isNotePage(id: LayoutId | null | undefined): boolean {
+  return id === NOTE_PAGE;
+}
 
 /** The most notes any one page can carry. */
 export const MAX_NOTES_PER_PAGE = 2;
@@ -234,6 +259,20 @@ export function layoutRegions(
   options: GridOptions,
 ): LayoutRegions {
   const spec = photoLayoutSpec(id);
+  if (isNotePage(id)) {
+    const inset = options.noteInset ?? 0;
+    return {
+      photos: [],
+      texts: [
+        {
+          x: frame.x + inset,
+          y: frame.y + inset,
+          w: frame.w - inset * 2,
+          h: frame.h - inset * 2,
+        },
+      ],
+    };
+  }
   if (!spec.notesAt) return { photos: gridSlots(id, frame, options), texts: [] };
   return captionRegions(spec, frame, options);
 }
@@ -343,6 +382,7 @@ function captionPhotoSlots(count: number, at: NotePlacement, area: Slot, g: numb
  */
 export function gridSlots(id: PhotoLayoutId, frame: Frame, options: GridOptions): Slot[] {
   const spec = photoLayoutSpec(id);
+  if (isNotePage(id)) return [];
   if (spec.notesAt) return captionRegions(spec, frame, options).photos;
   const { x, y, w, h } = frame;
   const g = options.gutter;

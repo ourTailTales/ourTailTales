@@ -338,18 +338,22 @@ describe("layouts that hold words", () => {
   it("keeps room for one note per photo, never more than two", () => {
     for (const spec of PHOTO_LAYOUTS) {
       expect(spec.noteCount).toBeLessThanOrEqual(2);
-      if (spec.noteCount > 0) {
+      if (spec.noteCount > 0 && spec.photoCount > 0) {
         expect(spec.notesAt).toBeTruthy();
         expect(spec.noteCount).toBe(spec.photoCount === 2 ? 2 : 1);
         expect(spec.photoCount).toBeLessThanOrEqual(4);
       }
     }
-    // Words to the right, to the left and underneath, with one to four photos.
-    const captioned = PHOTO_LAYOUTS.filter((spec) => spec.noteCount > 0);
+    // Words to the right, to the left and underneath, with one to four
+    // photos — and one page that is words alone.
+    const captioned = PHOTO_LAYOUTS.filter((spec) => spec.noteCount > 0 && spec.photoCount > 0);
     expect(captioned).toHaveLength(12);
     expect(new Set(captioned.map((spec) => spec.notesAt))).toEqual(
       new Set(["right", "left", "below"]),
     );
+    expect(PHOTO_LAYOUTS.filter((spec) => spec.photoCount === 0).map((spec) => spec.id)).toEqual([
+      "note-page",
+    ]);
   });
 
   it("never lays a note over a photograph", () => {
@@ -387,4 +391,42 @@ describe("layouts that hold words", () => {
     expect(words).toMatch(/June 2019/);
     expect(isCaptionLayout(page.layoutId)).toBe(true);
   });
+});
+
+describe("a page with no photograph", () => {
+  const writingPage = (notes?: (string | null)[]): BookPage => ({
+    id: "page-chapter-1-6",
+    kind: "photos",
+    pageNumber: 9,
+    layoutId: "note-page",
+    photoIds: [],
+    chapterId: "chapter-1",
+    chapterIndex: 0,
+    chapterPageIndex: 6,
+    ...(notes ? { notes } : {}),
+  });
+
+  for (const design of DESIGNS) {
+    it(`prints the owner's words in ${design.name}, and rules to write on without them`, () => {
+      const { contextFor } = book(design.id);
+      const written = writingPage(["We buried his tennis ball with him."]);
+      const drawn = designPage(written, { ...contextFor(written), meta: { ...contextFor(written).meta, designId: design.id } });
+
+      expect(drawn.prints).toEqual([]);
+      const words = drawn.texts
+        .flatMap((block) => layoutTextBlock(block).lines.map((line) => line.text))
+        .join(" ");
+      expect(words).toMatch(/tennis ball/);
+
+      // Nothing written: the page carries the chapter's date and rules for a pen.
+      const blank = writingPage();
+      const empty = designPage(blank, { ...contextFor(blank), meta: { ...contextFor(blank).meta, designId: design.id } });
+      const ruled = empty.texts.filter((block) => block.ruled);
+      expect(ruled.length).toBeGreaterThan(0);
+      expect(layoutTextBlock(ruled[0]!).rules.length).toBeGreaterThan(4);
+      expect(
+        empty.texts.flatMap((block) => layoutTextBlock(block).lines.map((line) => line.text)).join(" "),
+      ).toMatch(/Summer 2019/i);
+    });
+  }
 });
