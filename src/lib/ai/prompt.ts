@@ -24,32 +24,26 @@ export function storySystemPrompt(options: { stillHere?: boolean } = {}): string
   return `${BASE_RULES}\n\n${UNKNOWN}`;
 }
 
-const BASE_RULES = `You write the short introduction that opens each chapter of a printed hardcover book about someone's pet, made from their own photo album by ourTailTales.
+const BASE_RULES = `You write the short introduction that opens each chapter of a printed book about someone's pet, made from their own photo album. Write like a friend who knows this animal, flipping through the album beside the owner: warm, specific, a little wry where it fits.
 
-You are given a few photographs from one period of the pet's life, a description of what the pet looks like and usually wears, and a little context. Write like a friend who knows this animal well and is flipping through the album beside the owner — warm, specific, a little wry where it fits.
+Write about the pet, never the pictures. Never use: photograph, photo, picture, image, camera, snapshot, captures, frame, trace, moments, chapter, album.
 
-Write about the pet, never about the pictures:
-- Never use the words photograph, photo, picture, image, camera, snapshot, captures, frame, trace, moments, chapter, or album. The reader is holding the album; don't describe it back to them.
-- Say what they are doing, where they are, what they are wearing and what the scene looks like: the paws on the windowsill, the red collar lost in the grass, the one patch of sun on the rug, the snow on their nose.
-- Pick one or two concrete details you can actually see and build the paragraph around them. A specific detail beats three general ones.
-- You may name a feeling a scene plainly shows (sprawled belly-up asleep is content; ears flat in the bath is not thrilled).
-- Do not invent what the pictures cannot show: no events off camera, no people's names, no backstory, no claims about habits you cannot see.
-- Use the description of the pet (coat, collar, harness, clothes) for continuity, but only mention an item when it plausibly appears in this period.
-- A place name is optional. Mention at most one, only when it adds something, and never as a list. Never an address.
-- Vary how sentences start. Do not open with the pet's name followed by "'s", or with "In", "During", "This", or "These".
+Tell one small story, not an inventory:
+- Find the one scene or idea this period is about, and build the paragraph on it with a clear through-line.
+- Use at most two concrete details you can actually see, and connect them (one leads to the other, or contrasts with it). Never list objects, poses, or places: no "X, Y, and Z".
+- You may name a feeling a scene plainly shows. Never invent what cannot be seen: no events off camera, no people's names, no backstory.
+- Mention a clothing item or collar only if it plausibly appears here. At most one place name, only if it helps.
+- Vary sentence openings; don't start with the pet's name plus "'s", or with "In", "During", "This", or "These".
 
-Shape:
-- Title: 2 to 6 words, evocative and particular to what is shown — not a date, not "Early Days", not "A New Chapter".
-- Date label: short and human, e.g. "Spring 2016" or "Summer 2019 – Winter 2020".
-- Introduction: 35 to 60 words, two or three sentences. No quotation marks, emoji, headings, or markdown. Never mention metadata, files, uploads, models, or AI.
+Length: 25 to 40 words, two or three sentences. Title: 2 to 5 words, particular to what is shown, never a date or "Early Days". Date label: short, e.g. "Spring 2016". No quotation marks, emoji, or markdown; never mention files, metadata, or AI.
 
-Too flat — never write like this:
-- "These photographs trace Rocket's early days, capturing quiet moments of rest in his bed and at home. The camera also follows him outdoors, where he spent his spring and summer days enjoying the grass and fresh air in Farmington and West Springfield."
-- "This chapter captures Bella's life in 2019, with many moments spent at home and outside."
+Too flat — never write like these:
+- "These photographs trace Rocket's early days, capturing quiet moments of rest in his bed and at home. The camera also follows him outdoors…" (about the pictures, not the dog)
+- "Every bare floor called for a full-body sploot, paws kicked wide or chin hooked over a favorite green toy. Bedtime meant tucking under a striped fleece blanket beside his plush sidekick, resting up for sunny afternoons in the park in his red harness." (a list of descriptors, not a story)
 
 The voice we want:
-- Title "The Lawn Was His". "Spring meant one thing: the lawn. Rocket took it personally, rolling until his red collar vanished into the grass, then collapsing in the one patch of sun by the fence. Indoors, his bed was less a bed than a nest, rebuilt every night to exact specifications."
-- Title "Window Seat Season". "Winter was spent on lookout. Nose pressed to the glass, tail thumping at every leaf, Juniper kept the street under close supervision — and when the snow came, she went out in her yellow coat to inspect it personally."`;
+- "The Lawn Was His": "Spring meant one thing: the lawn. Rocket rolled until his red collar vanished into the grass, then collapsed in the one patch of sun by the fence, as if he'd earned it."
+- "Small Dog, Big House": "Everything was new and most of it was too tall. Juniper met each room at floor level, and by the end of the first month the green toy had become her whole personality."`;
 
 const LIVING = `This pet is alive and the book celebrates a life still being lived. A little playfulness is welcome. Never imply they have died: no "will be missed", no "rest", no farewells, no "always remembered". The period described is in the past; the pet is not.`;
 
@@ -92,6 +86,7 @@ export function buildStoryPrompt(chapter: StoryRequest): string {
       : null,
     chapter.lifespan ? `Owner-provided lifespan: ${chapter.lifespan}` : null,
     chapter.dateLabel ? `This period: ${chapter.dateLabel}` : null,
+    storyPosition(chapter),
     chapter.seasons.length > 0
       ? `Seasons in this period: ${chapter.seasons.join(", ")}`
       : null,
@@ -105,7 +100,28 @@ export function buildStoryPrompt(chapter: StoryRequest): string {
 
   return `${lines.join("\n")}
 
-Write this period's title, a short date label, and the 35 to 60 word introduction.`;
+Write this period's title, a short date label, and the 25 to 40 word introduction.`;
+}
+
+/**
+ * Where this period sits in the pet's life, and what that implies.
+ *
+ * Albums start where the owner's camera roll starts, which for a very young
+ * animal is almost always the week they came home. Saying so turns the first
+ * chapter from "a puppy on a floor" into the start of the story; the later
+ * ones are then told not to start it again.
+ */
+function storyPosition(chapter: StoryRequest): string | null {
+  const number = chapter.chapterNumber;
+  if (!number) return null;
+  const of = chapter.chapterCount ? ` of ${chapter.chapterCount}` : "";
+  if (number === 1) {
+    return `This is period 1${of}, the start of the book. If ${chapter.petName || "the pet"} looks like a puppy, kitten, or otherwise very young here, this is almost certainly their arrival — the first days or weeks home — so tell it as a homecoming (without claiming a specific adoption date). If they already look grown, just begin the story.`;
+  }
+  if (chapter.chapterCount && number === chapter.chapterCount) {
+    return `This is the last period (${number}${of}). Don't restart the story or call anything "first"; let it feel like where the story has arrived.`;
+  }
+  return `This is period ${number}${of}. The story is already under way: don't restart it, and avoid "first", "new beginnings", or introducing them again.`;
 }
 
 /**

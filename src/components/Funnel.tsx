@@ -338,6 +338,10 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
             photoMap,
             context,
             chapterAbort.signal,
+            {
+              chapterNumber: chapter.index + 1,
+              chapterCount: useOurTailTalesStore.getState().chapters.length,
+            },
           );
           actions.setChapterPlaces(chapterId, places);
           actions.applyChapterStory(chapterId, story);

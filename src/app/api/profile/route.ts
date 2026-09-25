@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { resolveStoryProvider } from "@/lib/ai/provider";
+import { recordAiUsage } from "@/lib/ai/usage";
 import { routeError } from "@/lib/env";
 import { LIMITS, enforceRateLimit } from "@/lib/rate-limit";
 
@@ -31,7 +32,9 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     const provider = await resolveStoryProvider();
-    const profile = await provider.generateProfile(parsed.data, request.signal);
+    const profile = await provider.generateProfile(parsed.data, request.signal, {
+      onUsage: (usage) => void recordAiUsage(request, usage),
+    });
     return Response.json(profile);
   } catch (error) {
     return routeError(error, "The book's colors could not be chosen.");

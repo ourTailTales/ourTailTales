@@ -21,6 +21,9 @@ export type StoryRequest = {
   /** What the pet looks like and wears, from the one-off profile look. */
   profile?: Pick<PetProfile, "appearance" | "accessories" | "motifs">;
   dateLabel: string;
+  /** 1-based position of this period in the book, and how many there are. */
+  chapterNumber?: number;
+  chapterCount?: number;
   photoCount: number;
   selectedCount: number;
   /** Coarse city/region/country clusters only. */

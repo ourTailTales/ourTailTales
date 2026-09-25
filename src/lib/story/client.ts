@@ -1,5 +1,6 @@
 import { clusterCentroids, describeSeasons } from "@/lib/geo";
 import * as assetStore from "@/lib/photo/assetStore";
+import { postHogHeaders } from "@/lib/posthog-client";
 import { renderAiThumbnail } from "@/lib/photo/pipeline";
 import type { Chapter, PlaceLabel } from "@/types/book";
 import type { PhotoAsset } from "@/types/photo";
@@ -7,11 +8,11 @@ import type { PetProfile, StoryDraft, StoryRequest } from "@/types/story";
 
 /**
  * Representative thumbnails sent per chapter. The product promise is three to
- * five, and `/api/story` rejects more than five. Five, because the writing is
- * built on details it can see, and a fourth picture of the same couch is
- * worth less than one more scene.
+ * five, and `/api/story` rejects more than five. Four: the opener's photo plus
+ * three spread across the period is enough to find a scene to write about,
+ * and every picture is paid for on every chapter.
  */
-const AI_SAMPLES = 5;
+const AI_SAMPLES = 4;
 
 export type StoryContext = {
   petName: string;
@@ -34,6 +35,7 @@ export async function generateChapterStory(
   photos: Map<string, PhotoAsset>,
   context: StoryContext,
   signal?: AbortSignal,
+  position?: { chapterNumber: number; chapterCount: number },
 ): Promise<{ story: StoryDraft; places: PlaceLabel[] }> {
   const samples = pickSamples(chapter, photos);
   const places = await resolvePlaces(chapter, photos, signal);
@@ -67,6 +69,8 @@ export async function generateChapterStory(
       : undefined,
     lifespan: [context.birthYear, context.deathYear].filter(Boolean).join("–"),
     dateLabel: chapter.dateLabel,
+    chapterNumber: position?.chapterNumber ?? chapter.index + 1,
+    chapterCount: position?.chapterCount,
     photoCount: chapter.candidateIds.length,
     selectedCount: chapter.photoIds.length,
     places,
@@ -76,7 +80,7 @@ export async function generateChapterStory(
 
   const response = await fetch("/api/story", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { ...postHogHeaders(), "Content-Type": "application/json" },
     signal,
     body: JSON.stringify(body),
   });

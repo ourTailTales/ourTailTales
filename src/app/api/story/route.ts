@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { resolveStoryProvider } from "@/lib/ai/provider";
+import { recordAiUsage } from "@/lib/ai/usage";
 import { routeError } from "@/lib/env";
 import { LIMITS, enforceRateLimit } from "@/lib/rate-limit";
 
@@ -29,6 +30,19 @@ const requestSchema = z.object({
   notes: z.string().max(240).optional(),
   lifespan: z.string().max(40).optional().default(""),
   dateLabel: z.string().max(60).optional().default(""),
+  // Where this period sits in the book, so the first one can read as a
+  // homecoming and later ones don't start the story over.
+  chapterNumber: z.number().int().positive().max(100).optional(),
+  chapterCount: z.number().int().positive().max(100).optional(),
+  profile: z
+    .object({
+      appearance: z.string().max(300),
+      accessories: z
+        .array(z.object({ item: z.string().max(60), color: z.string().max(60) }))
+        .max(8),
+      motifs: z.array(z.string().max(80)).max(8),
+    })
+    .optional(),
   photoCount: z.number().int().nonnegative(),
   selectedCount: z.number().int().nonnegative(),
   places: z
@@ -63,7 +77,9 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     const provider = await resolveStoryProvider();
-    const draft = await provider.generateStory(parsed.data, request.signal);
+    const draft = await provider.generateStory(parsed.data, request.signal, {
+      onUsage: (usage) => void recordAiUsage(request, usage),
+    });
 
     return Response.json(draft);
   } catch (error) {
