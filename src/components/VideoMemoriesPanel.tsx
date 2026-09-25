@@ -77,8 +77,17 @@ export function VideoMemoriesPanel({ pages }: { pages: BookPage[] }) {
     let cancelled = false;
     void (async () => {
       try {
+        // The draft the book is already banked against comes first. Asking for
+        // one unconditionally means a browser whose local copy has been
+        // cleared gets a brand new draft here, and the book's own id is then
+        // replaced by one with no PDF behind it — no clean copy to sell, and
+        // an order pointing at nothing. Only a book that has no draft at all
+        // needs one made.
+        const held = useOurTailTalesStore.getState();
         const [nextDraft, nextConfig] = await Promise.all([
-          ensureDraft(useOurTailTalesStore.getState().leadEmail),
+          held.draftId && held.draftSecret
+            ? Promise.resolve({ draftId: held.draftId, secret: held.draftSecret })
+            : ensureDraft(held.leadEmail),
           fetchVideoMemoryConfig(),
         ]);
         if (cancelled) return;

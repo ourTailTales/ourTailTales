@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ArrowRight,
   BookImage,
   ChevronLeft,
   ChevronRight,
@@ -8,7 +9,6 @@ import {
   Lock,
   Maximize2,
   Palette,
-  RotateCcw,
   SlidersHorizontal,
 } from "lucide-react";
 import {
@@ -179,7 +179,7 @@ export function BookStudio({
   onFiles,
   processing,
   onDownload,
-  onCheckout,
+  onFinish,
   downloading,
   notice,
 }: {
@@ -190,7 +190,8 @@ export function BookStudio({
   onFiles: (files: File[]) => void;
   processing: boolean;
   onDownload: () => void;
-  onCheckout: () => void;
+  /** Done editing: on to the Video Memories offer, the price and the order. */
+  onFinish: () => void;
   downloading: boolean;
   notice?: string | null;
 }) {
@@ -775,26 +776,6 @@ export function BookStudio({
             />
           </div>
         ) : null}
-
-        {/* Download, below the book on narrow screens. No free-pages
-            download here either: signed out, there is only the order. */}
-        <div className="mx-auto flex w-full max-w-2xl flex-col gap-2.5 lg:hidden">
-          {unlocked ? (
-            <button
-              type="button"
-              onClick={onDownload}
-              disabled={downloading}
-              className="inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl border border-page-line bg-white px-4 text-sm font-medium text-page-ink-soft transition-colors hover:border-periwinkle hover:text-periwinkle-deep disabled:opacity-60"
-            >
-              <Download aria-hidden className="size-3.5" />
-              {downloading ? "Preparing…" : "Download PDF"}
-            </button>
-          ) : null}
-        </div>
-
-        {/* Room for the dock to float over, so the last control on the page
-            is never under it. */}
-          {dockSections.length > 0 ? <div aria-hidden className="h-16 lg:hidden" /> : null}
         </div>
 
         {/* The design belongs to the whole book, so it sits under the whole
@@ -807,6 +788,52 @@ export function BookStudio({
             {designPanel()}
           </div>
         ) : null}
+
+        {/* Where the editor ends. A row of the editor rather than part of the
+            book's column, for the same reason the design is: the tools beside
+            the book are stretched to the row the page and the carousel share,
+            and anything else in that column drags them past the carousel.
+            Before this the book could be made and then nothing: no price, no
+            printed copy, no way on. A signed-out reader is not offered it —
+            what they are offered is the account, by the wall and the button on
+            the page. */}
+        {unlocked && !slide.locked ? (
+          <div className="mx-auto flex w-full max-w-2xl flex-col gap-3 rounded-2xl border border-page-line bg-white/95 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5 lg:col-span-2 lg:max-w-none">
+            <div className="min-w-0">
+              <p className="font-display text-base text-page-ink">
+                {meta.petName.trim()
+                  ? `Happy with ${meta.petName.trim()}\u2019s book?`
+                  : "Happy with your book?"}
+              </p>
+              <p className="mt-0.5 text-xs leading-5 text-page-ink-faint">
+                Hardcover from {formatUsd(price)}, plus the videos you want in it.
+              </p>
+            </div>
+            <div className="flex shrink-0 flex-col gap-2.5 sm:flex-row sm:items-center">
+              <button
+                type="button"
+                onClick={onDownload}
+                disabled={downloading}
+                className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-page-line bg-white px-4 text-sm font-medium text-page-ink-soft transition-colors hover:border-periwinkle hover:text-periwinkle-deep disabled:opacity-60"
+              >
+                <Download aria-hidden className="size-3.5" />
+                {downloading ? "Preparing…" : "Download PDF"}
+              </button>
+              <button
+                type="button"
+                onClick={onFinish}
+                className="inline-flex min-h-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl bg-periwinkle px-5 text-sm font-semibold text-white shadow-lift transition-colors hover:bg-periwinkle-deep"
+              >
+                Finish and order
+                <ArrowRight aria-hidden className="size-4" />
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {/* Room for the dock to float over, so the last control on the page is
+            never under it. */}
+        {dockSections.length > 0 ? <div aria-hidden className="h-16 lg:hidden" /> : null}
       </div>
 
       <ToolsDock sections={dockSections} />
