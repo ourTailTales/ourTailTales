@@ -265,7 +265,7 @@ export function PageFilmstrip({
   const dragged = useRef(false);
 
   return (
-    <div className="border-t border-page-line bg-white/85 backdrop-blur">
+    <div className="select-none border-t border-page-line bg-white/85 backdrop-blur">
       <div
         ref={stripRef}
         onPointerDown={startPan}
@@ -344,6 +344,19 @@ export function PageFilmstrip({
             </div>
           );
         })}
+
+        {/*
+         * Room past the last thumbnail for it to reach the leading edge.
+         *
+         * The selection is whichever thumbnail sits nearest the strip's left
+         * edge, and without this the strip stops scrolling while the last
+         * screenful of thumbnails is still to the right of it — so the final
+         * ten pages or so of every book could be clicked but never scrolled
+         * to, and `scrollIntoView` had nowhere to put them either. One
+         * thumbnail's width short of the strip's own width is exactly enough
+         * for the last page to land at the edge and no further.
+         */}
+        <div aria-hidden className="w-[calc(100%-5rem)] shrink-0" />
       </div>
     </div>
   );

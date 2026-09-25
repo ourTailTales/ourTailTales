@@ -41,7 +41,10 @@ export function CoverStylePicker({
 
   return (
     <div>
-      <div role="radiogroup" aria-label="Cover style" className="grid grid-cols-3 gap-2">
+      {/* Two across rather than three: the same six styles, each square half
+          again as big, which is the difference between recognising a cover
+          and squinting at one. */}
+      <div role="radiogroup" aria-label="Cover style" className="grid grid-cols-2 gap-2.5">
         {COVER_LAYOUTS.map((layout) => {
           const available = coverLayoutUnlocked(layout.id, unlocked);
           return (
