@@ -9,34 +9,13 @@ import {
 } from "pdf-lib";
 
 import { drawExpiryNotice, drawFrontCoverPage } from "@/lib/book/cover-pdf";
+import { designContext, designPage } from "@/lib/book/design";
+import { photoWindow, type Print } from "@/lib/book/design/primitives";
+import { drawDesign, hex } from "@/lib/book/design-pdf";
 import { BLEED_INCHES, PAGE_INCHES, TRIM_INCHES } from "@/lib/book/layouts";
 import { resolvePalette, type BookPalette } from "@/lib/book/palette";
-import { drawable, loadBookFonts, type BookFonts } from "@/lib/book/pdf-fonts";
-import {
-  CLOSING_TEXT,
-  DEDICATION_CARD,
-  OPENER_CARD,
-  OPENER_STICKER,
-  OPENER_TEXT,
-  OPENER_TYPE,
-  TITLE_TEXT,
-  dedicationType,
-  designPage,
-  photoCaption,
-  photoWindow,
-  type DesignContext,
-  type Print,
-} from "@/lib/book/scrapbook";
-import {
-  drawCard,
-  drawDoodle,
-  drawPrint,
-  drawScrap,
-  drawSticker,
-  drawTape,
-  hex,
-} from "@/lib/book/scrapbook-pdf";
-import { CLOSING_LINE, possessivePetName, titlePageHeading } from "@/lib/book/pagination";
+import { loadBookFonts, type BookFonts } from "@/lib/book/pdf-fonts";
+import { possessivePetName } from "@/lib/book/pagination";
 import { brand, hexToRgb01 } from "@/lib/brand";
 import * as assetStore from "@/lib/photo/assetStore";
 import { rasterizeForPlacement } from "@/lib/photo/pipeline";
@@ -195,13 +174,7 @@ export async function renderInteriorPdf(
 
   for (const [index, bookPage] of selected.entries()) {
     const page = addPage();
-    page.drawRectangle({
-      x: 0,
-      y: 0,
-      width: PAGE_PT,
-      height: PAGE_PT,
-      color: bookPage ? hex(palette.paper) : PAPER,
-    });
+    page.drawRectangle({ x: 0, y: 0, width: PAGE_PT, height: PAGE_PT, color: PAPER });
 
     if (bookPage) {
       await drawPage({
@@ -217,8 +190,6 @@ export async function renderInteriorPdf(
         targetPpi,
         jpegQuality,
         lowResWarnings,
-        palette,
-        colors,
       });
 
       drawVideoMemoryPlaceholders(
@@ -326,8 +297,6 @@ type DrawContext = {
   targetPpi: number;
   jpegQuality: number;
   lowResWarnings: LowResWarning[];
-  palette: BookPalette;
-  colors: PageColors;
 };
 
 /** The palette's text colors, as pdf-lib colors. */
@@ -343,288 +312,18 @@ function pageColors(palette: BookPalette): PageColors {
 }
 
 /**
- * Every page is drawn from its scrapbook design (`scrapbook.ts`): paper
- * scraps, then the prints, then the tape over them, then doodles, then the
- * page's words. The same design drives the on-screen page, so the two agree.
+ * Every page is drawn from the book's design (`lib/book/design`), the same
+ * design that draws it on screen, so the two agree.
  */
 async function drawPage(context: DrawContext): Promise<void> {
-  const design = designPage(context.bookPage, designContextFor(context.photos, context.palette));
-  const frame = { page: context.page, pagePt: PAGE_PT };
-
-  for (const scrap of design.scraps) drawScrap(frame, scrap);
-
-  switch (context.bookPage.kind) {
-    case "dedication":
-      drawCard(frame, DEDICATION_CARD);
-      break;
-    case "chapter-opener":
-      drawCard(frame, OPENER_CARD);
-      break;
-  }
-
-  for (const print of design.prints) {
-    const image = await embedPrintPhoto(context, print);
-    drawPrint(frame, print, { image, handFont: context.fonts.hand });
-  }
-  for (const print of design.prints) {
-    for (const tape of print.tapes) drawTape(frame, tape);
-  }
-  if (context.bookPage.kind === "dedication") {
-    drawTape(frame, {
-      cx: DEDICATION_CARD.cx,
-      cy: DEDICATION_CARD.cy - DEDICATION_CARD.h / 2,
-      w: 0.13,
-      h: 0.036,
-      rotation: -3,
-      color: context.palette.tape[1] ?? context.palette.tape[0]!,
-      opacity: 0.82,
-    });
-  }
-  for (const doodle of design.doodles) drawDoodle(frame, doodle);
-
-  switch (context.bookPage.kind) {
-    case "title":
-      return drawTitleText(context);
-    case "dedication":
-      return drawDedicationText(context);
-    case "chapter-opener":
-      return drawOpenerText(context);
-    case "closing":
-      return drawClosingText(context);
-    case "imprint":
-      return drawImprintPage(context);
-    default:
-      return;
-  }
-}
-
-export function designContextFor(
-  photos: Map<string, PhotoAsset>,
-  palette: BookPalette,
-): DesignContext {
-  return {
-    palette,
-    orientationOf: (id) => photos.get(id)?.orientation,
-    captionOf: (id) => photoCaption(photos.get(id)?.capturedAt),
-  };
-}
-
-function drawTitleText(context: DrawContext): void {
-  const colors = context.colors;
-  const { page, meta, fonts } = context;
-
-  const heading = drawable(fonts.hand, titlePageHeading(meta.petName));
-  let size = TITLE_TEXT.headingSize;
-  while (fonts.hand.widthOfTextAtSize(heading, size) > PAGE_PT * 0.78 && size > 28) {
-    size -= 2;
-  }
-  drawCentered(page, heading, {
-    font: fonts.hand,
-    size,
-    color: colors.ink,
-    baseline: PAGE_PT * (1 - TITLE_TEXT.headingBaseline),
+  const design = designPage(
+    context.bookPage,
+    designContext({ meta: context.meta, chapter: context.chapter, photos: context.photos }),
+  );
+  await drawDesign({ page: context.page, pagePt: PAGE_PT }, design, {
+    fonts: context.fonts,
+    imageFor: (print) => embedPrintPhoto(context, print),
   });
-
-  const years = lifespanText(meta);
-  if (years) {
-    // A date stamp: tracked capitals inside a thin rounded outline.
-    const text = years.toUpperCase();
-    const tracking = 2.4;
-    const textSize = 10;
-    const textWidth =
-      fonts.sans.widthOfTextAtSize(text, textSize) + tracking * (text.length - 1);
-    const stampW = textWidth + 26;
-    const stampH = 20;
-    const centerY = PAGE_PT * (1 - TITLE_TEXT.yearsCy);
-    const r = stampH / 2;
-    const straight = stampW - stampH;
-    page.drawSvgPath(
-      `M${r} 0 L${r + straight} 0 A${r} ${r} 0 0 1 ${r + straight} ${stampH} L${r} ${stampH} A${r} ${r} 0 0 1 ${r} 0 Z`,
-      {
-        x: (PAGE_PT - stampW) / 2,
-        y: centerY + stampH / 2,
-        borderColor: colors.accent,
-        borderWidth: 1,
-        borderOpacity: 0.8,
-      },
-    );
-    drawCenteredTracked(page, text, {
-      font: fonts.sans,
-      size: textSize,
-      color: colors.accent,
-      tracking,
-      baseline: centerY - textSize * 0.35,
-    });
-  }
-
-  drawCenteredTracked(page, "ourTailTales", {
-    font: fonts.sans,
-    size: 8.5,
-    color: colors.inkFaint,
-    tracking: 3.4,
-    baseline: PAGE_PT * (1 - TITLE_TEXT.brandBaseline),
-  });
-}
-
-function drawDedicationText(context: DrawContext): void {
-  const colors = context.colors;
-  const { page, meta, fonts } = context;
-  const text = drawable(fonts.serifItalic, meta.dedication.trim());
-  // No dedication, no page: pagination leaves it out.
-  if (!text) return;
-
-  const card = DEDICATION_CARD;
-  const maxWidth = card.w * PAGE_PT * 0.8;
-  const { size, leading } = dedicationType(text);
-  const lines = wrapText(text, fonts.serifItalic, size, maxWidth);
-
-  const firstBaseline =
-    PAGE_PT * (1 - card.cy) + ((lines.length - 1) * leading) / 2 - size * 0.3;
-
-  // Ruled like a note card, the rules sitting just under each line of words
-  // and carrying on above and below to the card's edges.
-  const cardTop = PAGE_PT * (1 - (card.cy - card.h / 2)) - 30;
-  const cardBottom = PAGE_PT * (1 - (card.cy + card.h / 2)) + 20;
-  const ruleOffset = size * 0.28;
-  let rule = firstBaseline - ruleOffset;
-  while (rule + leading < cardTop) rule += leading;
-  for (; rule > cardBottom; rule -= leading) {
-    page.drawLine({
-      start: { x: PAGE_PT * (card.cx - card.w / 2) + 26, y: rule },
-      end: { x: PAGE_PT * (card.cx + card.w / 2) - 26, y: rule },
-      thickness: 0.5,
-      color: colors.accent,
-      opacity: 0.2,
-    });
-  }
-
-  let baseline = firstBaseline;
-  for (const line of lines) {
-    drawCentered(page, line, { font: fonts.serifItalic, size, color: colors.ink, baseline });
-    baseline -= leading;
-  }
-}
-
-function drawOpenerText(context: DrawContext): void {
-  const colors = context.colors;
-  const { page, chapter, fonts } = context;
-  const box = OPENER_TEXT;
-  const left = (box.cx - box.w / 2) * PAGE_PT;
-  const maxWidth = box.w * PAGE_PT;
-  const boxTop = PAGE_PT * (1 - (box.cy - box.h / 2));
-  const boxBottom = PAGE_PT * (1 - (box.cy + box.h / 2));
-
-  if (chapter) {
-    drawSticker(
-      { page, pagePt: PAGE_PT },
-      OPENER_STICKER,
-      { text: String(chapter.index + 1), font: fonts.handBold, color: context.palette.accent },
-    );
-  }
-
-  let cursor = boxTop - OPENER_TYPE.date;
-
-  if (chapter?.dateLabel) {
-    page.drawText(drawable(fonts.hand, chapter.dateLabel), {
-      x: left,
-      y: cursor,
-      font: fonts.hand,
-      size: OPENER_TYPE.date,
-      color: colors.accent,
-    });
-    cursor -= OPENER_TYPE.title + 8;
-  } else {
-    cursor -= OPENER_TYPE.title - OPENER_TYPE.date;
-  }
-
-  const title = drawable(fonts.serifBold, chapter?.title ?? "");
-  // Narrower than the card so a long title never runs under the sticker.
-  for (const line of wrapText(title, fonts.serifBold, OPENER_TYPE.title, maxWidth - 48)) {
-    page.drawText(line, {
-      x: left,
-      y: cursor,
-      font: fonts.serifBold,
-      size: OPENER_TYPE.title,
-      color: colors.ink,
-    });
-    cursor -= OPENER_TYPE.titleLeading;
-  }
-
-  cursor -= 6;
-
-  const blurb = drawable(fonts.serif, chapter?.blurb ?? "");
-  const room = Math.max(0, Math.floor((cursor - boxBottom) / OPENER_TYPE.blurbLeading) + 1);
-  for (const line of fitLines(wrapText(blurb, fonts.serif, OPENER_TYPE.blurb, maxWidth), room, fonts.serif, OPENER_TYPE.blurb, maxWidth)) {
-    page.drawText(line, {
-      x: left,
-      y: cursor,
-      font: fonts.serif,
-      size: OPENER_TYPE.blurb,
-      color: colors.inkSoft,
-    });
-    cursor -= OPENER_TYPE.blurbLeading;
-  }
-}
-
-/**
- * At most `room` lines; if the text is cut, the last line ends on an
- * ellipsis at a word boundary rather than stopping mid-sentence.
- */
-function fitLines(
-  lines: string[],
-  room: number,
-  font: PDFFont,
-  size: number,
-  maxWidth: number,
-): string[] {
-  if (lines.length <= room) return lines;
-  if (room <= 0) return [];
-  const kept = lines.slice(0, room);
-  let last = kept[room - 1]!;
-  while (last && font.widthOfTextAtSize(`${last}…`, size) > maxWidth) {
-    last = last.replace(/\s*\S+$/, "");
-  }
-  kept[room - 1] = `${last.replace(/[\s,;:—–-]+$/, "")}…`;
-  return kept;
-}
-
-function drawClosingText(context: DrawContext): void {
-  const colors = context.colors;
-  const { page, fonts } = context;
-  drawCentered(page, CLOSING_LINE, {
-    font: fonts.hand,
-    size: CLOSING_TEXT.size,
-    color: colors.ink,
-    baseline: PAGE_PT * (1 - CLOSING_TEXT.baseline),
-  });
-}
-
-async function drawImprintPage(context: DrawContext): Promise<void> {
-  const colors = context.colors;
-  const { page, meta, fonts } = context;
-
-  drawCenteredTracked(page, "ourTailTales", {
-    font: fonts.sans,
-    size: 9,
-    color: colors.inkFaint,
-    tracking: 3.4,
-    baseline: PAGE_PT * 0.22,
-  });
-
-  const lines = [
-    drawable(fonts.sans, `Made from ${possessivePetName(meta.petName)} own photographs.`),
-    "Printed and bound on demand.",
-  ];
-  let baseline = PAGE_PT * 0.17;
-  for (const line of lines) {
-    drawCentered(page, line, {
-      font: fonts.sans,
-      size: 9,
-      color: colors.inkFaint,
-      baseline,
-    });
-    baseline -= 14;
-  }
 }
 
 /**
@@ -743,83 +442,6 @@ function drawCentered(
   });
 }
 
-/** pdf-lib has no letter-spacing, so tracked text is drawn glyph by glyph. */
-function drawTracked(
-  page: PDFPage,
-  text: string,
-  options: {
-    x: number;
-    y: number;
-    font: PDFFont;
-    size: number;
-    color: ReturnType<typeof rgb>;
-    tracking: number;
-  },
-): void {
-  let cursor = options.x;
-  for (const character of text) {
-    page.drawText(character, {
-      x: cursor,
-      y: options.y,
-      font: options.font,
-      size: options.size,
-      color: options.color,
-    });
-    cursor +=
-      options.font.widthOfTextAtSize(character, options.size) + options.tracking;
-  }
-}
-
-function drawCenteredTracked(
-  page: PDFPage,
-  text: string,
-  options: {
-    font: PDFFont;
-    size: number;
-    color: ReturnType<typeof rgb>;
-    tracking: number;
-    baseline: number;
-  },
-): void {
-  if (!text) return;
-  const width =
-    options.font.widthOfTextAtSize(text, options.size) +
-    options.tracking * (text.length - 1);
-  drawTracked(page, text, {
-    x: (PAGE_PT - width) / 2,
-    y: options.baseline,
-    font: options.font,
-    size: options.size,
-    color: options.color,
-    tracking: options.tracking,
-  });
-}
-
-function wrapText(
-  text: string,
-  font: PDFFont,
-  size: number,
-  maxWidth: number,
-): string[] {
-  const clean = text.replace(/\s+/g, " ").trim();
-  if (!clean) return [];
-
-  const lines: string[] = [];
-  let current = "";
-
-  for (const word of clean.split(" ")) {
-    const candidate = current ? `${current} ${word}` : word;
-    if (font.widthOfTextAtSize(candidate, size) <= maxWidth) {
-      current = candidate;
-    } else {
-      if (current) lines.push(current);
-      current = word;
-    }
-  }
-  if (current) lines.push(current);
-  return lines;
-}
-
 function drawWatermark(page: PDFPage, font: PDFFont, text: string): void {
   page.drawText(text, {
     x: PAGE_PT * 0.12,
@@ -830,13 +452,6 @@ function drawWatermark(page: PDFPage, font: PDFFont, text: string): void {
     opacity: 0.16,
     rotate: degrees(38),
   });
-}
-
-function lifespanText(meta: BookMeta): string {
-  if (meta.birthYear && meta.deathYear) {
-    return `${meta.birthYear} – ${meta.deathYear}`;
-  }
-  return meta.birthYear || meta.deathYear || "";
 }
 
 function nextTick(): Promise<void> {

@@ -1,3 +1,4 @@
+import { TEASER_DESIGN_ID, withDesign } from "@/lib/book/design";
 import { renderInteriorPdf } from "@/lib/book/interior-pdf";
 import { summarizeTeaser, teaserPages } from "@/lib/book/teaser";
 import type { BookMeta, BookPage, Chapter } from "@/types/book";
@@ -21,6 +22,9 @@ export const SAMPLE_WATERMARK = "OURTAILTALES PREVIEW";
  *
  * Cropped to the 8.5in trim so it reads as the finished book rather than as a
  * printer's file with bleed still attached.
+ *
+ * Always set in the scrapbook design, whatever the book is set to: the free
+ * book is everyone's first look, and the other designs come with an account.
  */
 export async function renderTeaserPdf(args: {
   pages: BookPage[];
@@ -36,7 +40,7 @@ export async function renderTeaserPdf(args: {
   const { bytes } = await renderInteriorPdf({
     pages: teaserPages(args.pages),
     chapters: args.chapters,
-    meta: args.meta,
+    meta: withDesign(args.meta, TEASER_DESIGN_ID),
     photos: args.photos,
     placements: [],
     targetPpi: TEASER_PPI,

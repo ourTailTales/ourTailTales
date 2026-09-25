@@ -8,10 +8,12 @@ import { track } from "@/lib/analytics";
 import { CoverCanvas, PageCanvas } from "@/components/book-viewer/PageCanvas";
 import { ExpiryBanner } from "@/components/ExpiryBanner";
 import { PageZoom } from "@/components/book-viewer/PageZoom";
+import { DesignPicker } from "@/components/studio/DesignPicker";
 import { LockedWall } from "@/components/studio/LockedWall";
 import { PageFilmstrip } from "@/components/studio/PageFilmstrip";
 import { PageInspector } from "@/components/studio/PageInspector";
-import { buildSlides, lockWallIndex } from "@/lib/book/studio";
+import { TEASER_DESIGN_ID, withDesign } from "@/lib/book/design";
+import { buildSlides } from "@/lib/book/studio";
 import { summarizeTeaser } from "@/lib/book/teaser";
 import { selectablePhotos } from "@/lib/photo/dedupe";
 import { formatUsd } from "@/lib/pricing";
@@ -49,7 +51,13 @@ export function BookStudio({
   downloading: boolean;
   notice?: string | null;
 }) {
-  const meta = useOurTailTalesStore((state) => state.meta);
+  const bookMeta = useOurTailTalesStore((state) => state.meta);
+  // Signed out, the book is shown exactly as the free PDF prints it: in the
+  // scrapbook. Choosing another design is part of what an account unlocks.
+  const meta = useMemo(
+    () => (unlocked ? bookMeta : withDesign(bookMeta, TEASER_DESIGN_ID)),
+    [bookMeta, unlocked],
+  );
   const chapters = useOurTailTalesStore((state) => state.chapters);
   const pages = useOurTailTalesStore((state) => state.pages);
   const photos = useOurTailTalesStore((state) => state.photos);
@@ -262,6 +270,15 @@ export function BookStudio({
               onUnlock={onUnlock}
             />
           ) : unlocked ? (
+            <div className="flex flex-col gap-4">
+            <div className="rounded-2xl border border-page-line bg-white/95 p-5">
+              <DesignPicker
+                page={slide.page}
+                meta={meta}
+                chapters={chapters}
+                photos={photoMap}
+              />
+            </div>
             <div className="rounded-2xl border border-page-line bg-white/95 p-5">
               <PageInspector
                 key={slide.key}
@@ -271,6 +288,7 @@ export function BookStudio({
                 onFiles={onFiles}
                 processing={processing}
               />
+            </div>
             </div>
           ) : null}
         </aside>

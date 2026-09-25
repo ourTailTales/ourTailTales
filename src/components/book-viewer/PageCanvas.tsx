@@ -3,29 +3,25 @@
 import { useMemo, type CSSProperties } from "react";
 
 import { CoverFrontArt, coverImageUrl } from "@/components/book-viewer/CoverArt";
-import { BLEED_INCHES, PAGE_INCHES, TRIM_INCHES } from "@/lib/book/layouts";
-import { CLOSING_LINE, possessivePetName, titlePageHeading } from "@/lib/book/pagination";
+import { designContext, designPage } from "@/lib/book/design";
 import {
-  CLOSING_TEXT,
-  DEDICATION_CARD,
+  DEFAULT_CAPTION_COLOR,
   DOODLE_PATHS,
   DOODLE_STROKE,
-  OPENER_CARD,
-  OPENER_STICKER,
-  OPENER_TEXT,
-  OPENER_TYPE,
+  PAGE_PT,
   TAPE_OUTLINE,
-  TITLE_TEXT,
-  dedicationType,
-  designPage,
-  photoCaption,
+  cornerTriangles,
   photoWindow,
   type Box,
   type Doodle,
+  type FontRole,
   type Print,
+  type Shape,
   type Tape,
-} from "@/lib/book/scrapbook";
-import { resolvePalette } from "@/lib/book/palette";
+  type TextBlock,
+} from "@/lib/book/design/primitives";
+import { faceMetrics, layoutTextBlock } from "@/lib/book/design/text";
+import { BLEED_INCHES, PAGE_INCHES, TRIM_INCHES } from "@/lib/book/layouts";
 import { getFullUrl } from "@/lib/photo/assetStore";
 import type { BookMeta, BookPage, Chapter } from "@/types/book";
 import type { PhotoAsset } from "@/types/photo";
@@ -33,9 +29,9 @@ import type { PhotoAsset } from "@/types/photo";
 /**
  * One page of the book, drawn in the browser.
  *
- * The same normalized geometry the print renderer uses (`LAYOUTS`,
- * `FIXED_SLOTS`, both measured against the full bleed page with y running from
- * the top) so what a customer sees here is what gets bound. Type sizes are
+ * It draws the page's design (`lib/book/design`) — the same primitives, in
+ * the same order, that the print renderer draws — so what a customer sees
+ * here is what gets bound, in whichever design the book is set in. Sizes are
  * expressed as a share of the page width in `cqw`, which makes one component
  * correct at every size it is used at — a 72px filmstrip thumbnail and a
  * 700px editor viewport are the same markup at two container widths.
@@ -46,7 +42,6 @@ import type { PhotoAsset } from "@/types/photo";
  */
 
 /** Page-space point → a share of the container width. */
-const PAGE_PT = PAGE_INCHES * 72;
 function pt(value: number): string {
   return `${((value / PAGE_PT) * 100).toFixed(4)}cqw`;
 }
@@ -142,10 +137,24 @@ export function CoverCanvas({
   );
 }
 
-/* ------------------------------- page kinds ------------------------------- */
+/* ------------------------------- the page ------------------------------- */
 
-const HAND = "var(--font-caveat)";
-const SERIF = "var(--font-cover)";
+/**
+ * The web face for each of a design's font roles — the same families and
+ * weights the PDF embeds. Sans is Helvetica on both, rather than the site's
+ * Inter, so a Modern page measures the same on screen as on paper.
+ */
+const FACES: Record<FontRole, CSSProperties> = {
+  hand: { fontFamily: "var(--font-caveat)", fontWeight: 600 },
+  handBold: { fontFamily: "var(--font-caveat)", fontWeight: 700 },
+  serif: { fontFamily: "var(--font-cover)", fontWeight: 500 },
+  serifItalic: { fontFamily: "var(--font-cover)", fontWeight: 500, fontStyle: "italic" },
+  serifBold: { fontFamily: "var(--font-cover)", fontWeight: 600 },
+  display: { fontFamily: "var(--font-playfair)", fontWeight: 400 },
+  displayBold: { fontFamily: "var(--font-playfair)", fontWeight: 700 },
+  sans: { fontFamily: 'Helvetica, Arial, "Liberation Sans", sans-serif', fontWeight: 400 },
+  sansBold: { fontFamily: 'Helvetica, Arial, "Liberation Sans", sans-serif', fontWeight: 700 },
+};
 
 /** A normalized page coordinate as a share of the page. */
 function pct(value: number): string {
@@ -178,45 +187,16 @@ function PageBody({
   photos: Map<string, PhotoAsset>;
   placeholder: boolean;
 }) {
-  const palette = useMemo(
-    () => resolvePalette(meta),
-    [meta],
-  );
   const design = useMemo(
-    () =>
-      designPage(page, {
-        orientationOf: (id) => photos.get(id)?.orientation,
-        captionOf: (id) => photoCaption(photos.get(id)?.capturedAt),
-        palette,
-      }),
-    [page, photos, palette],
+    () => designPage(page, designContext({ meta, chapter, photos })),
+    [page, meta, chapter, photos],
   );
 
   return (
-    <div
-      className="absolute inset-0"
-      style={
-        {
-          background: design.paper,
-          // The pet's palette, for every piece of type on the page.
-          "--bk-ink": palette.ink,
-          "--bk-ink-soft": palette.inkSoft,
-          "--bk-ink-faint": palette.inkFaint,
-          "--bk-accent": palette.accent,
-        } as CSSProperties
-      }
-    >
-      {design.scraps.map((scrap, index) => (
-        <div
-          key={`scrap-${index}`}
-          aria-hidden
-          className="absolute"
-          style={{ ...boxStyle(scrap, scrap.rotation), background: scrap.color, opacity: scrap.opacity }}
-        />
+    <div className="absolute inset-0" style={{ background: design.paper }}>
+      {design.under.map((shape, index) => (
+        <ShapeView key={`under-${index}`} shape={shape} />
       ))}
-
-      {page.kind === "dedication" ? <Card box={DEDICATION_CARD} /> : null}
-      {page.kind === "chapter-opener" ? <Card box={OPENER_CARD} /> : null}
 
       {design.prints.map((print, index) => (
         <PrintView
@@ -229,299 +209,93 @@ function PageBody({
           placeholder={placeholder}
         />
       ))}
-      {design.prints.flatMap((print, index) =>
-        print.tapes.map((tape, tapeIndex) => (
+      {design.prints.flatMap((print, index) => [
+        ...print.tapes.map((tape, tapeIndex) => (
           <TapeView key={`tape-${index}-${tapeIndex}`} tape={tape} />
         )),
-      )}
-      {page.kind === "dedication" ? (
-        <TapeView
-          tape={{
-            cx: DEDICATION_CARD.cx,
-            cy: DEDICATION_CARD.cy - DEDICATION_CARD.h / 2,
-            w: 0.13,
-            h: 0.036,
-            rotation: -3,
-            color: palette.tape[1] ?? palette.tape[0]!,
-            opacity: 0.82,
-          }}
-        />
-      ) : null}
+        print.corners ? <CornersView key={`corners-${index}`} print={print} /> : null,
+      ])}
+
+      {design.over.map((shape, index) => (
+        <ShapeView key={`over-${index}`} shape={shape} />
+      ))}
 
       {design.doodles.map((doodle, index) => (
         <DoodleView key={`doodle-${index}`} doodle={doodle} />
       ))}
 
-      <PageWords page={page} meta={meta} chapter={chapter} />
-    </div>
-  );
-}
-
-function PageWords({
-  page,
-  meta,
-  chapter,
-}: {
-  page: BookPage;
-  meta: BookMeta;
-  chapter: Chapter | undefined;
-}) {
-  switch (page.kind) {
-    case "title":
-      return <TitleWords meta={meta} />;
-    case "dedication":
-      return <DedicationWords meta={meta} />;
-    case "chapter-opener":
-      return <OpenerWords chapter={chapter} />;
-    case "closing":
-      return (
-        <p
-          className="absolute inset-x-0 text-center text-(--bk-ink)"
-          style={{
-            bottom: pt(PAGE_PT * (1 - CLOSING_TEXT.baseline) - CLOSING_TEXT.size * 0.28),
-            fontFamily: HAND,
-            fontWeight: 600,
-            fontSize: pt(CLOSING_TEXT.size),
-            lineHeight: 1,
-          }}
-        >
-          {CLOSING_LINE}
-        </p>
-      );
-    case "imprint":
-      return <ImprintWords meta={meta} />;
-    default:
-      return null;
-  }
-}
-
-function TitleWords({ meta }: { meta: BookMeta }) {
-  const years = lifespanText(meta);
-  const heading = titlePageHeading(meta.petName);
-  // Caveat averages about 0.42em a character; a long name steps down to fit
-  // the same 78% of the page the PDF allows it.
-  const size = Math.max(
-    28,
-    Math.min(TITLE_TEXT.headingSize, (PAGE_PT * 0.78) / (heading.length * 0.42)),
-  );
-
-  return (
-    <>
-      <p
-        className="absolute inset-x-0 whitespace-nowrap text-center text-(--bk-ink)"
-        style={{
-          bottom: pt(PAGE_PT * (1 - TITLE_TEXT.headingBaseline) - size * 0.28),
-          fontFamily: HAND,
-          fontWeight: 600,
-          fontSize: pt(size),
-          lineHeight: 1,
-        }}
-      >
-        {heading}
-      </p>
-      {years ? (
-        <div
-          className="absolute inset-x-0 flex justify-center"
-          style={{ top: pct(TITLE_TEXT.yearsCy), transform: "translateY(-50%)" }}
-        >
-          <span
-            className="rounded-full border border-(--bk-accent)/80 uppercase text-(--bk-accent)"
-            style={{
-              fontSize: pt(10),
-              letterSpacing: pt(2.4),
-              padding: `${pt(4)} ${pt(13)}`,
-              lineHeight: 1,
-            }}
-          >
-            {years}
-          </span>
-        </div>
-      ) : null}
-      <p
-        className="absolute inset-x-0 text-center uppercase text-(--bk-ink-faint)"
-        style={{
-          bottom: pt(PAGE_PT * (1 - TITLE_TEXT.brandBaseline) - 2),
-          fontSize: pt(8.5),
-          letterSpacing: pt(3.4),
-          lineHeight: 1,
-        }}
-      >
-        ourTailTales
-      </p>
-    </>
-  );
-}
-
-function DedicationWords({ meta }: { meta: BookMeta }) {
-  const text = meta.dedication.trim();
-  // No dedication, no page: pagination leaves it out.
-  if (!text) return null;
-  const { size, leading } = dedicationType(text);
-
-  return (
-    <div
-      className="absolute flex items-center justify-center overflow-hidden"
-      style={{
-        ...boxStyle(DEDICATION_CARD),
-        padding: `${pt(30)} ${pt(26)} ${pt(20)}`,
-        // Ruled like a note card, one rule per line of words.
-        backgroundImage: `repeating-linear-gradient(to bottom, transparent 0, transparent calc(${pt(leading)} - 1px), color-mix(in srgb, var(--bk-accent) 20%, transparent) calc(${pt(leading)} - 1px), color-mix(in srgb, var(--bk-accent) 20%, transparent) ${pt(leading)})`,
-        backgroundOrigin: "content-box",
-        backgroundClip: "content-box",
-        backgroundPosition: `0 calc(50% + ${pt(size * 0.28)})`,
-      }}
-    >
-      <p
-        className="w-[80%] text-center italic text-(--bk-ink)"
-        style={{
-          fontFamily: SERIF,
-          fontWeight: 500,
-          fontSize: pt(size),
-          lineHeight: pt(leading),
-        }}
-      >
-        {text}
-      </p>
-    </div>
-  );
-}
-
-function OpenerWords({ chapter }: { chapter: Chapter | undefined }) {
-  const box = OPENER_TEXT;
-  const blurbLines = openerBlurbLines(chapter);
-  return (
-    <>
-      {chapter ? (
-        <div
-          aria-hidden
-          className="absolute flex items-center justify-center rounded-full bg-(--bk-accent) text-white"
-          style={{
-            left: pct(OPENER_STICKER.cx - OPENER_STICKER.r),
-            top: pct(OPENER_STICKER.cy - OPENER_STICKER.r),
-            width: pct(OPENER_STICKER.r * 2),
-            height: pct(OPENER_STICKER.r * 2),
-            transform: "rotate(-6deg)",
-            boxShadow: `${pt(0.8)} ${pt(1.4)} ${pt(2)} rgb(37 42 58 / 0.15)`,
-          }}
-        >
-          <span
-            className="absolute rounded-full border border-dashed border-white/70"
-            style={{ inset: "7%" }}
-          />
-          <span
-            style={{
-              fontFamily: HAND,
-              fontWeight: 700,
-              fontSize: pt(OPENER_STICKER.r * PAGE_PT * 1.05),
-              lineHeight: 1,
-            }}
-          >
-            {chapter.index + 1}
-          </span>
-        </div>
-      ) : null}
-
-      <div
-        className="absolute flex flex-col overflow-hidden"
-        style={{ ...boxStyle(box) }}
-      >
-        {chapter?.dateLabel ? (
-          <p
-            className="text-(--bk-accent)"
-            style={{
-              fontFamily: HAND,
-              fontWeight: 600,
-              fontSize: pt(OPENER_TYPE.date),
-              lineHeight: 1,
-              marginTop: pt(2),
-            }}
-          >
-            {chapter.dateLabel}
-          </p>
-        ) : null}
-
-        <p
-          className="text-(--bk-ink)"
-          style={{
-            fontFamily: SERIF,
-            fontWeight: 600,
-            fontSize: pt(OPENER_TYPE.title),
-            lineHeight: pt(OPENER_TYPE.titleLeading),
-            marginTop: pt(chapter?.dateLabel ? 10 : 4),
-            // Clear of the chapter sticker.
-            paddingRight: pt(48),
-          }}
-        >
-          {chapter?.title ?? ""}
-        </p>
-
-        <p
-          className="overflow-hidden text-(--bk-ink-soft)"
-          style={{
-            fontFamily: SERIF,
-            fontWeight: 500,
-            fontSize: pt(OPENER_TYPE.blurb),
-            lineHeight: pt(OPENER_TYPE.blurbLeading),
-            marginTop: pt(8),
-            // Ends on an ellipsis, as the PDF does, rather than a half line.
-            display: "-webkit-box",
-            WebkitBoxOrient: "vertical",
-            WebkitLineClamp: blurbLines,
-          }}
-        >
-          {chapter?.blurb ?? ""}
-        </p>
-      </div>
-    </>
-  );
-}
-
-/**
- * How many blurb lines fit under the title. CSS cannot count wrapped lines
- * ahead of time, so the title's lines are estimated from its length at
- * Cormorant's average character width.
- */
-function openerBlurbLines(chapter: Chapter | undefined): number {
-  const boxPt = OPENER_TEXT.h * PAGE_PT;
-  const titleWidth = OPENER_TEXT.w * PAGE_PT - 48;
-  const perLine = Math.max(8, Math.floor(titleWidth / (OPENER_TYPE.title * 0.45)));
-  const titleLines = Math.max(1, Math.ceil((chapter?.title.length ?? 0) / perLine));
-  const used =
-    (chapter?.dateLabel ? OPENER_TYPE.date + 12 : 4) +
-    titleLines * OPENER_TYPE.titleLeading +
-    8;
-  return Math.max(1, Math.floor((boxPt - used) / OPENER_TYPE.blurbLeading));
-}
-
-function ImprintWords({ meta }: { meta: BookMeta }) {
-  return (
-    <div
-      className="absolute inset-x-0 flex flex-col items-center text-center text-(--bk-ink-faint)"
-      style={{ bottom: pt(PAGE_PT * 0.13) }}
-    >
-      <p style={{ fontSize: pt(9), letterSpacing: pt(3.4) }}>
-        ourTailTales
-      </p>
-      <p style={{ fontSize: pt(9), marginTop: pt(14) }}>
-        Made from {possessivePetName(meta.petName)} own photographs.
-      </p>
-      <p style={{ fontSize: pt(9), marginTop: pt(4) }}>
-        Printed and bound on demand.
-      </p>
+      {design.texts.map((block, index) => (
+        <TextBlockView key={`text-${index}`} block={block} />
+      ))}
     </div>
   );
 }
 
 /* --------------------------------- pieces --------------------------------- */
 
-function Card({ box }: { box: Box }) {
-  return (
-    <div
-      aria-hidden
-      className="absolute bg-white"
-      style={{ ...boxStyle(box), boxShadow: PRINT_SHADOW }}
-    />
-  );
+function ShapeView({ shape }: { shape: Shape }) {
+  switch (shape.kind) {
+    case "rect":
+      return (
+        <div
+          aria-hidden
+          className="absolute"
+          style={{
+            ...boxStyle(shape, shape.rotation),
+            background: shape.fill,
+            opacity: shape.fill ? (shape.opacity ?? 1) : undefined,
+            boxShadow: shape.shadow ? PRINT_SHADOW : undefined,
+            outline: shape.stroke
+              ? `${pt(shape.stroke.width)} solid color-mix(in srgb, ${shape.stroke.color} ${(shape.stroke.opacity ?? 1) * 100}%, transparent)`
+              : undefined,
+            outlineOffset: shape.stroke ? pt(-shape.stroke.width / 2) : undefined,
+          }}
+        />
+      );
+    case "circle":
+      return (
+        <div
+          aria-hidden
+          className="absolute rounded-full"
+          style={{
+            left: pct(shape.cx - shape.r),
+            top: pct(shape.cy - shape.r),
+            width: pct(shape.r * 2),
+            height: pct(shape.r * 2),
+            background: shape.fill
+              ? `color-mix(in srgb, ${shape.fill} ${(shape.opacity ?? 1) * 100}%, transparent)`
+              : undefined,
+            boxShadow: shape.shadow ? `${pt(0.8)} ${pt(1.4)} ${pt(2)} rgb(37 42 58 / 0.15)` : undefined,
+            border: shape.stroke
+              ? `${pt(shape.stroke.width)} ${shape.stroke.dash ? "dashed" : "solid"} color-mix(in srgb, ${shape.stroke.color} ${(shape.stroke.opacity ?? 1) * 100}%, transparent)`
+              : undefined,
+          }}
+        />
+      );
+    case "line": {
+      const x = shape.x1;
+      const y = shape.y1;
+      const length = Math.hypot(shape.x2 - x, shape.y2 - y);
+      const angle = (Math.atan2(shape.y2 - y, shape.x2 - x) * 180) / Math.PI;
+      return (
+        <div
+          aria-hidden
+          className="absolute origin-left"
+          style={{
+            left: pct(x),
+            top: `calc(${pct(y)} - ${pt(shape.width / 2)})`,
+            width: pct(length),
+            height: pt(shape.width),
+            background: shape.color,
+            opacity: shape.opacity ?? 1,
+            transform: angle ? `rotate(${angle}deg)` : undefined,
+          }}
+        />
+      );
+    }
+    case "tape":
+      return <TapeView tape={shape} />;
+  }
 }
 
 function PrintView({
@@ -545,11 +319,16 @@ function PrintView({
   };
   const bottomPt = print.bottom * PAGE_PT;
   const captionSize = Math.min(bottomPt * 0.52, 20);
+  const bordered = print.side > 0 || print.bottom > 0;
 
   return (
     <div
-      className="absolute bg-white"
-      style={{ ...boxStyle(print, print.rotation), boxShadow: PRINT_SHADOW }}
+      className="absolute"
+      style={{
+        ...boxStyle(print, print.rotation),
+        background: bordered ? print.border : undefined,
+        boxShadow: print.shadow ? PRINT_SHADOW : undefined,
+      }}
     >
       {url ? (
         // eslint-disable-next-line @next/next/no-img-element -- object-URL of a file the customer just picked
@@ -563,13 +342,24 @@ function PrintView({
       ) : (
         <div className="absolute bg-memory-blue/60" style={inner} />
       )}
+      {print.keyline ? (
+        <div
+          aria-hidden
+          className="absolute"
+          style={{
+            ...inner,
+            boxShadow: `inset 0 0 0 ${pt(print.keyline.width)} color-mix(in srgb, ${print.keyline.color} ${print.keyline.opacity * 100}%, transparent)`,
+          }}
+        />
+      ) : null}
       {print.caption ? (
         <p
-          className="absolute inset-x-0 text-center text-(--bk-ink)/80"
+          className="absolute inset-x-0 whitespace-nowrap text-center"
           style={{
+            ...FACES[print.captionFont ?? "hand"],
             bottom: pt(bottomPt * 0.34 - captionSize * 0.26),
-            fontFamily: HAND,
-            fontWeight: 600,
+            color: print.captionColor ?? DEFAULT_CAPTION_COLOR,
+            opacity: 0.8,
             fontSize: pt(captionSize),
             lineHeight: 1,
           }}
@@ -578,6 +368,28 @@ function PrintView({
         </p>
       ) : null}
     </div>
+  );
+}
+
+function CornersView({ print }: { print: Print }) {
+  const corners = print.corners!;
+  return (
+    <svg
+      aria-hidden
+      viewBox={`0 0 ${print.w} ${print.h}`}
+      preserveAspectRatio="none"
+      className="absolute overflow-visible"
+      style={boxStyle(print, print.rotation)}
+    >
+      {cornerTriangles(print).map((triangle, index) => (
+        <polygon
+          key={index}
+          points={triangle.map(([x, y]) => `${x},${y}`).join(" ")}
+          fill={corners.color}
+          fillOpacity={corners.opacity}
+        />
+      ))}
+    </svg>
   );
 }
 
@@ -623,9 +435,84 @@ function DoodleView({ doodle }: { doodle: Doodle }) {
   );
 }
 
-function lifespanText(meta: BookMeta): string {
-  const birth = meta.birthYear.trim();
-  const death = meta.deathYear.trim();
-  if (birth && death) return `${birth}\u2013${death}`;
-  return birth || death;
+/**
+ * The lines `layoutTextBlock` laid out, each placed on its own baseline. The
+ * browser never wraps book text itself — that is what keeps a line break on
+ * screen where it falls in print.
+ */
+function TextBlockView({ block }: { block: TextBlock }) {
+  const laid = useMemo(() => layoutTextBlock(block), [block]);
+  if (laid.lines.length === 0) return null;
+
+  return (
+    <div
+      className="absolute"
+      style={{
+        left: pt(laid.left),
+        top: pt(laid.top),
+        width: pt(laid.width),
+        height: pt(laid.height),
+        transform: laid.rotation ? `rotate(${laid.rotation}deg)` : undefined,
+      }}
+    >
+      {laid.rules.map((rule, index) => (
+        <div
+          key={`rule-${index}`}
+          aria-hidden
+          className="absolute"
+          style={{
+            left: pt(rule.x1),
+            width: pt(rule.x2 - rule.x1),
+            top: pt(rule.y - 0.25),
+            height: pt(0.5),
+            background: rule.color,
+            opacity: rule.opacity,
+          }}
+        />
+      ))}
+      {laid.pills.map((pill, index) => (
+        <div
+          key={`pill-${index}`}
+          aria-hidden
+          className="absolute rounded-full"
+          style={{
+            left: pt(pill.cx - pill.w / 2),
+            top: pt(pill.cy - pill.h / 2),
+            width: pt(pill.w),
+            height: pt(pill.h),
+            border: `${pt(1)} solid color-mix(in srgb, ${pill.color} ${pill.opacity * 100}%, transparent)`,
+          }}
+        />
+      ))}
+      {laid.lines.map((line, index) => {
+        const metrics = faceMetrics(line.font);
+        const content = (metrics.ascent + metrics.descent) * line.size;
+        return (
+          <p
+            key={`line-${index}`}
+            className="absolute whitespace-pre"
+            style={{
+              ...FACES[line.font],
+              left: pt(line.left),
+              width: pt(line.width),
+              top: pt(line.baseline - metrics.ascent * line.size),
+              height: pt(content),
+              fontSize: pt(line.size),
+              lineHeight: pt(content),
+              letterSpacing: line.tracking ? pt(line.tracking) : undefined,
+              // Letter-spacing trails the last letter too; give it back so
+              // tracked capitals centre where the PDF centres them.
+              textIndent: line.tracking && line.align === "center" ? pt(line.tracking) : undefined,
+              textAlign: line.align,
+              color: line.color,
+              opacity: line.opacity,
+              fontKerning: "none",
+            }}
+          >
+            {line.text}
+          </p>
+        );
+      })}
+    </div>
+  );
 }

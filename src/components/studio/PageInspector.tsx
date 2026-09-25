@@ -6,6 +6,7 @@ import { Info, RefreshCw } from "lucide-react";
 import { AddMediaControl } from "@/components/editor/AddMediaControl";
 import { CustomCoverPanel } from "@/components/editor/CustomCoverPanel";
 import { LayoutThumbnail } from "@/components/editor/LayoutThumbnail";
+import { LayoutPicker } from "@/components/studio/LayoutPicker";
 import { NamePositionPicker } from "@/components/studio/controls/NamePositionPicker";
 import { PhotoPicker } from "@/components/studio/controls/PhotoPicker";
 import {
@@ -16,6 +17,12 @@ import {
   DEFAULT_COVER_NAME_SIZE,
   defaultNameAnchor,
 } from "@/lib/book/coverLayouts";
+import { track } from "@/lib/analytics";
+import {
+  chapterPageLayouts,
+  maxPhotosForPage,
+  photoPageIndex,
+} from "@/lib/book/pagination";
 import type { StudioSlide } from "@/lib/book/studio";
 import { BRAND_PALETTE, sanitizePalette } from "@/lib/book/palette";
 import { useOurTailTalesStore } from "@/store/useOurTailTalesStore";
@@ -554,12 +561,17 @@ function PhotoPagePanel({
   slide: StudioSlide;
   photos: PhotoAsset[];
 }) {
+  const meta = useOurTailTalesStore((state) => state.meta);
   const chapters = useOurTailTalesStore((state) => state.chapters);
   const swapChapterPhoto = useOurTailTalesStore((state) => state.swapChapterPhoto);
+  const setPageLayout = useOurTailTalesStore((state) => state.setPageLayout);
 
   const page = slide.page!;
   const chapter = chapters.find((entry) => entry.id === slide.chapterId);
-  const [slotIndex, setSlotIndex] = useState(0);
+  const pageIndex = photoPageIndex(page);
+  const [picked, setSlotIndex] = useState(0);
+  // A new layout can leave fewer photos on the page than the one selected.
+  const slotIndex = Math.min(picked, Math.max(0, page.photoIds.length - 1));
 
   const onPage = useMemo(
     () =>
@@ -581,21 +593,52 @@ function PhotoPagePanel({
       .filter((photo): photo is PhotoAsset => Boolean(photo));
   }, [chapter, page.photoIds, photos, slotIndex]);
 
+  const chosenLayout =
+    chapter && pageIndex !== null ? (chapterPageLayouts(chapter)[pageIndex] ?? null) : null;
+  const maxPhotos = chapter && pageIndex !== null ? maxPhotosForPage(chapter, pageIndex) : 0;
+
+  const layoutField =
+    chapter && pageIndex !== null && maxPhotos > 0 ? (
+      <Field
+        label="Layout"
+        note="Choosing a layout with more photos brings in unused ones from this chapter first."
+      >
+        <LayoutPicker
+          meta={meta}
+          current={page.layoutId === "chapter-opener" ? null : page.layoutId}
+          chosen={chosenLayout !== null}
+          maxPhotos={maxPhotos}
+          onPick={(layoutId) => {
+            setPageLayout(chapter.id, pageIndex, layoutId);
+            track("page_layout_changed", { layout: layoutId ?? "auto" });
+          }}
+        />
+      </Field>
+    ) : null;
+
   if (onPage.length === 0) {
     return (
       <Panel
         title={slide.label}
-        hint="This page has no photos on it. The chapter ran out before reaching it."
-      />
+        hint={
+          layoutField
+            ? "This page has no photos yet. Pick a layout to fill it from this chapter."
+            : "This page has no photos on it. The chapter ran out before reaching it."
+        }
+      >
+        {layoutField}
+      </Panel>
     );
   }
 
   const active = page.photoIds[slotIndex];
 
   return (
-    <Panel title={slide.label} hint="Swap any photo on this page.">
-      <Field label="Photo on this page">
-        <ol className="flex gap-2">
+    <Panel title={slide.label} hint="Pick a layout, or swap any photo on this page.">
+      {layoutField}
+
+      <Field label={onPage.length === 1 ? "Photo on this page" : "Photos on this page"}>
+        <ol className="flex flex-wrap gap-2">
           {onPage.map((photo, index) => (
             <li key={photo.id}>
               <button
