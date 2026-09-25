@@ -14,7 +14,14 @@ import {
   reconcilePlan,
   type PlannablePhoto,
 } from "@/lib/book/page-plan";
-import type { BookMeta, BookPage, Chapter, LayoutId, PhotoLayoutId } from "@/types/book";
+import type {
+  BookMeta,
+  BookPage,
+  Chapter,
+  LayoutId,
+  PhotoLayoutId,
+  PlannedPage,
+} from "@/types/book";
 import type { Orientation } from "@/types/photo";
 
 /**
@@ -105,7 +112,13 @@ export function paginateBook(
     const body = chapter.photoIds.filter((id) => id !== hero);
     const chosen = chapterPageLayouts(chapter);
     const notes = chapterPageNotes(chapter);
-    const { counts } = planChapterPages(body.length, chosen, chapter.id, pageSizes(chapter, body, photos));
+    const plan = chapterPlan(chapter, body, photos);
+    const { counts } = planChapterPages(
+      body.length,
+      chosen,
+      chapter.id,
+      plan?.map((page) => page.photos.length),
+    );
 
     for (let index = 0; index < counts.length; index += 1) {
       const slice = body.splice(0, counts[index]!);
@@ -139,6 +152,10 @@ export function paginateBook(
           : slice;
 
       const pageNotes = notesForPage(notes[index], layoutNoteCount(layoutId));
+      // The line written for this page when the chapter was written. Printed
+      // only where the page's layout keeps room for words, and only where
+      // the owner has not written something of their own.
+      const caption = plan?.[index]?.caption;
 
       push({
         id: pageId,
@@ -149,6 +166,7 @@ export function paginateBook(
         chapterIndex: chapter.index,
         chapterPageIndex: index,
         ...(pageNotes ? { notes: pageNotes } : {}),
+        ...(caption ? { caption } : {}),
       });
     }
   }
@@ -227,9 +245,16 @@ function pagesWorthUsing(bodyPhotos: number): number {
   return Math.min(PHOTO_PAGES_PER_CHAPTER, Math.max(1, byDensity));
 }
 
-/** Pages the book means to give room for words: about one in three. */
+/**
+ * Pages the book means to give room for words: every other one.
+ *
+ * Every page has a line written for it when the chapter is written, so the
+ * question is only how often a page's layout makes room to print it. Every
+ * other page reads like an album somebody wrote in; every page reads like a
+ * diary, and none like a catalogue.
+ */
 function wantsWords(photoPagesSoFar: number): boolean {
-  return photoPagesSoFar % 3 === 1;
+  return photoPagesSoFar % 2 === 1;
 }
 
 /** How many layout choices back the book remembers when reaching for variety. */
@@ -381,10 +406,24 @@ function pageSizes(
   body: readonly string[],
   photos: PhotoLookup,
 ): number[] | undefined {
+  const kept = chapterPlan(chapter, body, photos);
+  return kept?.map((page) => page.photos.length);
+}
+
+/**
+ * The chapter's pages as they were planned, brought in line with the
+ * photographs it holds now — or a fresh grouping for a chapter saved before
+ * the book kept one.
+ */
+function chapterPlan(
+  chapter: Chapter,
+  body: readonly string[],
+  photos: PhotoLookup,
+): PlannedPage[] | undefined {
   const kept = reconcilePlan(chapter.pagePlan, body);
-  if (kept) return kept.map((page) => page.length);
+  if (kept) return kept;
   if (body.length === 0) return undefined;
-  return planPages(body.map((id) => plannable(id, photos))).map((page) => page.length);
+  return planPages(body.map((id) => plannable(id, photos)));
 }
 
 function plannable(id: string, photos: PhotoLookup): PlannablePhoto {
@@ -476,7 +515,7 @@ export function applyPageLayout(
     body.length,
     before,
     chapter.id,
-    reconcilePlan(chapter.pagePlan, body)?.map((page) => page.length),
+    reconcilePlan(chapter.pagePlan, body)?.map((page) => page.photos.length),
   );
   const start = counts.slice(0, pageIndex).reduce((sum, count) => sum + count, 0);
   const current = counts[pageIndex] ?? 0;
@@ -494,7 +533,7 @@ export function applyPageLayout(
     body.length,
     chosen,
     chapter.id,
-    reconcilePlan(chapter.pagePlan, body)?.map((page) => page.length),
+    reconcilePlan(chapter.pagePlan, body)?.map((page) => page.photos.length),
   );
   const photoIds = plan.leftover > 0 ? body.slice(0, body.length - plan.leftover) : body;
   const heroAt = hero ? chapter.photoIds.indexOf(hero) : -1;

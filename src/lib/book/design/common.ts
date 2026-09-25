@@ -111,12 +111,11 @@ export function heroOf(page: BookPage): string | undefined {
 /**
  * What a caption layout's note slot has to say.
  *
- * The owner's own words when they wrote some, and when they did not, what the
- * book already knows about that page: the month its photographs were taken
- * and, once per page, where. That fallback is the whole reason a caption
- * layout can be dealt automatically — a page that would otherwise print an
- * empty box instead prints a date line, which is what an album page has said
- * since long before any of this.
+ * Three deep, and the first one that exists wins: the owner's own words, then
+ * the line written for this page when the chapter was written, then the month
+ * its photographs were taken. Under all of it sits the date and, once per
+ * page, the place — so a page always has something true to say, and the
+ * owner's own words always come first.
  */
 export type PageNote = {
   /** The owner's words, or null. */
@@ -137,8 +136,13 @@ export function pageNotes(page: BookPage, context: DesignContext): PageNote[] {
     // Two notes on a page of two photographs belong one to each.
     const photoId = slots === page.photoIds.length ? page.photoIds[index] : page.photoIds[0];
     const date = (photoId ? context.captionOf(photoId) : null) ?? chapterDate(context);
+    const own = typeof written === "string" && written.trim() ? written.trim() : null;
+    // The written-for-you line goes on the page's first note only: on a page
+    // of two, the second photograph keeps its own date rather than repeating
+    // a line about the pair.
+    const given = index === 0 && page.caption?.trim() ? page.caption.trim() : null;
     return {
-      text: typeof written === "string" && written.trim() ? written.trim() : null,
+      text: own ?? given,
       date,
       place: index === 0 && slots === 1 ? placeLabel(context) : null,
     };

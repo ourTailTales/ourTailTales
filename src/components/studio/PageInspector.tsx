@@ -414,8 +414,15 @@ function BookColors() {
                 style={{ background: choice.palette.paper }}
               >
                 <span className="w-1/4" style={{ background: choice.palette.accent }} />
-                {choice.palette.tape.slice(0, 3).map((color) => (
-                  <span key={color} className="w-1/4" style={{ background: color }} />
+                {/* Keyed by position: a palette may well use the same
+                    color twice, and two swatches keyed by the same hex is a
+                    React warning and a dropped swatch. */}
+                {choice.palette.tape.slice(0, 3).map((color, index) => (
+                  <span
+                    key={`${index}-${color}`}
+                    className="w-1/4"
+                    style={{ background: color }}
+                  />
                 ))}
               </span>
               <span className="min-w-0">

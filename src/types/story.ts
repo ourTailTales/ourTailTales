@@ -56,18 +56,26 @@ export type PhotoFacts = {
   orientation: "portrait" | "landscape" | "square";
 };
 
+/** One page as the model planned it. */
+export type PlannedStoryPage = {
+  /** Positions in `StoryRequest.photos`, in the order they go on the page. */
+  photos: number[];
+  /** A few words about the page, for the layouts that keep room for words. */
+  caption?: string;
+};
+
 /** What every provider must return, whatever model produced it. */
 export type StoryDraft = {
   title: string;
   dateLabel: string;
   blurb: string;
   /**
-   * The chapter's photographs grouped onto pages: one array per page, holding
-   * positions from `StoryRequest.photos`. Absent when the request carried no
-   * photo facts, or when what came back could not be used — the book then
-   * groups them by date itself.
+   * The chapter's pages: which photographs share each one, by position in
+   * `StoryRequest.photos`, and the line written about them. Absent when the
+   * request carried no photo facts, or when what came back could not be
+   * used — the book then groups them by date itself and prints the date.
    */
-  pages?: number[][];
+  pages?: PlannedStoryPage[];
 };
 
 /**

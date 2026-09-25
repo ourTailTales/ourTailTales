@@ -57,12 +57,21 @@ export const ChapterStorySchema = z.object({
   dateLabel: z.string(),
   blurb: z.string().min(1),
   /**
-   * The page grouping. Optional and unchecked beyond its shape: the book
-   * reconciles it against the chapter's own photographs before printing
-   * anything (`lib/book/page-plan`), so a model that miscounts costs the
-   * chapter its grouping, never a photograph.
+   * The pages: the grouping and the line written for each. Optional and
+   * unchecked beyond its shape — the book reconciles it against the
+   * chapter's own photographs before printing anything
+   * (`lib/book/page-plan`), so a model that miscounts costs the chapter its
+   * grouping, never a photograph.
    */
-  pages: z.array(z.array(z.number().int().nonnegative().max(500)).max(50)).max(50).optional(),
+  pages: z
+    .array(
+      z.object({
+        photos: z.array(z.number().int().nonnegative().max(500)).max(50),
+        caption: z.string().max(300).optional(),
+      }),
+    )
+    .max(50)
+    .optional(),
 });
 
 /**

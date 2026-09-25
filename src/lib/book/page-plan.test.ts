@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import type { PlannedPage } from "@/types/book";
 import {
   MAX_PHOTO_PAGES,
   MIN_PHOTO_PAGES,
@@ -10,6 +11,8 @@ import {
 } from "@/lib/book/page-plan";
 
 const DAY = 86_400_000;
+
+const photosOf = (pages: PlannedPage[]): string[][] => pages.map((page) => page.photos);
 const START = Date.UTC(2019, 5, 1, 9);
 
 /** Photographs taken in bursts: `[count, dayOffset]` pairs. */
@@ -29,7 +32,7 @@ function album(bursts: [number, number][]): PlannablePhoto[] {
 describe("grouping a chapter's photographs onto pages", () => {
   it("gives a photograph its own page while the chapter has pages to spare", () => {
     const pages = planPages(album([[1, 0], [1, 30], [1, 60], [1, 90], [1, 120]]));
-    expect(pages).toEqual([["p0"], ["p1"], ["p2"], ["p3"], ["p4"]]);
+    expect(photosOf(pages)).toEqual([["p0"], ["p1"], ["p2"], ["p3"], ["p4"]]);
   });
 
   it("puts one afternoon together before it puts two apart", () => {
@@ -41,7 +44,7 @@ describe("grouping a chapter's photographs onto pages", () => {
     for (const page of pages) {
       // No page straddles two outings: every page's photographs were taken
       // within a day of each other.
-      const numbers = page.map((id) => Number(id.slice(1)));
+      const numbers = page.photos.map((id) => Number(id.slice(1)));
       const outing = new Set(numbers.map((n) => Math.floor(n / 4)));
       expect(outing.size).toBe(1);
     }
@@ -58,59 +61,79 @@ describe("grouping a chapter's photographs onto pages", () => {
         expect(pages.length).toBeGreaterThanOrEqual(MIN_PHOTO_PAGES);
       }
       // Every photograph exactly once, in order.
-      expect(pages.flat()).toEqual(album([[count, 0]]).map((photo) => photo.id));
+      expect(photosOf(pages).flat()).toEqual(album([[count, 0]]).map((photo) => photo.id));
     }
   });
 
   it("does not crowd a page while there are pages left", () => {
     const pages = planPages(album([[9, 0]]));
-    expect(pages.every((page) => page.length === 1)).toBe(true);
+    expect(pages.every((page) => page.photos.length === 1)).toBe(true);
   });
 });
 
 describe("a grouping the model sent back", () => {
   const ids = ["a", "b", "c", "d", "e"];
 
-  it("becomes pages of the chapter's own photographs", () => {
-    expect(planFromIndexes(ids, [[0, 1], [2], [3, 4]])).toEqual([
-      ["a", "b"],
-      ["c"],
-      ["d", "e"],
+  it("becomes pages of the chapter's own photographs, with the lines written for them", () => {
+    expect(
+      planFromIndexes(ids, [
+        { photos: [0, 1], caption: "The first morning." },
+        { photos: [2] },
+        { photos: [3, 4], caption: "  " },
+      ]),
+    ).toEqual([
+      { photos: ["a", "b"], caption: "The first morning." },
+      { photos: ["c"] },
+      { photos: ["d", "e"] },
     ]);
   });
 
   it("never loses a photograph the model forgot, or repeated", () => {
-    const pages = planFromIndexes(ids, [[0, 0, 1], [2]]);
-    expect(pages!.flat().sort()).toEqual([...ids].sort());
-    expect(new Set(pages!.flat()).size).toBe(ids.length);
+    const pages = planFromIndexes(ids, [{ photos: [0, 0, 1] }, { photos: [2] }]);
+    expect(photosOf(pages!).flat().sort()).toEqual([...ids].sort());
+    expect(new Set(photosOf(pages!).flat()).size).toBe(ids.length);
   });
 
   it("ignores positions that are not photographs", () => {
-    const pages = planFromIndexes(ids, [[0, 99], [-1, 1]]);
-    expect(pages!.flat().sort()).toEqual([...ids].sort());
+    const pages = planFromIndexes(ids, [{ photos: [0, 99] }, { photos: [-1, 1] }]);
+    expect(photosOf(pages!).flat().sort()).toEqual([...ids].sort());
   });
 
   it("is nothing at all when the model sent nothing usable", () => {
     expect(planFromIndexes(ids, undefined)).toBeNull();
     expect(planFromIndexes(ids, [])).toBeNull();
-    expect(planFromIndexes([], [[0]])).toBeNull();
+    expect(planFromIndexes([], [{ photos: [0] }])).toBeNull();
   });
 });
 
 describe("a grouping kept while the chapter is edited", () => {
-  const plan = [["a", "b"], ["c"], ["d", "e"]];
+  const plan = [
+    { photos: ["a", "b"], caption: "Two of them." },
+    { photos: ["c"] },
+    { photos: ["d", "e"] },
+  ];
 
-  it("drops a photograph that has left the chapter", () => {
-    expect(reconcilePlan(plan, ["a", "b", "d", "e"])).toEqual([["a", "b"], ["d", "e"]]);
+  it("drops a photograph that has left the chapter, and keeps the line", () => {
+    expect(reconcilePlan(plan, ["a", "b", "d", "e"])).toEqual([
+      { photos: ["a", "b"], caption: "Two of them." },
+      { photos: ["d", "e"] },
+    ]);
+  });
+
+  it("reads a plan saved before pages carried a line", () => {
+    expect(reconcilePlan([["a", "b"], ["c"]], ["a", "b", "c"])).toEqual([
+      { photos: ["a", "b"] },
+      { photos: ["c"] },
+    ]);
   });
 
   it("puts a photograph that has arrived beside the ones it sits with", () => {
     const pages = reconcilePlan(plan, ["a", "b", "c", "new", "d", "e"]);
-    expect(pages!.flat()).toContain("new");
-    expect(pages!.flat()).toHaveLength(6);
+    expect(photosOf(pages!).flat()).toContain("new");
+    expect(photosOf(pages!).flat()).toHaveLength(6);
     // Next to its neighbours in the chapter, not tacked onto the end.
-    const page = pages!.find((entry) => entry.includes("new"))!;
-    expect(page.some((id) => id === "c" || id === "d" || id === "e")).toBe(true);
+    const page = pages!.find((entry) => entry.photos.includes("new"))!;
+    expect(page.photos.some((id) => id === "c" || id === "d" || id === "e")).toBe(true);
   });
 
   it("is nothing at all when none of its photographs are left", () => {

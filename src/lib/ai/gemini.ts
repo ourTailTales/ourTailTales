@@ -57,10 +57,23 @@ const RESPONSE_SCHEMA: Schema = {
     pages: {
       type: Type.ARRAY,
       description:
-        "The chapter's photographs grouped onto pages, in order: one list of photo numbers per page. Photographs share a page only when they belong together. One to four a page. Every photograph exactly once.",
+        "The chapter's pages, in order. Photographs share a page only when they belong together; one to four a page; every photograph exactly once.",
       items: {
-        type: Type.ARRAY,
-        items: { type: Type.INTEGER },
+        type: Type.OBJECT,
+        properties: {
+          photos: {
+            type: Type.ARRAY,
+            description: "The numbers of the photographs on this page, in order.",
+            items: { type: Type.INTEGER },
+          },
+          caption: {
+            type: Type.STRING,
+            description:
+              "Three to ten words about this page, in the chapter's voice. Only what the dates, the season, the place and the chapter's own story support — never a new detail about what a picture shows. No full stop needed.",
+          },
+        },
+        required: ["photos", "caption"],
+        propertyOrdering: ["photos", "caption"],
       },
     },
   },
@@ -218,9 +231,9 @@ export function createGeminiProvider(): StoryProvider {
             // Higher than a factual task wants: the same album should not
             // produce the same sentence shapes chapter after chapter.
             temperature: 0.9,
-            // Copy is ~150 tokens and the page plan a hundred more; the cap
-            // leaves room for a little thinking on top.
-            maxOutputTokens: 1100,
+            // Copy is ~150 tokens, and the pages with a line each a few
+            // hundred more; the cap leaves room for a little thinking on top.
+            maxOutputTokens: 1600,
             signal,
             onUsage: options?.onUsage,
           }),
