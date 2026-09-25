@@ -11,7 +11,7 @@ import {
   getCustomCoverUrl,
   setCustomCoverFile,
 } from "@/lib/book/customCoverStore";
-import { luluInteriorPages } from "@/lib/pricing";
+import { orderedInteriorPages } from "@/lib/pricing";
 import { useOurTailTalesStore } from "@/store/useOurTailTalesStore";
 
 const TARGET_PPI = 300;
@@ -25,12 +25,16 @@ const TARGET_PPI = 300;
  */
 export function CustomCoverPanel() {
   const chapterCount = useOurTailTalesStore((state) => state.chapterCount);
+  const interiorPages = useOurTailTalesStore((state) => state.pages.length);
   const customCover = useOurTailTalesStore((state) => state.customCover);
   const setCustomCover = useOurTailTalesStore((state) => state.setCustomCover);
 
-  const pageCount = luluInteriorPages(chapterCount);
-  // Tagged with the pageCount it was fetched for, so a chapter-count change
-  // shows "Calculating…" again without a synchronous reset at effect start.
+  // The spine is as thick as the book turned out, not as thick as a fixed
+  // ten pages a chapter would have made it.
+  const pageCount = orderedInteriorPages(interiorPages, chapterCount);
+  // Tagged with the pageCount it was fetched for, so a change in the book's
+  // length shows "Calculating…" again without a synchronous reset at effect
+  // start.
   const [dimensionsResult, setDimensionsResult] = useState<
     | { status: "ready"; pageCount: number; value: CoverDimensionsPt }
     | { status: "error"; pageCount: number; message: string }

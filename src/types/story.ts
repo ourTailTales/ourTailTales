@@ -34,6 +34,26 @@ export type StoryRequest = {
    * the model and never written to disk or to Supabase.
    */
   thumbnails: string[];
+  /**
+   * Every photograph in the chapter, in book order, as the facts needed to
+   * group them onto pages: when it was taken, roughly where, and which way
+   * it faces. No pixels — the model groups by what the pictures have in
+   * common, and a date and a place say most of that for a fraction of the
+   * cost of sending thirty images.
+   */
+  photos?: PhotoFacts[];
+  /** How many pages this chapter's photographs may be spread over. */
+  pageBudget?: { min: number; max: number };
+};
+
+export type PhotoFacts = {
+  /** Position in the chapter, from 0 — what `pages` refers back to. */
+  i: number;
+  /** The day it was taken, `YYYY-MM-DD`, when the file says. */
+  on?: string;
+  /** City or region, when known. */
+  place?: string;
+  orientation: "portrait" | "landscape" | "square";
 };
 
 /** What every provider must return, whatever model produced it. */
@@ -41,6 +61,13 @@ export type StoryDraft = {
   title: string;
   dateLabel: string;
   blurb: string;
+  /**
+   * The chapter's photographs grouped onto pages: one array per page, holding
+   * positions from `StoryRequest.photos`. Absent when the request carried no
+   * photo facts, or when what came back could not be used — the book then
+   * groups them by date itself.
+   */
+  pages?: number[][];
 };
 
 /**

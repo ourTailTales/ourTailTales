@@ -4,10 +4,12 @@ import {
   BASE_CHAPTERS,
   BASE_PRICE,
   MIN_PHOTOS_FOR_BOOK,
+  MIN_PRINTABLE_INTERIOR_PAGES,
   PHOTOS_PER_CHAPTER_TARGET,
   bookPrice,
   luluInteriorPages,
   maxSupportedChapters,
+  orderedInteriorPages,
   storyPages,
 } from "@/lib/pricing";
 
@@ -33,5 +35,25 @@ describe("book pricing", () => {
     expect(maxSupportedChapters(25)).toBe(5);
     expect(maxSupportedChapters(29)).toBe(5);
     expect(maxSupportedChapters(30)).toBe(6);
+  });
+});
+
+describe("the pages a book orders", () => {
+  it("orders the book that was made, not a fixed ten pages a chapter", () => {
+    // A five-chapter book of thirty-four pages orders thirty-four.
+    expect(orderedInteriorPages(34, 5)).toBe(34);
+    // An odd length rounds up: a leaf has two sides.
+    expect(orderedInteriorPages(35, 5)).toBe(36);
+  });
+
+  it("never orders more than the chapters that were paid for", () => {
+    expect(orderedInteriorPages(200, 5)).toBe(luluInteriorPages(5));
+  });
+
+  it("pads a very short book up to what the printer will bind", () => {
+    expect(orderedInteriorPages(12, 5)).toBe(MIN_PRINTABLE_INTERIOR_PAGES);
+    expect(orderedInteriorPages(MIN_PRINTABLE_INTERIOR_PAGES, 5)).toBe(
+      MIN_PRINTABLE_INTERIOR_PAGES,
+    );
   });
 });

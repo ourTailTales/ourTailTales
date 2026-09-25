@@ -33,8 +33,9 @@ const DATA_URL = /^data:([a-z]+\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/]+={0,2})$/;
 /**
  * Gemini structured-output schema — declared in code, not in AI Studio.
  *
- * Exactly three fields. No tools, grounding, or playground-saved state is
- * involved; production behavior is whatever this file says.
+ * The chapter's words, and the grouping of its photographs onto pages. No
+ * tools, grounding, or playground-saved state is involved; production
+ * behavior is whatever this file says.
  */
 const RESPONSE_SCHEMA: Schema = {
   type: Type.OBJECT,
@@ -53,9 +54,18 @@ const RESPONSE_SCHEMA: Schema = {
       description:
         "A warm, cohesive 25 to 40 word introduction (two or three sentences): one small story about the pet built on at most two connected details visible in the pictures. Never a list, never about the photographs.",
     },
+    pages: {
+      type: Type.ARRAY,
+      description:
+        "The chapter's photographs grouped onto pages, in order: one list of photo numbers per page. Photographs share a page only when they belong together. One to four a page. Every photograph exactly once.",
+      items: {
+        type: Type.ARRAY,
+        items: { type: Type.INTEGER },
+      },
+    },
   },
-  required: ["title", "dateLabel", "blurb"],
-  propertyOrdering: ["title", "dateLabel", "blurb"],
+  required: ["title", "dateLabel", "blurb", "pages"],
+  propertyOrdering: ["title", "dateLabel", "blurb", "pages"],
 };
 
 const HEX_DESCRIPTION = "Hex color like #a33b2f.";
@@ -208,8 +218,9 @@ export function createGeminiProvider(): StoryProvider {
             // Higher than a factual task wants: the same album should not
             // produce the same sentence shapes chapter after chapter.
             temperature: 0.9,
-            // Copy is ~150 tokens; the cap leaves room for a little thinking.
-            maxOutputTokens: 800,
+            // Copy is ~150 tokens and the page plan a hundred more; the cap
+            // leaves room for a little thinking on top.
+            maxOutputTokens: 1100,
             signal,
             onUsage: options?.onUsage,
           }),

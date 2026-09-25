@@ -219,35 +219,3 @@ export function noteParagraphs(note: PageNote, style: NoteStyle): Paragraph[] {
 export function textHeight(block: TextBlock): number {
   return fromPt(layoutTextBlock(block).used);
 }
-
-/**
- * A page that is words and paper alone.
- *
- * Written on, it sets the owner's words the way any other note is set.
- * Left empty, it prints the chapter's date at the head of a faintly ruled
- * page — a page to write on by hand once the book is in front of them, which
- * is the only honest thing to do with a page a thin album cannot fill.
- */
-export function notePageParagraphs(note: PageNote, style: NoteStyle): Paragraph[] {
-  if (note.text) return noteParagraphs(note, style);
-
-  const heading = [note.date, note.place].filter(Boolean).join("  ·  ");
-  if (!heading) return [];
-  return [
-    {
-      text: heading,
-      font: style.meta.font,
-      size: style.meta.size,
-      color: style.meta.color,
-      tracking: style.meta.tracking,
-      uppercase: style.meta.uppercase,
-      align: style.align === "center" ? "center" : "left",
-    },
-  ];
-}
-
-/** The one note a `note-page` carries, written or not. */
-export function notePageNote(page: BookPage, context: DesignContext): PageNote | null {
-  const [note] = pageNotes(page, context);
-  return note && !isEmptyNote(note) ? note : null;
-}

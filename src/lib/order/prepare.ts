@@ -2,7 +2,7 @@ import { renderCoverPdf, wrapImageAsCoverPdf } from "@/lib/book/cover-pdf";
 import { getCustomCoverFile } from "@/lib/book/customCoverStore";
 import { renderInteriorPdf } from "@/lib/book/interior-pdf";
 import { postHogHeaders } from "@/lib/posthog-client";
-import { luluInteriorPages } from "@/lib/pricing";
+import { orderedInteriorPages } from "@/lib/pricing";
 import type { BookMeta, BookPage, Chapter, CustomCoverMeta } from "@/types/book";
 import type { PhotoAsset } from "@/types/photo";
 import type { VideoMemoryPlacement } from "@/types/video-memory";
@@ -41,7 +41,10 @@ export async function prepareOrder(args: {
   customCover?: CustomCoverMeta | null;
   onStatus: (message: string) => void;
 }): Promise<PreparedOrder> {
-  const totalPages = luluInteriorPages(args.chapterCount);
+  // What this book actually came to, not what a fixed ten pages a chapter
+  // would have been. Blank leaves are printed only to reach the binder's
+  // minimum, and only at the back.
+  const totalPages = orderedInteriorPages(args.pages.length, args.chapterCount);
 
   // Catch a stale upload (chapter count changed since it was checked) before
   // the expensive interior render even starts.
@@ -61,6 +64,7 @@ export async function prepareOrder(args: {
   const order = await postJson<{ orderId: string; orderToken: string }>("/api/orders", {
     petName: args.meta.petName,
     chapterCount: args.chapterCount,
+    interiorPages: totalPages,
     email: args.email,
     draftId: args.draftId ?? undefined,
   });

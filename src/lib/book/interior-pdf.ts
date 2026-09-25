@@ -80,10 +80,13 @@ export type InteriorRenderOptions = {
    */
   expiresAt?: Date;
   /**
-   * Pad with blank pages up to exactly this many interior pages. The print
-   * order is sized from the chapter count alone (`luluInteriorPages`), and a
-   * book with no dedication has one page fewer than that; the blank goes on
-   * the back of the title page, where a book would put one anyway.
+   * Pad with blank leaves up to exactly this many interior pages, at the
+   * back of the book.
+   *
+   * The print order is sized from the chapter count alone
+   * (`luluInteriorPages`) while the book itself is only as long as the
+   * album fills, so the two rarely match exactly. Lulu requires the uploaded
+   * interior to carry exactly the page count that was ordered.
    */
   padToPageCount?: number;
   placements?: VideoMemoryPlacement[];
@@ -145,8 +148,10 @@ export async function renderInteriorPdf(
     ? pages.slice(0, pageLimit)
     : [...pages];
   if (padToPageCount && selected.length < padToPageCount) {
-    const blanks = padToPageCount - selected.length;
-    selected.splice(Math.min(1, selected.length), 0, ...Array(blanks).fill(null));
+    // At the back, where a printed book puts its blank leaves. They used to
+    // go on the back of the title page, which put the padding of a short
+    // book between its title and its first chapter.
+    selected.push(...Array(padToPageCount - selected.length).fill(null));
   }
   const lowResWarnings: LowResWarning[] = [];
 

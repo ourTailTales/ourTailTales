@@ -44,6 +44,21 @@ export type Chapter = {
    * `pageNotes` in `lib/book/design/common`).
    */
   pageNotes?: ((string | null)[] | null)[];
+  /**
+   * How this chapter's photographs are grouped onto pages: one entry per
+   * page, in book order, holding the photo ids that share it.
+   *
+   * Written once, when the chapter is written — by the model that reads the
+   * chapter's own dates, places and pictures, and falls back to grouping by
+   * when they were taken (see `lib/book/page-plan`). Kept on the chapter
+   * because pages are rebuilt from chapters on every edit, and re-grouping
+   * the whole chapter every time a photo is swapped would rearrange pages
+   * the customer is looking at.
+   *
+   * Photos that arrive later, or leave, are reconciled against it rather
+   * than throwing it away.
+   */
+  pagePlan?: string[][];
 };
 
 /**
@@ -75,8 +90,7 @@ export type PhotoLayoutId =
   | "caption-below-1"
   | "caption-below-2"
   | "caption-below-3"
-  | "caption-below-4"
-  | "note-page";
+  | "caption-below-4";
 
 export type LayoutId = PhotoLayoutId | "chapter-opener";
 

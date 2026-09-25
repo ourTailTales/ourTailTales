@@ -6,8 +6,6 @@ import {
   isEmptyNote,
   lineAt,
   noteParagraphs,
-  notePageNote,
-  notePageParagraphs,
   pageNotes,
   textHeight,
   type BookDesign,
@@ -25,7 +23,6 @@ import {
 import {
   gridSlots,
   isCaptionLayout,
-  isNotePage,
   isPhotoLayout,
   layoutRegions,
 } from "@/lib/book/layouts";
@@ -234,7 +231,6 @@ function designPage(page: BookPage, context: DesignContext): PageDesign {
 
 function photoPage(page: BookPage, context: DesignContext, design: PageDesign): PageDesign {
   if (!isPhotoLayout(page.layoutId)) return design;
-  if (isNotePage(page.layoutId)) return writingPage(page, context, design);
   if (page.photoIds.length === 0) return design;
 
   if (isCaptionLayout(page.layoutId)) return captionPage(page, context, design);
@@ -313,38 +309,6 @@ function captionPage(page: BookPage, context: DesignContext, design: PageDesign)
     design.texts.push(block);
   });
 
-  return design;
-}
-
-/** A page of words on a gallery page: centred, under a rule, faintly ruled below. */
-function writingPage(page: BookPage, context: DesignContext, design: PageDesign): PageDesign {
-  const { palette } = context;
-  const note = notePageNote(page, context);
-  if (!note) return design;
-  const written = Boolean(note.text);
-
-  const paragraphs = notePageParagraphs(note, {
-    body: { font: "serifItalic", size: 17, leading: 26, color: palette.ink },
-    meta: { font: "sans", size: 8.5, tracking: 3, uppercase: true, color: palette.inkSoft },
-    alone: { font: "sans", size: 8.5, color: palette.inkSoft },
-    align: "center",
-  });
-  if (paragraphs.length === 0) return design;
-
-  design.under = [rule(0.245, 0.035, context)];
-  design.texts = [
-    {
-      x: MARGIN + 0.04,
-      y: 0.3,
-      w: 1 - (MARGIN + 0.04) * 2,
-      h: 0.46,
-      valign: written ? "middle" : "top",
-      // Rules are an invitation to write, so a page that has been written on
-      // does not carry them.
-      ...(written ? {} : { ruled: { color: palette.inkSoft, opacity: 0.18 } }),
-      paragraphs,
-    },
-  ];
   return design;
 }
 

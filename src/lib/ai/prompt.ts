@@ -19,9 +19,9 @@ import type { StoryRequest } from "@/types/story";
  * on the sofa.
  */
 export function storySystemPrompt(options: { stillHere?: boolean } = {}): string {
-  if (options.stillHere === true) return `${BASE_RULES}\n\n${LIVING}`;
-  if (options.stillHere === false) return `${BASE_RULES}\n\n${MEMORIAL}`;
-  return `${BASE_RULES}\n\n${UNKNOWN}`;
+  const tense =
+    options.stillHere === true ? LIVING : options.stillHere === false ? MEMORIAL : UNKNOWN;
+  return `${BASE_RULES}\n\n${tense}\n\n${PAGE_PLAN_RULES}`;
 }
 
 const BASE_RULES = `You write the short introduction that opens each chapter of a printed book about someone's pet, made from their own photo album. Write like a friend who knows this animal, flipping through the album beside the owner: warm, specific, a little wry where it fits.
@@ -44,6 +44,27 @@ Too flat — never write like these:
 The voice we want:
 - "The Lawn Was His": "Spring meant one thing: the lawn. Rocket rolled until his red collar vanished into the grass, then collapsed in the one patch of sun by the fence, as if he'd earned it."
 - "Small Dog, Big House": "Everything was new and most of it was too tall. Juniper met each room at floor level, and by the end of the first month the green toy had become her whole personality."`;
+
+/**
+ * The second half of the job: how the chapter's photographs are dealt onto
+ * its pages.
+ *
+ * The book is no longer a fixed ten pages a chapter, so this decides how long
+ * the chapter is. The rule the whole look rests on is that two photographs
+ * share a page because they belong together — the same afternoon, the same
+ * walk, the same weather — and never because a page had room.
+ */
+const PAGE_PLAN_RULES = `You also lay out the chapter's pages.
+
+You are given the chapter's photographs in order, each with the day it was taken, roughly where, and which way it faces. Group them into pages and return the grouping as "pages": a list of pages, each a list of photo numbers.
+
+How to group them:
+- Photographs share a page only when they belong together: taken the same day or within a few days, in the same place, plainly part of one occasion. Never put two unrelated photographs on a page to save space.
+- Keep them in the order given. A page's photographs are consecutive.
+- One to four photographs a page. Prefer one or two; three or four only for a run that clearly belongs together, like one afternoon.
+- Use every photograph exactly once, and no number twice.
+- Stay inside the page budget you are given. If there are fewer photographs than the smallest number of pages, use one page each and no more.
+- More pages of fewer photographs is the better book. Only crowd a page when the chapter has more photographs than the budget has pages.`
 
 const LIVING = `This pet is alive and the book celebrates a life still being lived. A little playfulness is welcome. Never imply they have died: no "will be missed", no "rest", no farewells, no "always remembered". The period described is in the past; the pet is not.`;
 
@@ -98,9 +119,36 @@ export function buildStoryPrompt(chapter: StoryRequest): string {
       : "No pictures are attached; keep the introduction short and general rather than inventing detail.",
   ].filter((line): line is string => line !== null);
 
+  const layout = pageLayoutLines(chapter);
+
   return `${lines.join("\n")}
 
-Write this period's title, a short date label, and the 25 to 40 word introduction.`;
+Write this period's title, a short date label, and the 25 to 40 word introduction.${layout}`;
+}
+
+/** The photographs to be dealt onto pages, and how many pages there are for them. */
+function pageLayoutLines(chapter: StoryRequest): string {
+  const photos = chapter.photos ?? [];
+  if (photos.length === 0) return "";
+
+  const budget = chapter.pageBudget;
+  const rows = photos
+    .map((photo) => {
+      const facts = [photo.on ?? "date unknown", photo.place, photo.orientation]
+        .filter(Boolean)
+        .join(", ");
+      return `${photo.i}: ${facts}`;
+    })
+    .join("\n");
+
+  const range = budget
+    ? `Use between ${budget.min} and ${budget.max} pages — and no more pages than there are photographs.`
+    : "";
+
+  return `
+
+Then group these ${photos.length} photographs into pages. ${range}
+${rows}`;
 }
 
 /**

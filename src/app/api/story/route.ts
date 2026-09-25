@@ -61,6 +61,25 @@ const requestSchema = z.object({
   seasons: z.array(z.string().max(60)).max(4).default([]),
   // Three to five is the product rule; the cap is what this route will accept.
   thumbnails: z.array(z.string().max(4_000_000)).max(5).default([]),
+  // Facts about the chapter's photographs, for grouping them onto pages.
+  // Capped at the most a chapter can hold.
+  photos: z
+    .array(
+      z.object({
+        i: z.number().int().nonnegative().max(200),
+        on: z.string().max(10).optional(),
+        place: z.string().max(80).optional(),
+        orientation: z.enum(["portrait", "landscape", "square"]),
+      }),
+    )
+    .max(60)
+    .optional(),
+  pageBudget: z
+    .object({
+      min: z.number().int().min(1).max(20),
+      max: z.number().int().min(1).max(20),
+    })
+    .optional(),
 });
 
 export async function POST(request: Request): Promise<Response> {
