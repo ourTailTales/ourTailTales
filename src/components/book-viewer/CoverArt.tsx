@@ -8,9 +8,12 @@ import {
   DEFAULT_COVER_NAME_SIZE,
   coverFontVar,
   coverTextTone,
+  coverUsesPhoto,
   defaultNameAnchor,
   styleForAnchor,
 } from "@/lib/book/coverLayouts";
+import { lifespanText } from "@/lib/book/design/primitives";
+import { resolvePalette } from "@/lib/book/palette";
 import { brand } from "@/lib/brand";
 import type { BookMeta } from "@/types/book";
 import { getFullUrl } from "@/lib/photo/assetStore";
@@ -47,9 +50,13 @@ export function CoverFrontArt({
   meta?: BookMeta;
   photoUrl?: string | null;
 }) {
-  const ready = Boolean(photoUrl);
   const petName = meta?.petName.trim() ?? "";
   const layoutId = meta?.coverLayoutId ?? DEFAULT_COVER_LAYOUT;
+  // A cover built from type and paper is finished the moment there is a name
+  // on it; only the photographic covers have to wait for an album.
+  const ready = Boolean(photoUrl) || !coverUsesPhoto(layoutId);
+  const palette = resolvePalette(meta ?? {});
+  const years = meta ? lifespanText(meta) : "";
   const textOnLight = coverTextTone(layoutId) === "dark";
   const fontId = meta?.coverFontId ?? DEFAULT_COVER_FONT;
   const nameStyle = styleForAnchor(
@@ -63,7 +70,13 @@ export function CoverFrontArt({
     <div
       className={`relative h-full w-full overflow-hidden ${textOnLight ? "text-ink" : "text-white"}`}
     >
-      <CoverLayoutChrome layoutId={layoutId} photoUrl={photoUrl ?? null} />
+      <CoverLayoutChrome
+        layoutId={layoutId}
+        photoUrl={photoUrl ?? null}
+        palette={palette}
+        years={years}
+        initial={petName.slice(0, 1).toUpperCase()}
+      />
 
       {ready && petName ? (
         <p

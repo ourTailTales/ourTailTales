@@ -12,7 +12,7 @@ import {
   type DesignContext,
 } from "@/lib/book/design/primitives";
 import { layoutTextBlock } from "@/lib/book/design/text";
-import { PHOTO_LAYOUTS } from "@/lib/book/layouts";
+import { PHOTO_LAYOUTS, isCaptionLayout, layoutRegions } from "@/lib/book/layouts";
 import { BRAND_PALETTE, sanitizePalette } from "@/lib/book/palette";
 import { paginateBook } from "@/lib/book/pagination";
 import type { BookMeta, BookPage, Chapter, DesignId } from "@/types/book";
@@ -113,6 +113,29 @@ describe("every design", () => {
         }
       });
 
+      it("keeps a written note inside the card it is written on", () => {
+        const { contextFor } = book(design.id);
+        // The longest a note can be, which is where a card overflows if it
+        // is going to (see MAX_NOTE_LENGTH).
+        const note =
+          "He met the water the way he met everything, all at once and with his whole body. " +
+          "By August he had a favourite rock and an opinion about every duck on the far shore, " +
+          "and no walk ever got past either of them.";
+        for (const layout of PHOTO_LAYOUTS.filter((spec) => spec.noteCount > 0)) {
+          const page = {
+            ...photoPage(layout),
+            notes: Array.from({ length: layout.noteCount }, () => note),
+          };
+          for (const block of designPage(page, contextFor(page)).texts) {
+            const laid = layoutTextBlock(block);
+            for (const line of laid.lines) {
+              expect(line.textWidth).toBeLessThanOrEqual(laid.width + 1e-6);
+            }
+            expect(laid.used).toBeLessThanOrEqual(laid.height + 1e-6);
+          }
+        }
+      });
+
       it("keeps its words inside the page", () => {
         const { pages, contextFor } = book(design.id);
         for (const page of pages) {
@@ -168,6 +191,19 @@ describe("the scrapbook design", () => {
     }
   });
 
+  it("keeps every doodle inside the trim", () => {
+    const { pages, contextFor } = book();
+    const all = [...pages, ...PHOTO_LAYOUTS.map(photoPage)];
+    for (const page of all) {
+      for (const doodle of designPage(page, contextFor(page)).doodles) {
+        expect(doodle.cx - doodle.size / 2).toBeGreaterThanOrEqual(DECOR_EDGE - 1e-9);
+        expect(doodle.cx + doodle.size / 2).toBeLessThanOrEqual(1 - DECOR_EDGE + 1e-9);
+        expect(doodle.cy - doodle.size / 2).toBeGreaterThanOrEqual(DECOR_EDGE - 1e-9);
+        expect(doodle.cy + doodle.size / 2).toBeLessThanOrEqual(1 - DECOR_EDGE + 1e-9);
+      }
+    }
+  });
+
   it("never puts a doodle on top of a print", () => {
     const { pages, contextFor } = book();
     const all = [...pages, ...PHOTO_LAYOUTS.map(photoPage)];
@@ -190,7 +226,23 @@ describe("the scrapbook design", () => {
     for (const layout of PHOTO_LAYOUTS) {
       const page = photoPage(layout);
       const captioned = designPage(page, contextFor(page)).prints.some((print) => print.caption);
-      expect(captioned).toBe(page.photoIds.length <= 2);
+      // A caption layout already carries the date on its note card; printing
+      // it on the photograph as well reads as a page that could not decide.
+      expect(captioned).toBe(page.photoIds.length <= 2 && layout.noteCount === 0);
+    }
+  });
+
+  it("tapes a note card to every page that keeps room for words", () => {
+    const { contextFor } = book();
+    for (const layout of PHOTO_LAYOUTS.filter((spec) => spec.noteCount > 0)) {
+      const page = { ...photoPage(layout), notes: ["He swam in anything."] };
+      const drawn = designPage(page, contextFor(page));
+      const words = drawn.texts.flatMap((block) =>
+        layoutTextBlock(block).lines.map((line) => line.text),
+      );
+      expect(words.join(" ")).toMatch(/swam in anything/);
+      // The card sits behind the words and in front of nothing else.
+      expect(drawn.under.some((shape) => shape.kind === "rect")).toBe(true);
     }
   });
 });
@@ -279,5 +331,60 @@ describe("words", () => {
     expect(numberWord(50)).toBe("Fifty");
     expect(romanNumeral(4)).toBe("IV");
     expect(romanNumeral(49)).toBe("XLIX");
+  });
+});
+
+describe("layouts that hold words", () => {
+  it("keeps room for one note per photo, never more than two", () => {
+    for (const spec of PHOTO_LAYOUTS) {
+      expect(spec.noteCount).toBeLessThanOrEqual(2);
+      if (spec.noteCount > 0) {
+        expect(spec.notesAt).toBeTruthy();
+        expect(spec.noteCount).toBe(spec.photoCount === 2 ? 2 : 1);
+        expect(spec.photoCount).toBeLessThanOrEqual(4);
+      }
+    }
+    // Words to the right, to the left and underneath, with one to four photos.
+    const captioned = PHOTO_LAYOUTS.filter((spec) => spec.noteCount > 0);
+    expect(captioned).toHaveLength(12);
+    expect(new Set(captioned.map((spec) => spec.notesAt))).toEqual(
+      new Set(["right", "left", "below"]),
+    );
+  });
+
+  it("never lays a note over a photograph", () => {
+    const frame = { x: 0.08, y: 0.08, w: 0.84, h: 0.84 };
+    for (const spec of PHOTO_LAYOUTS.filter((entry) => entry.noteCount > 0)) {
+      const { photos, texts } = layoutRegions(spec.id, frame, { gutter: 0.02 });
+      expect(photos).toHaveLength(spec.photoCount);
+      expect(texts).toHaveLength(spec.noteCount);
+      for (const photo of photos) {
+        for (const text of texts) {
+          const apart =
+            photo.x + photo.w <= text.x + 1e-9 ||
+            text.x + text.w <= photo.x + 1e-9 ||
+            photo.y + photo.h <= text.y + 1e-9 ||
+            text.y + text.h <= photo.y + 1e-9;
+          expect(apart).toBe(true);
+        }
+        expect(photo.x).toBeGreaterThanOrEqual(frame.x - 1e-9);
+        expect(photo.x + photo.w).toBeLessThanOrEqual(frame.x + frame.w + 1e-9);
+      }
+      for (const text of texts) {
+        expect(text.w).toBeGreaterThan(0.1);
+        expect(text.h).toBeGreaterThan(0.1);
+      }
+    }
+  });
+
+  it("falls back to the page's own date when nothing has been written", () => {
+    const { contextFor } = book();
+    const spec = PHOTO_LAYOUTS.find((entry) => entry.id === "caption-right-1")!;
+    const page = photoPage(spec);
+    const words = designPage(page, contextFor(page))
+      .texts.flatMap((block) => layoutTextBlock(block).lines.map((line) => line.text))
+      .join(" ");
+    expect(words).toMatch(/June 2019/);
+    expect(isCaptionLayout(page.layoutId)).toBe(true);
   });
 });

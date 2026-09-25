@@ -3,9 +3,14 @@ import {
   fromPt,
   heroOf,
   imprintTexts,
+  isEmptyNote,
   lineAt,
+  noteParagraphs,
+  pageNotes,
+  textHeight,
   toPt,
   type BookDesign,
+  type PageNote,
 } from "@/lib/book/design/common";
 import {
   CARD,
@@ -25,13 +30,21 @@ import {
   type Print,
   type RectShape,
   type Rotated,
+  type Shape,
   type Tape,
   type TextBlock,
 } from "@/lib/book/design/primitives";
-import { SAFE, STANDARD_GUTTER, gridSlots, isPhotoLayout } from "@/lib/book/layouts";
+import {
+  SAFE,
+  STANDARD_GUTTER,
+  gridSlots,
+  isCaptionLayout,
+  isPhotoLayout,
+  layoutRegions,
+} from "@/lib/book/layouts";
 import { CLOSING_LINE, titlePageHeading } from "@/lib/book/pagination";
 import type { BookPalette } from "@/lib/book/palette";
-import type { BookPage, Slot } from "@/types/book";
+import type { BookPage, PhotoLayoutId, Slot } from "@/types/book";
 import type { Orientation } from "@/types/photo";
 
 /**
@@ -48,7 +61,13 @@ import type { Orientation } from "@/types/photo";
 export const DECOR_EDGE = 0.055;
 
 const CONTENT: Slot = { x: SAFE, y: SAFE, w: 1 - SAFE * 2, h: 1 - SAFE * 2 };
-const GRID = { gutter: STANDARD_GUTTER, feature: 0.6505, lead: 0.563 };
+const GRID = {
+  gutter: STANDARD_GUTTER,
+  feature: 0.6505,
+  lead: 0.563,
+  noteShare: 0.35,
+  noteGap: STANDARD_GUTTER * 1.5,
+};
 
 const DEDICATION_CARD: Box = { cx: 0.5, cy: 0.49, w: 0.64, h: 0.42 };
 const OPENER_CARD: Box = { cx: 0.5, cy: 0.255, w: 0.82, h: 0.35 };
@@ -157,7 +176,10 @@ function slotPrint(args: {
   polaroid: boolean;
 }): Print {
   const { slot, random } = args;
-  const inset = Math.min(slot.w, slot.h) * 0.07;
+  // Not every print fills its slot to the same edge: a hand laying photos on
+  // a page leaves uneven white between them, and that unevenness is most of
+  // what separates a scrapbook page from a contact sheet.
+  const inset = Math.min(slot.w, slot.h) * between(random, 0.05, 0.095);
   const w = slot.w - inset * 2;
   const h = slot.h - inset * 2;
   const side = Math.min(Math.max(Math.min(w, h) * 0.045, 0.011), 0.02);
@@ -220,28 +242,77 @@ const DOODLE_SPOTS: readonly [number, number][] = [
   [0.94, 0.5],
 ];
 
+/**
+ * The marks an owner makes in the margins of an album: a paw, a bone, a
+ * supper bowl, the rosette from the one show they entered, a heart or a star
+ * stuck on and left slightly crooked.
+ *
+ * Kept to spare corners and never over a photograph — the whole point of a
+ * doodle is that it fills a gap the pictures left.
+ */
+const DOODLE_KINDS: readonly DoodleKind[] = [
+  "heart",
+  "star",
+  "sparkle",
+  "paw",
+  "paw",
+  "bone",
+  "pup",
+  "bowl",
+  "rosette",
+  "loop",
+  "wave",
+];
+
+/** The two shapes that read as stickers rather than as pen marks. */
+const STICKER_KINDS = new Set<DoodleKind>(["heart", "star"]);
+
+/** On a page that carries words, the pen sometimes points from them to the photographs. */
+const NOTE_DOODLE_KINDS: readonly DoodleKind[] = [...DOODLE_KINDS, "arrow", "arrow"];
+
+/** The arrow path runs down and to the right, about 26° off level. */
+const ARROW_BEARING = 26;
+
+/** Turns an arrow at (cx, cy) to point back at the middle of the page. */
+function aimedAtCentre(cx: number, cy: number): number {
+  const degrees = (Math.atan2(0.5 - cy, 0.5 - cx) * 180) / Math.PI;
+  return degrees - ARROW_BEARING;
+}
+
 function doodlesFor(
   random: () => number,
   palette: BookPalette,
   occupied: Rotated[],
   count: number,
-  kinds: readonly DoodleKind[] = ["heart", "star", "sparkle", "sparkle", "loop", "wave", "paw"],
+  kinds: readonly DoodleKind[] = DOODLE_KINDS,
 ): Doodle[] {
   const doodles: Doodle[] = [];
   const spots = [...DOODLE_SPOTS].sort(() => random() - 0.5);
-  for (const [cx, cy] of spots) {
+  for (const [spotX, spotY] of spots) {
     if (doodles.length >= count) break;
-    const size = between(random, 0.042, 0.056);
+    const size = between(random, 0.052, 0.078);
+    // Pulled in far enough that the binder's knife never takes half a paw.
+    const inside = (value: number): number =>
+      Math.min(Math.max(value, DECOR_EDGE + size / 2), 1 - DECOR_EDGE - size / 2);
+    const cx = inside(spotX);
+    const cy = inside(spotY);
     const candidate = { cx, cy, size };
     if (overlaps(candidate, occupied, 0.008)) continue;
     if (overlaps(candidate, doodles.map((doodle) => ({ ...doodle, w: doodle.size, h: doodle.size })), 0.02)) continue;
+    const kind = pick(random, kinds);
+    // Hearts and stars are stuck on about half the time: filled in the
+    // book's own color with the white edge of a die-cut sticker.
+    const sticker = STICKER_KINDS.has(kind) && random() < 0.5;
     doodles.push({
-      kind: pick(random, kinds),
+      kind,
       cx,
       cy,
-      size,
-      rotation: between(random, -18, 18),
-      color: pick(random, [palette.doodle, palette.doodle, palette.accent]),
+      size: sticker ? size * 0.92 : size,
+      // An arrow is drawn to point at something; everything else is just
+      // set down at an angle.
+      rotation: kind === "arrow" ? aimedAtCentre(cx, cy) : between(random, -18, 18),
+      color: sticker ? palette.accent : pick(random, [palette.doodle, palette.doodle, palette.accent]),
+      ...(sticker ? { fill: true, outline: CARD } : {}),
     });
   }
   return doodles;
@@ -251,9 +322,125 @@ function occupiedBy(prints: Print[]): Rotated[] {
   return prints.flatMap((print) => [print, ...print.tapes]);
 }
 
+/**
+ * How many marks a page gets. Never none: an album page with nothing drawn
+ * on it is a page nobody has touched, and the whole look rests on the sense
+ * that somebody did.
+ */
 function doodleCount(random: () => number): number {
   const roll = random();
-  return roll < 0.3 ? 0 : roll < 0.8 ? 1 : 2;
+  return roll < 0.25 ? 1 : roll < 0.75 ? 2 : 3;
+}
+
+/* ------------------------------ notes ------------------------------ */
+
+/** Padding inside a note card, points. */
+const NOTE_PAD = 17;
+
+/**
+ * The owner's words, written on a card and taped to the page.
+ *
+ * The card hugs what is actually written rather than filling its slot: a
+ * two-word note on a full-height column would otherwise print as a large
+ * empty box, which is the difference between a scrapbook and a form. Where
+ * nothing has been written the card carries the date the photographs were
+ * taken, set in the same hand — which is what the page would have said
+ * anyway.
+ */
+function noteCard(args: {
+  slot: Slot;
+  note: PageNote;
+  context: DesignContext;
+  random: () => number;
+  index: number;
+}): { shapes: Shape[]; texts: TextBlock[]; occupied: Rotated[] } {
+  const { slot, note, context, random, index } = args;
+  const { palette } = context;
+  const written = Boolean(note.text);
+
+  const paragraphs = noteParagraphs(note, {
+    body: { font: "hand", size: 19, leading: 25, color: palette.ink, maxLines: 12 },
+    meta: { font: "sans", size: 8, tracking: 2, uppercase: true, color: palette.accent },
+    alone: { font: "hand", size: 23, color: palette.accent },
+    align: "center",
+  });
+  if (paragraphs.length === 0) return { shapes: [], texts: [], occupied: [] };
+
+  // Measured in the card's own inner width and the deepest it could be, so
+  // the card that gets drawn is the size of what is actually written.
+  const pad = fromPt(NOTE_PAD);
+  const words = textHeight({
+    x: 0,
+    y: 0,
+    w: slot.w - pad * 2,
+    h: Math.max(slot.h - pad * 2, pad),
+    valign: "top",
+    paragraphs,
+  });
+  const cardH = Math.min(slot.h, Math.max(words + pad * 2, fromPt(written ? 78 : 58)));
+  const cy = slot.y + slot.h / 2;
+  const rotation = (index % 2 === 0 ? -1 : 1) * between(random, 0.6, 2.2);
+
+  // A touch narrower than its slot, so two cards side by side keep a little
+  // white between them even once both are tilted.
+  const card = keepOnPage(
+    {
+      cx: slot.x + slot.w / 2,
+      cy,
+      w: slot.w - Math.min(slot.w * 0.06, fromPt(12)),
+      h: cardH,
+      rotation,
+    },
+    DECOR_EDGE,
+  );
+
+  // A strip of tape over the card's top edge, a little off centre.
+  const held = rotateAround(
+    card.cx,
+    card.cy,
+    between(random, -0.16, 0.16) * card.w,
+    -card.h / 2,
+    rotation,
+  );
+
+  const shapes: Shape[] = [
+    // A torn scrap behind it, so the card is not the only white on the page.
+    {
+      kind: "rect",
+      ...card,
+      w: card.w + 0.02,
+      h: card.h + 0.018,
+      rotation: rotation * 2.1,
+      fill: pick(random, palette.scraps),
+      opacity: 0.55,
+    },
+    { kind: "rect", ...card, fill: CARD, shadow: true },
+    {
+      kind: "tape",
+      cx: held.x,
+      cy: held.y,
+      w: Math.min(Math.max(card.w * 0.34, 0.07), 0.13),
+      h: 0.03,
+      rotation: rotation + between(random, -7, 7),
+      color: pick(random, palette.tape),
+      opacity: 0.82,
+    },
+  ];
+
+  const texts: TextBlock[] = [
+    {
+      x: card.cx - card.w / 2 + pad,
+      y: card.cy - card.h / 2 + pad,
+      w: card.w - pad * 2,
+      h: card.h - pad * 2,
+      valign: "middle",
+      rotation,
+      ...(written ? { ruled: { color: palette.accent, opacity: 0.16 } } : {}),
+      paragraphs,
+    },
+  ];
+
+  return { shapes, texts, occupied: [card] };
 }
 
 /* ------------------------------ words ------------------------------ */
@@ -521,6 +708,8 @@ function photoPage(
   design: PageDesign,
 ): PageDesign {
   if (!isPhotoLayout(page.layoutId) || page.photoIds.length === 0) return design;
+  if (isCaptionLayout(page.layoutId)) return captionPage(page, context, random, design);
+
   const polaroid = page.photoIds.length <= 2;
   const photoId = page.photoIds[0];
   const orientation = photoId ? context.orientationOf(photoId) : undefined;
@@ -573,6 +762,57 @@ function photoPage(
   design.under = random() < scrapChance ? [paperScrap(random, palette)] : [];
   design.prints = prints;
   design.doodles = doodlesFor(random, palette, occupiedBy(prints), doodles);
+  return design;
+}
+
+/**
+ * A page that keeps room for the owner's words: the photographs on one side
+ * of the page and a note card taped to the other.
+ *
+ * The prints lose their polaroid border here. The date is already on the
+ * card, and a page carrying both reads as a page that could not decide.
+ */
+function captionPage(
+  page: BookPage,
+  context: DesignContext,
+  random: () => number,
+  design: PageDesign,
+): PageDesign {
+  const layoutId = page.layoutId as PhotoLayoutId;
+  const { palette } = context;
+  const regions = layoutRegions(layoutId, CONTENT, GRID);
+
+  const prints = page.photoIds.flatMap((id, index) => {
+    const slot = regions.photos[index];
+    return slot ? [slotPrint({ slot, photoId: id, context, random, index, polaroid: false })] : [];
+  });
+
+  const notes = pageNotes(page, context);
+  const under: Shape[] = [];
+  const texts: TextBlock[] = [];
+  const cards: Rotated[] = [];
+
+  notes.forEach((note, index) => {
+    const slot = regions.texts[index];
+    if (!slot || isEmptyNote(note)) return;
+    const card = noteCard({ slot, note, context, random, index });
+    under.push(...card.shapes);
+    texts.push(...card.texts);
+    cards.push(...card.occupied);
+  });
+
+  // A torn scrap in a corner, as on any other page: the note cards are
+  // white, and a page of white cards on cream needs some color under it.
+  design.under = random() < 0.55 ? [paperScrap(random, palette), ...under] : under;
+  design.prints = prints;
+  design.texts = texts;
+  design.doodles = doodlesFor(
+    random,
+    palette,
+    [...occupiedBy(prints), ...cards],
+    doodleCount(random),
+    NOTE_DOODLE_KINDS,
+  );
   return design;
 }
 

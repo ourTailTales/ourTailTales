@@ -8,27 +8,109 @@ import type {
 export const DEFAULT_COVER_LAYOUT: CoverLayoutId = "classic";
 export const DEFAULT_COVER_FONT: CoverFontId = "display";
 
-export const COVER_LAYOUTS: {
+/**
+ * The cover styles a book can be bound in.
+ *
+ * Three are the customer's photograph edge to edge, one sets it as a framed
+ * portrait on the book's own paper, and two carry no photograph at all — the
+ * engraved-looking keepsake covers that a great many memorial books actually
+ * are, where the name and the years are the whole of the design.
+ *
+ * Only `classic` comes with the free preview. The rest are part of what an
+ * account opens, and the picker shows them locked rather than hiding them:
+ * somebody deciding whether to make an account should be able to see what
+ * they would be choosing between.
+ */
+export type CoverLayoutSpec = {
   id: CoverLayoutId;
   label: string;
   description: string;
-}[] = [
+  /** False for a cover that is type and paper alone. */
+  usesPhoto: boolean;
+  /** Available without an account. */
+  free: boolean;
+};
+
+export const COVER_LAYOUTS: CoverLayoutSpec[] = [
   {
     id: "classic",
     label: "Classic",
-    description: "Full-bleed photo with the mark tucked in the corner.",
+    description: "Full-bleed photo, their name across the foot.",
+    usesPhoto: true,
+    free: true,
   },
   {
     id: "minimal",
     label: "Minimal",
     description: "One soft vignette over the full photo.",
+    usesPhoto: true,
+    free: false,
   },
   {
     id: "editorial",
     label: "Editorial",
     description: "Their name set large across a bold title band.",
+    usesPhoto: true,
+    free: false,
+  },
+  {
+    id: "portrait",
+    label: "Portrait",
+    description: "A framed photo on the book's own paper, name beneath.",
+    usesPhoto: true,
+    free: false,
+  },
+  {
+    id: "keepsake",
+    label: "Keepsake",
+    description: "No photo: a ruled frame, a paw, their name and years.",
+    usesPhoto: false,
+    free: false,
+  },
+  {
+    id: "monogram",
+    label: "Monogram",
+    description: "No photo: their initial set large behind their name.",
+    usesPhoto: false,
+    free: false,
   },
 ];
+
+const COVER_BY_ID = new Map(COVER_LAYOUTS.map((layout) => [layout.id, layout]));
+
+export function coverLayoutSpec(id: CoverLayoutId): CoverLayoutSpec {
+  return COVER_BY_ID.get(id) ?? COVER_BY_ID.get(DEFAULT_COVER_LAYOUT)!;
+}
+
+export function isCoverLayoutId(value: unknown): value is CoverLayoutId {
+  return typeof value === "string" && COVER_BY_ID.has(value as CoverLayoutId);
+}
+
+/** Whether this cover is one a signed-out reader can actually have. */
+export function coverLayoutUnlocked(id: CoverLayoutId, unlocked: boolean): boolean {
+  return unlocked || coverLayoutSpec(id).free;
+}
+
+/** Whether this cover is drawn from the customer's photograph at all. */
+export function coverUsesPhoto(id: CoverLayoutId): boolean {
+  return coverLayoutSpec(id).usesPhoto;
+}
+
+/**
+ * The framed portrait's photo window, and the keepsake frame's two rules, as
+ * shares of the cover. One definition for the screen and for the print file.
+ */
+export const PORTRAIT_WINDOW = { x: 0.125, y: 0.1, w: 0.75, h: 0.58 } as const;
+export const PORTRAIT_MAT = 0.022;
+export const KEEPSAKE_RULES = [0.085, 0.105] as const;
+/** Where a photo-free cover prints the years, and its small dividing rule. */
+export const PLATE_YEARS_Y = 0.655;
+export const PLATE_RULE_Y = 0.6;
+export const PLATE_RULE_HALF_WIDTH = 0.07;
+/** The paw stamped at the head of the keepsake cover. */
+export const KEEPSAKE_PAW = { cy: 0.235, size: 0.11 } as const;
+/** The initial set behind a monogram cover. */
+export const MONOGRAM_LETTER = { cy: 0.46, size: 0.52, opacity: 0.12 } as const;
 
 export const COVER_FONTS: {
   id: CoverFontId;
@@ -54,6 +136,9 @@ const DEFAULT_NAME_ANCHOR: Record<CoverLayoutId, CoverNameAnchor> = {
   classic: "bottom-center",
   minimal: "middle-center",
   editorial: "middle-center",
+  portrait: "bottom-center",
+  keepsake: "middle-center",
+  monogram: "middle-center",
 };
 
 export function defaultNameAnchor(layoutId: CoverLayoutId): CoverNameAnchor {
@@ -148,11 +233,11 @@ export const CLASSIC_SCRIM_STOPS = [
   { at: 1, alpha: 0 },
 ] as const;
 
-/** Layouts whose name lands on a light (cream/paper) surface instead of
- * the photo — those need dark ink text instead of the usual white. None of
- * the current layouts do; kept so a future light-surface layout only needs
- * to be added here. */
-const LIGHT_SURFACE_LAYOUTS = new Set<CoverLayoutId>([]);
+/** Layouts whose name lands on a light (cream/paper) surface instead of the
+ * photo — those need dark ink text instead of the usual white. The three
+ * quiet covers do: two carry no photograph at all, and the framed portrait
+ * sets its name on the paper below the picture. */
+const LIGHT_SURFACE_LAYOUTS = new Set<CoverLayoutId>(["portrait", "keepsake", "monogram"]);
 
 export function coverTextTone(layoutId: CoverLayoutId): "light" | "dark" {
   return LIGHT_SURFACE_LAYOUTS.has(layoutId) ? "dark" : "light";

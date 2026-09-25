@@ -279,22 +279,27 @@ export function drawTape(frame: Frame, tape: Tape): void {
 export function drawDoodle(frame: Frame, doodle: Doodle): void {
   const size = doodle.size * frame.pagePt;
   const scale = size / 24;
-  const { d, fill } = DOODLE_PATHS[doodle.kind];
+  const { d, fill: filledByDefault } = DOODLE_PATHS[doodle.kind];
+  const filled = doodle.fill ?? filledByDefault;
   const color = hex(doodle.color);
   inFrame(frame, doodle, doodle.rotation, () => {
     frame.page.drawSvgPath(d, {
       x: -size / 2,
       y: size / 2,
       scale,
-      ...(fill
-        ? { color, opacity: 0.85 }
-        : {
-            borderColor: color,
-            // The stroke is scaled along with the path.
-            borderWidth: DOODLE_STROKE,
-            borderLineCap: 1,
-            borderOpacity: 0.9,
-          }),
+      ...(filled ? { color, opacity: doodle.outline ? 1 : 0.85 } : {}),
+      // A sticker keeps its cut edge; a pen drawing is only the line.
+      ...(doodle.outline
+        ? { borderColor: hex(doodle.outline), borderWidth: DOODLE_STROKE * 1.6, borderLineCap: 1 }
+        : filled
+          ? {}
+          : {
+              borderColor: color,
+              // The stroke is scaled along with the path.
+              borderWidth: DOODLE_STROKE,
+              borderLineCap: 1,
+              borderOpacity: 0.9,
+            }),
     });
   });
 }

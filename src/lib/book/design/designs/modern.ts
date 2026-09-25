@@ -1,4 +1,15 @@
-import { dedicationType, fromPt, heroOf, imprintTexts, lineAt, type BookDesign } from "@/lib/book/design/common";
+import {
+  dedicationType,
+  fromPt,
+  heroOf,
+  imprintTexts,
+  isEmptyNote,
+  lineAt,
+  noteParagraphs,
+  pageNotes,
+  textHeight,
+  type BookDesign,
+} from "@/lib/book/design/common";
 import {
   emptyDesign,
   flatPrint,
@@ -7,9 +18,9 @@ import {
   type PageDesign,
   type RectShape,
 } from "@/lib/book/design/primitives";
-import { SAFE, gridSlots, isPhotoLayout } from "@/lib/book/layouts";
+import { SAFE, gridSlots, isCaptionLayout, isPhotoLayout, layoutRegions } from "@/lib/book/layouts";
 import { CLOSING_LINE } from "@/lib/book/pagination";
-import type { BookPage, Slot } from "@/types/book";
+import type { BookPage, PhotoLayoutId, Slot } from "@/types/book";
 
 /**
  * Modern: the magazine book.
@@ -22,6 +33,18 @@ import type { BookPage, Slot } from "@/types/book";
 const WHOLE: Slot = { x: 0, y: 0, w: 1, h: 1 };
 const SEAM = 0.012;
 const GRID = { gutter: SEAM, feature: 0.62, lead: 0.58, framed: { w: 1, h: 0.74, y: 0 } };
+/**
+ * Modern's photographs run off the edge of the page; its type never does.
+ * The words keep the page's safe margin to themselves, and a wider gap from
+ * the pictures than the seam between two photographs.
+ */
+const CAPTION_GRID = {
+  ...GRID,
+  gutter: SEAM,
+  noteShare: 0.33,
+  noteGap: 0.03,
+  noteInset: SAFE,
+};
 
 /** The accent bar every Modern text page leads with. */
 function bar(context: DesignContext, y: number, x = SAFE): RectShape {
@@ -160,6 +183,8 @@ function designPage(page: BookPage, context: DesignContext): PageDesign {
 function photoPage(page: BookPage, context: DesignContext, design: PageDesign): PageDesign {
   if (!isPhotoLayout(page.layoutId) || page.photoIds.length === 0) return design;
 
+  if (isCaptionLayout(page.layoutId)) return captionPage(page, context, design);
+
   const slots = gridSlots(page.layoutId, WHOLE, GRID);
   design.prints = page.photoIds.flatMap((id, index) => {
     const slot = slots[index];
@@ -187,6 +212,52 @@ function photoPage(page: BookPage, context: DesignContext, design: PageDesign): 
       ];
     }
   }
+  return design;
+}
+
+/**
+ * Words in a magazine: the accent bar, then the note set ragged-right in the
+ * column beside the photographs, with the date under it in tracked capitals.
+ */
+function captionPage(page: BookPage, context: DesignContext, design: PageDesign): PageDesign {
+  const { palette } = context;
+  const regions = layoutRegions(page.layoutId as PhotoLayoutId, WHOLE, CAPTION_GRID);
+
+  design.prints = page.photoIds.flatMap((id, index) => {
+    const slot = regions.photos[index];
+    return slot ? [flatPrint(slot, id)] : [];
+  });
+
+  pageNotes(page, context).forEach((note, index) => {
+    const slot = regions.texts[index];
+    if (!slot || isEmptyNote(note)) return;
+
+    const paragraphs = noteParagraphs(note, {
+      body: { font: "sans", size: 10.5, leading: 16, color: palette.ink, maxLines: 14 },
+      meta: { font: "sansBold", size: 8.5, tracking: 2.6, uppercase: true, color: palette.accent },
+      alone: { font: "displayBold", size: 20, color: palette.ink },
+    });
+
+    const block = {
+      x: slot.x,
+      y: slot.y,
+      w: slot.w,
+      h: slot.h,
+      valign: "middle" as const,
+      paragraphs,
+    };
+    design.under.push({
+      kind: "rect",
+      cx: slot.x + 0.045,
+      cy: slot.y + slot.h / 2 - textHeight(block) / 2 - fromPt(16),
+      w: 0.09,
+      h: 0.01,
+      rotation: 0,
+      fill: palette.accent,
+    });
+    design.texts.push(block);
+  });
+
   return design;
 }
 

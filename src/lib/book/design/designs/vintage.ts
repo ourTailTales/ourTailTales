@@ -1,4 +1,15 @@
-import { dedicationType, fromPt, heroOf, imprintTexts, lineAt, type BookDesign } from "@/lib/book/design/common";
+import {
+  dedicationType,
+  fromPt,
+  heroOf,
+  imprintTexts,
+  isEmptyNote,
+  lineAt,
+  noteParagraphs,
+  pageNotes,
+  textHeight,
+  type BookDesign,
+} from "@/lib/book/design/common";
 import {
   between,
   emptyDesign,
@@ -11,10 +22,10 @@ import {
   type Print,
   type Shape,
 } from "@/lib/book/design/primitives";
-import { gridSlots, isPhotoLayout } from "@/lib/book/layouts";
+import { gridSlots, isCaptionLayout, isPhotoLayout, layoutRegions } from "@/lib/book/layouts";
 import { CLOSING_LINE, titlePageHeading } from "@/lib/book/pagination";
 import { mixHex } from "@/lib/book/palette";
-import type { BookPage, Slot } from "@/types/book";
+import type { BookPage, PhotoLayoutId, Slot } from "@/types/book";
 import type { Orientation } from "@/types/photo";
 
 /**
@@ -28,7 +39,17 @@ import type { Orientation } from "@/types/photo";
 
 const MARGIN = 0.105;
 const FRAME: Slot = { x: MARGIN, y: MARGIN, w: 1 - MARGIN * 2, h: 1 - MARGIN * 2 };
-const GRID = { gutter: 0.036, feature: 0.6, lead: 0.56, framed: { w: 0.78, h: 0.74, y: 0.02 } };
+const GRID = {
+  gutter: 0.036,
+  feature: 0.6,
+  lead: 0.56,
+  framed: { w: 0.78, h: 0.74, y: 0.02 },
+  noteShare: 0.33,
+  noteGap: 0.05,
+};
+
+/** Space kept clear on either side of a written note, points. */
+const NOTE_PAD = 12;
 
 /** Photos stay inside the page's rule. */
 const EDGE = 0.075;
@@ -51,13 +72,13 @@ function pageRule(context: DesignContext): Shape[] {
   ];
 }
 
-/** Line — diamond — line, centred at `cy`. */
-function flourish(cy: number, context: DesignContext, half = 0.07): Shape[] {
+/** Line — diamond — line, centred at `cy` and, unless told otherwise, on the page. */
+function flourish(cy: number, context: DesignContext, half = 0.07, cx = 0.5): Shape[] {
   const color = context.palette.accent;
   return [
-    { kind: "line", x1: 0.5 - half, y1: cy, x2: 0.5 - 0.016, y2: cy, color, width: 0.6, opacity: 0.8 },
-    { kind: "rect", cx: 0.5, cy, w: 0.011, h: 0.011, rotation: 45, fill: color, opacity: 0.85 },
-    { kind: "line", x1: 0.5 + 0.016, y1: cy, x2: 0.5 + half, y2: cy, color, width: 0.6, opacity: 0.8 },
+    { kind: "line", x1: cx - half, y1: cy, x2: cx - 0.016, y2: cy, color, width: 0.6, opacity: 0.8 },
+    { kind: "rect", cx, cy, w: 0.011, h: 0.011, rotation: 45, fill: color, opacity: 0.85 },
+    { kind: "line", x1: cx + 0.016, y1: cy, x2: cx + half, y2: cy, color, width: 0.6, opacity: 0.8 },
   ];
 }
 
@@ -283,6 +304,7 @@ function designPage(page: BookPage, context: DesignContext): PageDesign {
 
     default: {
       if (!isPhotoLayout(page.layoutId) || page.photoIds.length === 0) return design;
+      if (isCaptionLayout(page.layoutId)) return captionPage(page, context, random, design);
       const captioned = page.photoIds.length <= 2;
       const slots = gridSlots(page.layoutId, FRAME, GRID);
       design.prints = page.photoIds.flatMap((id, index) => {
@@ -301,6 +323,54 @@ function designPage(page: BookPage, context: DesignContext): PageDesign {
       return design;
     }
   }
+}
+
+/**
+ * Words in the family album: written in italic between two small flourishes,
+ * the way a grandparent labelled the page under the corners.
+ */
+function captionPage(
+  page: BookPage,
+  context: DesignContext,
+  random: () => number,
+  design: PageDesign,
+): PageDesign {
+  const { palette } = context;
+  const regions = layoutRegions(page.layoutId as PhotoLayoutId, FRAME, GRID);
+
+  design.prints = page.photoIds.flatMap((id, index) => {
+    const slot = regions.photos[index];
+    return slot
+      ? [albumPrint({ slot, photoId: id, context, random, captioned: false })]
+      : [];
+  });
+
+  pageNotes(page, context).forEach((note, index) => {
+    const slot = regions.texts[index];
+    if (!slot || isEmptyNote(note)) return;
+
+    const paragraphs = noteParagraphs(note, {
+      body: { font: "serifItalic", size: 14.5, leading: 20, color: palette.ink, maxLines: 11 },
+      meta: { font: "serif", size: 9.5, tracking: 2, uppercase: true, color: palette.inkSoft },
+      alone: { font: "serifItalic", size: 17, color: palette.inkSoft },
+      align: "center",
+    });
+
+    const block = {
+      x: slot.x + fromPt(NOTE_PAD),
+      y: slot.y,
+      w: slot.w - fromPt(NOTE_PAD * 2),
+      h: slot.h,
+      valign: "middle" as const,
+      paragraphs,
+    };
+    const half = Math.min(slot.w * 0.3, 0.06);
+    const top = slot.y + slot.h / 2 - textHeight(block) / 2;
+    design.under.push(...flourish(top - fromPt(18), context, half, slot.x + slot.w / 2));
+    design.texts.push(block);
+  });
+
+  return design;
 }
 
 export const vintage: BookDesign = {

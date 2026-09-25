@@ -411,7 +411,11 @@ function TapeView({ tape }: { tape: Tape }) {
 }
 
 function DoodleView({ doodle }: { doodle: Doodle }) {
-  const { d, fill } = DOODLE_PATHS[doodle.kind];
+  const { d, fill: filledByDefault } = DOODLE_PATHS[doodle.kind];
+  const filled = doodle.fill ?? filledByDefault;
+  // A filled doodle with an outline is a sticker: the edge is drawn around
+  // the shape, which is what lifts it off the page.
+  const stroke = doodle.outline ?? (filled ? null : doodle.color);
   return (
     <svg
       aria-hidden
@@ -419,17 +423,19 @@ function DoodleView({ doodle }: { doodle: Doodle }) {
       className="absolute overflow-visible"
       style={{
         ...boxStyle({ cx: doodle.cx, cy: doodle.cy, w: doodle.size, h: doodle.size }, doodle.rotation),
+        filter: doodle.outline ? `drop-shadow(0 ${pt(0.5)} ${pt(1.2)} rgb(37 42 58 / 0.22))` : undefined,
       }}
     >
       <path
         d={d}
-        fill={fill ? doodle.color : "none"}
-        fillOpacity={fill ? 0.85 : undefined}
-        stroke={fill ? "none" : doodle.color}
-        strokeOpacity={0.9}
-        strokeWidth={DOODLE_STROKE}
+        fill={filled ? doodle.color : "none"}
+        fillOpacity={filled ? (doodle.outline ? 1 : 0.85) : undefined}
+        stroke={stroke ?? "none"}
+        strokeOpacity={doodle.outline ? 1 : 0.9}
+        strokeWidth={doodle.outline ? DOODLE_STROKE * 1.6 : DOODLE_STROKE}
         strokeLinecap="round"
         strokeLinejoin="round"
+        paintOrder={doodle.outline ? "stroke" : undefined}
       />
     </svg>
   );

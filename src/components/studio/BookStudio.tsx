@@ -8,6 +8,7 @@ import { track } from "@/lib/analytics";
 import { CoverCanvas, PageCanvas } from "@/components/book-viewer/PageCanvas";
 import { ExpiryBanner } from "@/components/ExpiryBanner";
 import { PageZoom } from "@/components/book-viewer/PageZoom";
+import { CoverStylePicker } from "@/components/studio/CoverStylePicker";
 import { DesignPicker } from "@/components/studio/DesignPicker";
 import { LockedWall } from "@/components/studio/LockedWall";
 import { PageFilmstrip } from "@/components/studio/PageFilmstrip";
@@ -287,8 +288,31 @@ export function BookStudio({
                 onRegenerate={onRegenerate}
                 onFiles={onFiles}
                 processing={processing}
+                unlocked
+                onUnlock={onUnlock}
               />
             </div>
+            </div>
+          ) : !slide.page ? (
+            // Signed out, on the cover: the one panel worth showing before an
+            // account exists. Somebody deciding whether to make one should be
+            // able to see the six covers they would be choosing between, not
+            // be told there are some.
+            <div className="rounded-2xl border border-page-line bg-white/95 p-5">
+              <h2 className="font-display text-lg text-page-ink">Cover styles</h2>
+              <p className="mt-1 text-xs leading-5 text-page-ink-faint">
+                Your free book is bound in the first one. The rest — including two with no
+                photo at all — open with an account.
+              </p>
+              <div className="mt-3">
+                <CoverStylePicker
+                  current={meta.coverLayoutId}
+                  petName={meta.petName}
+                  unlocked={false}
+                  onPick={() => {}}
+                  onUnlock={onUnlock}
+                />
+              </div>
             </div>
           ) : null}
         </aside>

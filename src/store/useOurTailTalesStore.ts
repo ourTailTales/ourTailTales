@@ -6,6 +6,7 @@ import { proposeChapters } from "@/lib/photo/cluster";
 import { groupDuplicates, selectablePhotos } from "@/lib/photo/dedupe";
 import {
   applyPageLayout,
+  applyPageNote,
   hasDedication,
   paginateBook,
   withoutEmptyDedication,
@@ -147,6 +148,16 @@ type Actions = {
     chapterId: string,
     pageIndex: number,
     layoutId: PhotoLayoutId | null,
+  ) => void;
+  /**
+   * The owner's words for one of a chapter's photo pages. Empty text clears
+   * the note and the page falls back to its own date.
+   */
+  setPageNote: (
+    chapterId: string,
+    pageIndex: number,
+    slot: number,
+    text: string,
   ) => void;
 
   setLeadEmail: (email: string) => void;
@@ -506,6 +517,19 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
       const chapters = state.chapters.map((chapter) =>
         chapter.id === chapterId
           ? applyPageLayout(chapter, pageIndex, layoutId)
+          : chapter,
+      );
+      return {
+        chapters,
+        pages: paginateBook(state.meta, chapters, orientationsOf(state.photos)),
+      };
+    }),
+
+  setPageNote: (chapterId, pageIndex, slot, text) =>
+    set((state) => {
+      const chapters = state.chapters.map((chapter) =>
+        chapter.id === chapterId
+          ? applyPageNote(chapter, pageIndex, slot, text)
           : chapter,
       );
       return {

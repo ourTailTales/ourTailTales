@@ -1,9 +1,12 @@
 import {
+  MAX_NOTES_PER_PAGE,
   MAX_PHOTOS_PER_PAGE,
   assignToSlots,
   chooseLayout,
   isPhotoLayout,
+  layoutNoteCount,
   layoutPhotoCount,
+  seededUnit,
 } from "@/lib/book/layouts";
 import { STORY_PAGES_PER_CHAPTER } from "@/lib/pricing";
 import type { BookMeta, BookPage, Chapter, LayoutId, PhotoLayoutId } from "@/types/book";
@@ -62,6 +65,11 @@ export function paginateBook(
     });
   }
 
+  // Carried across chapters, not reset with each one: a book whose every
+  // chapter opens with the same three layouts is the same template twice.
+  const recent: LayoutId[] = [];
+  let photoPages = 0;
+
   for (const chapter of chapters) {
     const hero = chapter.heroPhotoId ?? chapter.photoIds[0] ?? null;
 
@@ -76,12 +84,13 @@ export function paginateBook(
 
     const body = chapter.photoIds.filter((id) => id !== hero);
     const chosen = chapterPageLayouts(chapter);
-    const { counts } = planChapterPages(body.length, chosen);
-    const recent: LayoutId[] = [];
+    const notes = chapterPageNotes(chapter);
+    const { counts } = planChapterPages(body.length, chosen, chapter.id);
 
     for (let index = 0; index < PHOTO_PAGES_PER_CHAPTER; index += 1) {
       const slice = body.splice(0, counts[index]!);
       const wanted = chosen[index];
+      const pageId = `page-${chapter.id}-${index}`;
 
       const layoutId: PhotoLayoutId | null =
         slice.length === 0
@@ -90,10 +99,14 @@ export function paginateBook(
             ? wanted
             : chooseLayout(
                 slice.map((id) => orientations.get(id) ?? "landscape"),
-                recent,
+                { recent, seed: pageId, wantsWords: wantsWords(photoPages) },
               );
 
-      if (layoutId) recent.push(layoutId);
+      if (layoutId) {
+        recent.push(layoutId);
+        if (recent.length > RECENT_MEMORY) recent.shift();
+        photoPages += 1;
+      }
 
       const ordered =
         layoutId && slice.length > 1
@@ -106,14 +119,17 @@ export function paginateBook(
             )
           : slice;
 
+      const pageNotes = layoutId ? notesForPage(notes[index], layoutNoteCount(layoutId)) : null;
+
       push({
-        id: `page-${chapter.id}-${index}`,
+        id: pageId,
         kind: "photos",
         layoutId,
         photoIds: ordered,
         chapterId: chapter.id,
         chapterIndex: chapter.index,
         chapterPageIndex: index,
+        ...(pageNotes ? { notes: pageNotes } : {}),
       });
     }
   }
@@ -139,15 +155,50 @@ export function paginateBook(
 }
 
 /**
- * Spreads the remaining photos across the remaining pages. Never repeats a
- * photo to fill space: a sparse chapter simply gets larger images.
+ * How many photos the next page takes.
+ *
+ * Deliberately not an even spread. Dealing the same three photographs onto
+ * every page gives a chapter one layout repeated nine times, which is what
+ * made the preview look machine-made; this varies the count by one either
+ * way, seeded by the page so a book always deals itself the same way.
+ *
+ * The bounds are what keep it honest: never so many that the pages after it
+ * cannot be filled, never so few that the chapter runs out of pages before it
+ * runs out of photographs. Photos are never repeated to fill space — a sparse
+ * chapter simply gets larger images.
  */
-function photosForPage(remaining: number, pagesLeft: number): number {
+function photosForPage(remaining: number, pagesLeft: number, seed: string): number {
   if (remaining <= 0 || pagesLeft <= 0) return 0;
-  const even = Math.round(remaining / pagesLeft);
-  const cap = Math.ceil(remaining / pagesLeft) > AUTO_MAX_PHOTOS_PER_PAGE ? MAX_PHOTOS_PER_PAGE : AUTO_MAX_PHOTOS_PER_PAGE;
-  return Math.min(Math.max(even, 1), cap, remaining);
+  const even = remaining / pagesLeft;
+  const cap =
+    Math.ceil(even) > AUTO_MAX_PHOTOS_PER_PAGE ? MAX_PHOTOS_PER_PAGE : AUTO_MAX_PHOTOS_PER_PAGE;
+
+  // Enough that what is left still fits on the pages that are left, and few
+  // enough that each of those pages can still have one.
+  const floor = Math.max(1, remaining - (pagesLeft - 1) * cap);
+  const ceiling = Math.min(cap, remaining - (pagesLeft - 1));
+  // No room to vary: the chapter is as full as its pages can hold.
+  if (ceiling <= floor) return Math.max(1, Math.min(floor, cap, remaining));
+
+  // Roughly one page in seven is given a single photograph, whatever the
+  // chapter's average — a picture the size of the page is the best thing a
+  // photo book does, and an even spread never produces one.
+  const roll = seededUnit(seed);
+  const wanted =
+    roll < 0.14 ? 1 : Math.round(even) + (roll < 0.44 ? -1 : roll < 0.74 ? 1 : 0);
+  return Math.min(Math.max(wanted, floor), ceiling);
 }
+
+/** Pages the book means to give room for words: about one in three. */
+function wantsWords(photoPagesSoFar: number): boolean {
+  return photoPagesSoFar % 3 === 1;
+}
+
+/** How many layout choices back the book remembers when reaching for variety. */
+const RECENT_MEMORY = 8;
+
+/** The most a note can run to. Longer than this stops being a caption. */
+export const MAX_NOTE_LENGTH = 220;
 
 /** A chapter's chosen layouts, one entry per photo page, unknown ids dropped. */
 export function chapterPageLayouts(chapter: Pick<Chapter, "pageLayouts">): (PhotoLayoutId | null)[] {
@@ -155,6 +206,55 @@ export function chapterPageLayouts(chapter: Pick<Chapter, "pageLayouts">): (Phot
     const id = chapter.pageLayouts?.[index];
     return isPhotoLayout(id) ? id : null;
   });
+}
+
+/** A chapter's written notes, one entry per photo page. */
+export function chapterPageNotes(
+  chapter: Pick<Chapter, "pageNotes">,
+): ((string | null)[] | null)[] {
+  return Array.from({ length: PHOTO_PAGES_PER_CHAPTER }, (_, index) => {
+    const entry = chapter.pageNotes?.[index];
+    return Array.isArray(entry) ? entry.slice(0, MAX_NOTES_PER_PAGE) : null;
+  });
+}
+
+/**
+ * The notes a page carries, trimmed to what its layout has room for. Returns
+ * null when the owner has written nothing — the design then falls back to
+ * what the book already knows about the page rather than printing a blank.
+ */
+function notesForPage(
+  written: (string | null)[] | null,
+  slots: number,
+): (string | null)[] | null {
+  if (slots === 0 || !written) return null;
+  const notes = Array.from({ length: slots }, (_, index) => {
+    const text = written[index];
+    return typeof text === "string" && text.trim() ? text.trim() : null;
+  });
+  return notes.some((note) => note !== null) ? notes : null;
+}
+
+/** One of a chapter's pages gains, changes or loses a written note. */
+export function applyPageNote(
+  chapter: Chapter,
+  pageIndex: number,
+  slot: number,
+  text: string,
+): Chapter {
+  if (pageIndex < 0 || pageIndex >= PHOTO_PAGES_PER_CHAPTER) return chapter;
+  if (slot < 0 || slot >= MAX_NOTES_PER_PAGE) return chapter;
+
+  const pages = chapterPageNotes(chapter);
+  const page = [...(pages[pageIndex] ?? [])];
+  while (page.length <= slot) page.push(null);
+  page[slot] = text.trim() ? text.slice(0, MAX_NOTE_LENGTH) : null;
+  pages[pageIndex] = page.some((note) => note && note.trim()) ? page : null;
+
+  // Trailing empties carry no information, and an all-empty list is no list.
+  while (pages.length > 0 && pages.at(-1) === null) pages.pop();
+
+  return { ...chapter, pageNotes: pages.length > 0 ? pages : undefined };
 }
 
 /**
@@ -168,6 +268,7 @@ export function chapterPageLayouts(chapter: Pick<Chapter, "pageLayouts">): (Phot
 export function planChapterPages(
   total: number,
   chosen: readonly (PhotoLayoutId | null)[],
+  seed = "",
 ): { counts: number[]; leftover: number } {
   const counts: number[] = [];
   let remaining = total;
@@ -189,7 +290,7 @@ export function planChapterPages(
         freePages += 1;
       }
     }
-    const take = photosForPage(Math.max(0, remaining - reserved), freePages);
+    const take = photosForPage(Math.max(0, remaining - reserved), freePages, `${seed}:${index}`);
     counts.push(take);
     remaining -= take;
   }
