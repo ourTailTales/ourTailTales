@@ -108,7 +108,7 @@ export function PetIntake({
                 setMeta({ dedication: event.target.value.slice(0, 320) })
               }
               rows={3}
-              placeholder={`For ${name || "the best friend"} — who made every day better.`}
+              placeholder={`For ${name || "the best friend"}, who made every day better.`}
               className="mt-2 w-full resize-none rounded-xl border border-page-line bg-white px-4 py-3 text-base leading-relaxed text-page-ink outline-none transition-colors placeholder:text-page-ink-faint focus:border-periwinkle"
             />
             <span className="mt-1.5 block text-xs text-page-ink-faint">

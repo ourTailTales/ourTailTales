@@ -517,7 +517,7 @@ export async function drawExpiryNotice(
   const regular = await pdf.embedFont(StandardFonts.Helvetica);
 
   const headline = expiryHeadline(expiresAt);
-  const subtitle = `Create a free account at ${brand.domain} to save this book — it expires ${formatExpiryDate(expiresAt)}.`;
+  const subtitle = `Create a free account at ${brand.domain} to save this book, it expires ${formatExpiryDate(expiresAt)}.`;
 
   const bandHeight = 92;
   page.drawRectangle({

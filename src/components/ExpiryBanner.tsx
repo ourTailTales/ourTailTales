@@ -36,7 +36,7 @@ export function ExpiryBanner({
       </p>
       <p className="max-w-xl text-sm leading-6 text-page-ink-soft sm:text-base">
         This is a free preview. Create a free account to save {whose} for
-        good — otherwise it is deleted when the time runs out.
+        good, otherwise it is deleted when the time runs out.
       </p>
       {action}
     </div>
