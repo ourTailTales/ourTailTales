@@ -32,6 +32,8 @@ export type FunnelEvent =
   | "lead_captured"
   | "free_pdf_downloaded"
   | "free_pdf_stored"
+  | "book_finished"
+  | "video_memories_offer_viewed"
   | "checkout_started"
   | "payment_succeeded";
 

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 
 import { BookStudio } from "@/components/studio/BookStudio";
+import { FinishBook } from "@/components/studio/FinishBook";
 import { PetIntake } from "@/components/studio/PetIntake";
 import { UploadMedia } from "@/components/editor/UploadMedia";
 import { nextBookStep } from "@/lib/book/progress";
@@ -72,6 +73,16 @@ export function BookFlow({
   const summary = useMemo(() => summarizeAlbum(photos), [photos]);
   const mediaCount = summary.placeable + albumVideos.length;
 
+  /**
+   * Done editing, looking at what it costs.
+   *
+   * Not a funnel state, because the book is no different for being looked at:
+   * this is which screen is up, and a reload puts somebody back in the editor
+   * rather than in front of a checkout they may have walked away from. It also
+   * clears itself whenever the book leaves the editor — a new album, more
+   * photographs to process — since `reading` gates it.
+   */
+  const [finishing, setFinishing] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [dropping, setDropping] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -266,6 +277,23 @@ export function BookFlow({
               onRemoveVideo={removeAlbumVideo}
             />
           </div>
+        ) : reading && finishing ? (
+          <div className="animate-fade-up py-2">
+            {notice ? (
+              <p
+                role="alert"
+                className="mx-auto mb-5 w-full max-w-3xl rounded-xl border border-periwinkle/30 bg-periwinkle-wash/40 px-4 py-3 text-sm text-periwinkle-deep"
+              >
+                {notice}
+              </p>
+            ) : null}
+            <FinishBook
+              onBack={() => setFinishing(false)}
+              onCheckout={onCheckout}
+              onDownload={onDownload}
+              downloading={downloading}
+            />
+          </div>
         ) : reading ? (
           <>
             <BookStudio
@@ -276,7 +304,13 @@ export function BookFlow({
               onFiles={onFiles}
               processing={processing}
               onDownload={onDownload}
-              onCheckout={onCheckout}
+              onFinish={() => {
+                setFinishing(true);
+                track("book_finished", {
+                  chapters: chapterCount,
+                  price: bookSpec(chapterCount).price,
+                });
+              }}
               downloading={downloading}
               notice={notice}
             />

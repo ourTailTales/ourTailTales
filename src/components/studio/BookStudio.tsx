@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ArrowRight,
   BookImage,
   ChevronLeft,
   ChevronRight,
@@ -8,10 +9,17 @@ import {
   Lock,
   Maximize2,
   Palette,
-  RotateCcw,
   SlidersHorizontal,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { track } from "@/lib/analytics";
 
@@ -25,36 +33,134 @@ import { PageFilmstrip } from "@/components/studio/PageFilmstrip";
 import { PageInspector } from "@/components/studio/PageInspector";
 import { ToolsDock, type ToolSection } from "@/components/studio/ToolsDock";
 import { TEASER_DESIGN_ID, withDesign } from "@/lib/book/design";
-import { buildSlides, followSelection } from "@/lib/book/studio";
+import { buildSlides, followSelection, type StudioSlide } from "@/lib/book/studio";
 import { summarizeTeaser } from "@/lib/book/teaser";
 import { selectablePhotos } from "@/lib/photo/dedupe";
 import { formatUsd } from "@/lib/pricing";
 import { photoMapOf, useOurTailTalesStore } from "@/store/useOurTailTalesStore";
+import type { BookMeta, Chapter } from "@/types/book";
+import type { PhotoAsset } from "@/types/photo";
 
 /**
- * How many pages either side of the one in the window are really drawn.
+ * How much of the book the carousel actually draws, in pages either side of
+ * the one in the window.
  *
- * The carousel holds every page of the book so that a swipe has somewhere to
- * go and the row's arithmetic stays the page's index; a fifty-chapter book is
- * over five hundred of them, and drawing every one with its photographs to
- * show one page would decode a couple of thousand images. Everything further
- * out than this holds its place with an empty square of the same size and
- * fills in as the customer moves.
+ * The row holds every page so that a scroll has somewhere to go and its
+ * arithmetic stays the page's own index; a fifty-chapter book is over five
+ * hundred of them, and drawing every one with its photographs to show one page
+ * would decode a couple of thousand images.
+ *
+ * So it thins out with distance. Within `PHOTO_WINDOW` a page is itself,
+ * photographs and all. Past that, as far as `SHAPE_WINDOW`, it is drawn
+ * without them — the frames, the words and the tape, which is a page rather
+ * than a hole, and is what anybody scrolling quickly actually sees go by.
+ * Beyond that a page holds its place with an empty square of the same size,
+ * and fills in as the window comes near.
  */
-const CANVAS_WINDOW = 2;
+const PHOTO_WINDOW = 2;
+const SHAPE_WINDOW = 10;
 
 /** Pixels of travel before a press on the page counts as a drag, not a click. */
 const PAN_SLOP = 5;
 
+/** How much of a page the carousel is drawing at this distance from it. */
+type PageDraw = "photos" | "shape" | "nothing";
+
 /**
- * How long the carousel must sit still before it counts as having stopped.
+ * One page in the carousel's row.
  *
- * `scrollend` would say this exactly, and is still missing from browsers this
- * book has to open in; a moment of quiet after the last scroll event says the
- * same thing everywhere, and once a page has snapped there is nothing left to
- * move.
+ * Memoised because the row is long and the page in the window changes on every
+ * frame of a scroll: without this, moving the book re-ran every page's layout
+ * for every frame it moved, and the work of that is what a scroll cannot
+ * afford. As it is, a frame re-renders the page being left, the page being
+ * arrived at, and whichever pages crossed a drawing threshold — a handful,
+ * however long the book is.
  */
-const SETTLE_MS = 120;
+const CarouselPage = memo(function CarouselPage({
+  slide,
+  meta,
+  chapters,
+  photos,
+  photoList,
+  draw,
+  current,
+}: {
+  slide: StudioSlide;
+  meta: BookMeta;
+  chapters: Chapter[];
+  photos: Map<string, PhotoAsset>;
+  photoList: PhotoAsset[];
+  draw: PageDraw;
+  /** The one page in the window, and so the only one being read. */
+  current: boolean;
+}) {
+  return (
+    <div
+      // Each page clips its own: a locked neighbour is blurred, and a blur
+      // paints past the box it is on — without this the page being read picks
+      // up a smear of the next one along its edge.
+      className="relative w-full shrink-0 snap-start overflow-hidden"
+      // The rest are off the window's edges, and a five-hundred-page book read
+      // out in sequence is nobody's idea of this screen.
+      aria-hidden={!current}
+    >
+      <div className={slide.locked ? "blur-[7px] saturate-50" : ""}>
+        {draw === "nothing" ? (
+          <div className="aspect-square w-full bg-white" />
+        ) : slide.page ? (
+          <PageCanvas
+            page={slide.page}
+            meta={meta}
+            chapters={chapters}
+            photos={photos}
+            placeholder={slide.locked || draw === "shape"}
+          />
+        ) : (
+          <CoverCanvas meta={meta} photos={photoList} />
+        )}
+      </div>
+
+      {slide.locked ? (
+        // A label, not a control — the actual way through is the account CTA
+        // below (LockedWall or, here, the sidebar), never two competing
+        // buttons on the same locked page.
+        <div className="absolute inset-0 flex items-center justify-center bg-white/45 p-5">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-white/90 px-4 py-2 text-sm font-semibold text-page-ink-soft shadow-sm">
+            <Lock aria-hidden className="size-3.5" />
+            Sign up to view this page
+          </span>
+        </div>
+      ) : null}
+    </div>
+  );
+});
+
+/**
+ * A page's width, which is the carousel's window.
+ *
+ * Measured rather than taken from `clientWidth`, which is rounded to whole
+ * pixels: the book's column is a share of the viewport and lands on fractions
+ * of one, and a third of a pixel per page is four pixels out by page twelve —
+ * enough for the carousel and the page it thinks it is on to start correcting
+ * each other.
+ */
+function pageWidth(el: HTMLDivElement): number {
+  return el.getBoundingClientRect().width || el.clientWidth || 1;
+}
+
+/** Which of `pages` pages the carousel's window is on. */
+function pageUnderWindow(el: HTMLDivElement, pages: number): number {
+  return Math.min(Math.max(Math.round(el.scrollLeft / pageWidth(el)), 0), pages - 1);
+}
+
+/**
+ * How long a scroll of the carousel's own making is given to finish.
+ *
+ * Only a deadline for the `scrollend` that normally ends it: long enough for a
+ * smooth scroll of one page, short enough that a browser which never fires
+ * that event does not leave the book ignoring its own reader.
+ */
+const SYNC_DEADLINE_MS = 700;
 
 /**
  * The book, page by page, with the tools for whichever page is open.
@@ -73,7 +179,7 @@ export function BookStudio({
   onFiles,
   processing,
   onDownload,
-  onCheckout,
+  onFinish,
   downloading,
   notice,
 }: {
@@ -84,7 +190,8 @@ export function BookStudio({
   onFiles: (files: File[]) => void;
   processing: boolean;
   onDownload: () => void;
-  onCheckout: () => void;
+  /** Done editing: on to the Video Memories offer, the price and the order. */
+  onFinish: () => void;
   downloading: boolean;
   notice?: string | null;
 }) {
@@ -164,51 +271,80 @@ export function BookStudio({
    * be answered by a scroll back to where it started.
    */
   const fromScroll = useRef(false);
-  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /**
+   * True while a scroll this component asked for is still in flight.
+   *
+   * The only thing the frame reader below must not answer. An animated scroll
+   * of our own making passes through every page between here and the one that
+   * was asked for, and reading those would select each in turn — one press of
+   * a chevron flickering the label, the tools and the strip through a page
+   * nobody chose. A customer's own scroll clears it the moment they touch the
+   * book: whatever they are doing now outranks a move we started.
+   */
+  const syncing = useRef(false);
+  const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Lifts the guard above, held so a later move can stand it down early. */
+  const endSync = useRef<(() => void) | null>(null);
+  const scrollFrame = useRef<number | null>(null);
 
   /**
-   * A page's width, which is the window's.
+   * Whichever page the window is on is the page being read — every frame of
+   * every scroll, not once the scrolling stops.
    *
-   * Measured rather than taken from `clientWidth`, which is rounded to whole
-   * pixels: the book's column is a share of the viewport and lands on
-   * fractions of one, and a third of a pixel per page is four pixels out by
-   * page twelve — enough for the carousel and the page it thinks it is on to
-   * start correcting each other.
+   * Read on a settle first, and that is the desync: a scroll is one long
+   * gesture, so through all of it the book thought it was still on the page it
+   * started from. The strip below did not move, the tools were for a page that
+   * had gone by, and the pages past the drawn window around a selection that
+   * was standing still came up blank — scroll far enough in one go and the
+   * whole book to the right was empty until the moment you let go of it.
    */
-  const pageWidth = (el: HTMLDivElement): number =>
-    el.getBoundingClientRect().width || el.clientWidth || 1;
-
-  /** Which page the carousel is resting on, if it is resting on one. */
-  const pageUnderWindow = (el: HTMLDivElement): number =>
-    Math.min(
-      Math.max(Math.round(el.scrollLeft / pageWidth(el)), 0),
-      slides.length - 1,
-    );
-
-  /**
-   * Whatever page the carousel came to rest on is the page being read.
-   *
-   * Read once the movement has stopped rather than on every scroll frame. A
-   * frame reader answers a smooth scroll of its own making with the page it
-   * happens to be passing through, so one press of a chevron selected the page
-   * in between and then the page asked for — the label, the tools and the
-   * strip all flickering through a page nobody chose.
-   */
-  const settle = (): void => {
-    const el = carouselRef.current;
-    if (!el || el.clientWidth === 0) return;
-    const page = pageUnderWindow(el);
-    if (page === position) return;
-    fromScroll.current = true;
-    setSelected(page);
-  };
-
   const onCarouselScroll = (): void => {
-    if (settleTimer.current) clearTimeout(settleTimer.current);
-    settleTimer.current = setTimeout(settle, SETTLE_MS);
+    // A burst of scroll events costs one read of the DOM per paint.
+    if (scrollFrame.current !== null) return;
+    scrollFrame.current = requestAnimationFrame(() => {
+      scrollFrame.current = null;
+      const el = carouselRef.current;
+      if (!el || el.clientWidth === 0 || syncing.current) return;
+      const page = pageUnderWindow(el, slides.length);
+      if (page === position) return;
+      fromScroll.current = true;
+      setSelected(page);
+    });
   };
+
+  /** Moves the carousel, and says so, so the frame reader stays out of it. */
+  const scrollToPage = useCallback((el: HTMLDivElement, page: number, smooth: boolean): void => {
+    // Any guard still standing from an earlier move stands down first. Left
+    // attached, its `scrollend` — fired by the scroll this call is starting —
+    // would lift this move's guard rather than its own, and the frame reader
+    // would answer the rest of the move with the page it was passing. That is
+    // a filmstrip dragged across the book: selections arriving faster than a
+    // scroll can finish, each one replacing the last.
+    endSync.current?.();
+    syncing.current = true;
+    const done = (): void => {
+      syncing.current = false;
+      endSync.current = null;
+      el.removeEventListener("scrollend", done);
+      if (syncTimer.current) {
+        clearTimeout(syncTimer.current);
+        syncTimer.current = null;
+      }
+    };
+    endSync.current = done;
+    el.addEventListener("scrollend", done);
+    // `scrollend` is missing from browsers this book has to open in, and a
+    // browser that has it skips it when there was nothing to animate. Either
+    // way the guard has to come off.
+    syncTimer.current = setTimeout(done, SYNC_DEADLINE_MS);
+    el.scrollTo({ left: page * pageWidth(el), behavior: smooth ? "smooth" : "auto" });
+  }, []);
 
   const startPan = (event: React.PointerEvent<HTMLDivElement>): void => {
+    // Hands off: from here the customer is moving the book, whatever we had
+    // started. Before the touch check below, which leaves the scrolling itself
+    // to the browser.
+    endSync.current?.();
     // A finger already scrolls this natively; driving scrollLeft as well moves
     // it twice as far as the hand and fights the momentum.
     if (event.button !== 0 || event.pointerType === "touch" || zoomed) return;
@@ -240,10 +376,12 @@ export function BookStudio({
     // whatever it happened to finish on top of.
     justPanned.current = dragged;
     if (!el || !dragged) return;
-    const page = pageUnderWindow(el);
+    const page = pageUnderWindow(el, slides.length);
     el.style.scrollSnapType = "";
     // Restoring the snap settles it, but on our terms rather than every
-    // browser's: whichever page the window is most of the way onto.
+    // browser's: whichever page the window is most of the way onto. Not
+    // guarded — the reader should follow this last little slide, which is
+    // going where the hand left off.
     el.scrollTo({ left: page * pageWidth(el), behavior: "smooth" });
   };
 
@@ -251,13 +389,15 @@ export function BookStudio({
    * The carousel follows the selection — from the arrows, the strip, the
    * keyboard, or a page that has just been repaginated out from under it.
    *
-   * A move of one page is worth watching; a jump of twenty is twenty blank
-   * pages flickering past, so anything further than a neighbour simply lands.
+   * A move of one page is worth watching. A jump of twenty is twenty pages
+   * flickering past, and a selection arriving while the last one is still
+   * being animated to is the filmstrip being dragged, which has to track the
+   * hand rather than trail a page behind it: both simply land.
    */
   useEffect(() => {
     const el = carouselRef.current;
     if (!el || el.clientWidth === 0) return;
-    // This selection came from the scroller; scrolling it again would be an
+    // This selection came from the carousel; scrolling it again would be an
     // argument with the hand that is still moving it.
     if (fromScroll.current) {
       fromScroll.current = false;
@@ -265,16 +405,16 @@ export function BookStudio({
     }
     if (panning.current) return;
     const width = pageWidth(el);
-    const target = position * width;
-    const away = Math.abs(el.scrollLeft - target);
+    const away = Math.abs(el.scrollLeft - position * width);
     // Under half a pixel out is the carousel already being where it belongs.
     if (away < 0.5) return;
-    el.scrollTo({ left: target, behavior: away > width * 1.5 ? "auto" : "smooth" });
-  }, [position]);
+    scrollToPage(el, position, !syncing.current && away <= width * 1.5);
+  }, [position, scrollToPage]);
 
   useEffect(
     () => () => {
-      if (settleTimer.current) clearTimeout(settleTimer.current);
+      endSync.current?.();
+      if (scrollFrame.current !== null) cancelAnimationFrame(scrollFrame.current);
     },
     [],
   );
@@ -516,58 +656,36 @@ export function BookStudio({
               onPointerMove={pan}
               onPointerUp={endPan}
               onPointerCancel={endPan}
+              // A trackpad and a wheel never press anything, so this is the
+              // only word we get that the customer has taken the book over.
+              onWheel={() => endSync.current?.()}
               // A page's own photograph is an image, and an image dragged with
               // a mouse starts a native drag-and-drop, which cancels the
               // pointer stream the pan above is following.
               onDragStart={(event) => event.preventDefault()}
               className="page-carousel flex w-full cursor-grab snap-x snap-mandatory overflow-x-auto overflow-y-hidden rounded-xl bg-white shadow-[0_18px_50px_-24px_rgb(25_32_58/0.5)] ring-1 ring-page-line active:cursor-grabbing"
             >
-              {slides.map((item, index) => (
-                <div
-                  key={item.key}
-                  // Each page clips its own: a locked neighbour is blurred,
-                  // and a blur paints past the box it is on — without this
-                  // the page being read picks up a smear of the next one
-                  // along its edge.
-                  className="relative w-full shrink-0 snap-start overflow-hidden"
-                  // Only the page in the window is being read. The rest are
-                  // off its edges, and a five-hundred-page book read out in
-                  // sequence is nobody's idea of this screen.
-                  aria-hidden={index !== position}
-                >
-                  <div className={item.locked ? "blur-[7px] saturate-50" : ""}>
-                    {Math.abs(index - position) > CANVAS_WINDOW ? (
-                      // Its place, held at the same size, until it is close
-                      // enough to be worth drawing. A whole book of real
-                      // canvases would decode every photograph in it to fill
-                      // a row that shows one page.
-                      <div className="aspect-square w-full bg-white" />
-                    ) : item.page ? (
-                      <PageCanvas
-                        page={item.page}
-                        meta={meta}
-                        chapters={chapters}
-                        photos={photoMap}
-                        placeholder={item.locked}
-                      />
-                    ) : (
-                      <CoverCanvas meta={meta} photos={photoList} />
-                    )}
-                  </div>
-
-                  {item.locked ? (
-                    // A label, not a control — the actual way through is the
-                    // account CTA below (LockedWall or, here, the sidebar),
-                    // never two competing buttons on the same locked page.
-                    <div className="absolute inset-0 flex items-center justify-center bg-white/45 p-5">
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-white/90 px-4 py-2 text-sm font-semibold text-page-ink-soft shadow-sm">
-                        <Lock aria-hidden className="size-3.5" />
-                        Sign up to view this page
-                      </span>
-                    </div>
-                  ) : null}
-                </div>
-              ))}
+              {slides.map((item, index) => {
+                const distance = Math.abs(index - position);
+                return (
+                  <CarouselPage
+                    key={item.key}
+                    slide={item}
+                    meta={meta}
+                    chapters={chapters}
+                    photos={photoMap}
+                    photoList={photoList}
+                    draw={
+                      distance <= PHOTO_WINDOW
+                        ? "photos"
+                        : distance <= SHAPE_WINDOW
+                          ? "shape"
+                          : "nothing"
+                    }
+                    current={index === position}
+                  />
+                );
+              })}
             </div>
 
             {/* Set body text on a page this size reads around six pixels on a
@@ -658,26 +776,6 @@ export function BookStudio({
             />
           </div>
         ) : null}
-
-        {/* Download, below the book on narrow screens. No free-pages
-            download here either: signed out, there is only the order. */}
-        <div className="mx-auto flex w-full max-w-2xl flex-col gap-2.5 lg:hidden">
-          {unlocked ? (
-            <button
-              type="button"
-              onClick={onDownload}
-              disabled={downloading}
-              className="inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl border border-page-line bg-white px-4 text-sm font-medium text-page-ink-soft transition-colors hover:border-periwinkle hover:text-periwinkle-deep disabled:opacity-60"
-            >
-              <Download aria-hidden className="size-3.5" />
-              {downloading ? "Preparing…" : "Download PDF"}
-            </button>
-          ) : null}
-        </div>
-
-        {/* Room for the dock to float over, so the last control on the page
-            is never under it. */}
-          {dockSections.length > 0 ? <div aria-hidden className="h-16 lg:hidden" /> : null}
         </div>
 
         {/* The design belongs to the whole book, so it sits under the whole
@@ -690,6 +788,52 @@ export function BookStudio({
             {designPanel()}
           </div>
         ) : null}
+
+        {/* Where the editor ends. A row of the editor rather than part of the
+            book's column, for the same reason the design is: the tools beside
+            the book are stretched to the row the page and the carousel share,
+            and anything else in that column drags them past the carousel.
+            Before this the book could be made and then nothing: no price, no
+            printed copy, no way on. A signed-out reader is not offered it —
+            what they are offered is the account, by the wall and the button on
+            the page. */}
+        {unlocked && !slide.locked ? (
+          <div className="mx-auto flex w-full max-w-2xl flex-col gap-3 rounded-2xl border border-page-line bg-white/95 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5 lg:col-span-2 lg:max-w-none">
+            <div className="min-w-0">
+              <p className="font-display text-base text-page-ink">
+                {meta.petName.trim()
+                  ? `Happy with ${meta.petName.trim()}\u2019s book?`
+                  : "Happy with your book?"}
+              </p>
+              <p className="mt-0.5 text-xs leading-5 text-page-ink-faint">
+                Hardcover from {formatUsd(price)}, plus the videos you want in it.
+              </p>
+            </div>
+            <div className="flex shrink-0 flex-col gap-2.5 sm:flex-row sm:items-center">
+              <button
+                type="button"
+                onClick={onDownload}
+                disabled={downloading}
+                className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-page-line bg-white px-4 text-sm font-medium text-page-ink-soft transition-colors hover:border-periwinkle hover:text-periwinkle-deep disabled:opacity-60"
+              >
+                <Download aria-hidden className="size-3.5" />
+                {downloading ? "Preparing…" : "Download PDF"}
+              </button>
+              <button
+                type="button"
+                onClick={onFinish}
+                className="inline-flex min-h-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl bg-periwinkle px-5 text-sm font-semibold text-white shadow-lift transition-colors hover:bg-periwinkle-deep"
+              >
+                Finish and order
+                <ArrowRight aria-hidden className="size-4" />
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {/* Room for the dock to float over, so the last control on the page is
+            never under it. */}
+        {dockSections.length > 0 ? <div aria-hidden className="h-16 lg:hidden" /> : null}
       </div>
 
       <ToolsDock sections={dockSections} />
