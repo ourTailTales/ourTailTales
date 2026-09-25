@@ -7,7 +7,7 @@ import { EmailCaptureCta } from "@/components/landing/EmailCaptureCta";
 
 const steps = [
   {
-    title: "Send their photos & videos",
+    title: "Send your pet's photos & videos",
     description: "Camera roll, Google Photos, iCloud. Any album, any order.",
     icon: "upload",
   },
