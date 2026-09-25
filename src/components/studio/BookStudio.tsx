@@ -227,16 +227,32 @@ export function BookStudio({
   // What the tools are, for this page and this reader. A locked page has no
   // tools at all — what it has is the wall, which is not a tool but the
   // whole point of the page, and stays under the book where it is read.
-  const sections: ToolSection[] = slide.locked
-    ? []
+  const pageSection: ToolSection | null = slide.locked
+    ? null
     : unlocked
+      ? {
+          id: `page-${slide.key}`,
+          label: slide.page ? slide.label : "Cover",
+          icon: <SlidersHorizontal aria-hidden className="size-5" />,
+          panel: pagePanel,
+        }
+      : slide.page
+        ? null
+        : {
+            id: "covers",
+            label: "Cover styles",
+            icon: <BookImage aria-hidden className="size-5" />,
+            panel: coverPanel,
+          };
+
+  // The book design sits under the strip on a wide screen, where it belongs
+  // to the whole book rather than to this page; on a phone, where there is
+  // no room under anything, it stays in the dock.
+  const showDesignBelow = unlocked && !slide.locked;
+  const dockSections: ToolSection[] = [
+    ...(pageSection ? [pageSection] : []),
+    ...(showDesignBelow
       ? [
-          {
-            id: `page-${slide.key}`,
-            label: slide.page ? slide.label : "Cover",
-            icon: <SlidersHorizontal aria-hidden className="size-5" />,
-            panel: pagePanel,
-          },
           {
             id: "design",
             label: "Book design",
@@ -244,16 +260,8 @@ export function BookStudio({
             panel: designPanel,
           },
         ]
-      : slide.page
-        ? []
-        : [
-            {
-              id: "covers",
-              label: "Cover styles",
-              icon: <BookImage aria-hidden className="size-5" />,
-              panel: coverPanel,
-            },
-          ];
+      : []),
+  ];
 
   return (
     <div className="flex flex-col gap-5">
@@ -285,29 +293,43 @@ export function BookStudio({
       {/* The book and its tools, side by side where there is room for both.
           The tools used to sit under the page and under the filmstrip, so
           changing anything began with scrolling the book off the screen. */}
-      <div className="lg:grid lg:grid-cols-[21rem_minmax(0,1fr)] lg:gap-6">
-        {/* As tall as the book beside it — from the top of the page to the
-            foot of the strip — so the tools are a column rather than a card
-            floating against white space. The panel that runs long scrolls
-            inside it instead of pushing the page down. */}
-        <aside className="hidden select-none lg:block [&_input]:select-text [&_textarea]:select-text">
-          {sections.length > 0 ? (
-            <div className="flex h-full flex-col gap-4">
-              {sections.map((section, index) => (
-                <div
-                  key={section.id}
-                  className={`overflow-y-auto rounded-2xl border border-page-line bg-white/95 p-5 ${
-                    index === 0 ? "min-h-0 flex-1" : ""
-                  }`}
-                >
-                  {section.panel()}
-                </div>
-              ))}
+      <div
+        className={
+          pageSection
+            ? // One gap for the whole editor: the same space between the page
+              // and the strip as between the book and its tools.
+              //
+              // The book's column is the width of the book — the same cap the
+              // page itself takes, so the column cannot be wider than what it
+              // holds — and the pair is centred together. Sized to what was
+              // left over instead, the column centred the page inside itself,
+              // which put ninety pixels between the tools and the book and
+              // sixteen everywhere else.
+              "lg:grid lg:grid-cols-[21rem_minmax(0,calc(100dvh-9rem))] lg:justify-center lg:gap-4"
+            : ""
+        }
+      >
+        {/*
+         * The tools, flush with the book beside them: top of the page to the
+         * foot of the last panel, exactly.
+         *
+         * The panel inside is taken out of the flow — absolute inside a
+         * stretched grid cell — so its own height can never set the height of
+         * the row. It used to: the cover's panel is twice the height of a
+         * photo page's, so turning a page resized the whole layout and the
+         * book jumped under the reader while they were moving sideways
+         * through it. Now the book decides the height and the tools fit
+         * themselves into it, scrolling inside if there is more of them.
+         */}
+        <aside className="relative hidden select-none lg:block [&_input]:select-text [&_textarea]:select-text">
+          {pageSection ? (
+            <div className="absolute inset-0 overflow-y-auto rounded-2xl border border-page-line bg-white/95 p-5">
+              {pageSection.panel()}
             </div>
           ) : null}
         </aside>
 
-        <div className="flex min-w-0 flex-col gap-5">
+        <div className="flex min-w-0 flex-col gap-4">
         {/* The page and the strip of pages under it, at one width: the strip
             is the book's own pages, so it is as wide as a page is.
 
@@ -438,6 +460,14 @@ export function BookStudio({
             photoList={photoList}
           />
         </div>
+
+        {/* The design belongs to the whole book, so it sits under the whole
+            book rather than in the column of tools for one page. */}
+        {showDesignBelow ? (
+          <div className="hidden select-none rounded-2xl border border-page-line bg-white/95 p-5 lg:block">
+            {designPanel()}
+          </div>
+        ) : null}
         </div>
 
         {slide.locked ? (
@@ -469,11 +499,11 @@ export function BookStudio({
 
         {/* Room for the dock to float over, so the last control on the page
             is never under it. */}
-          {sections.length > 0 ? <div aria-hidden className="h-16 lg:hidden" /> : null}
+          {dockSections.length > 0 ? <div aria-hidden className="h-16 lg:hidden" /> : null}
         </div>
       </div>
 
-      <ToolsDock sections={sections} />
+      <ToolsDock sections={dockSections} />
     </div>
   );
 }
