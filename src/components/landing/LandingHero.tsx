@@ -45,11 +45,14 @@ export function LandingHero() {
 
           {/* Email capture inline */}
           <div className="animate-fade-up-delay-2 mt-8 flex flex-col gap-3 sm:mt-10">
+            {/* The hero's offer does not change for anybody: the field and
+                the same words, signed in or not. */}
             <EmailCaptureCta
               source="hero"
               inputId="hero-email"
               buttonLabel="Get their Free Story"
               theme="dark"
+              alwaysAskEmail
             />
           </div>
         </div>

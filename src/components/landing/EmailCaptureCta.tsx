@@ -24,6 +24,17 @@ interface EmailCaptureCtaProps {
   rowClassName?: string;
   /** Flex-basis/grow class for the input, relative to the button. Defaults to "flex-[2]". */
   inputWidthClassName?: string;
+  /**
+   * Keep the email field even for a visitor who is already signed in.
+   *
+   * The hero is the one place this is true. It is the first thing anybody sees,
+   * and the offer it makes — hand over an address, get a story back — is the
+   * whole pitch of the page; swapping it for a shortcut button means a signed-in
+   * visitor, and anybody sharing a browser with one, is shown a different
+   * landing page from the one being advertised. The CTAs further down the page
+   * come after the pitch has been made, so there the shortcut is a kindness.
+   */
+  alwaysAskEmail?: boolean;
 }
 
 /**
@@ -31,6 +42,8 @@ interface EmailCaptureCtaProps {
  * for signed-in users, or an email input + submit button that captures the
  * lead and redirects to /create. Used on the landing page hero and in the
  * "How it works" section so both stay visually and behaviorally in sync.
+ *
+ * `alwaysAskEmail` opts out of the auth-aware half of that, and the hero does.
  */
 export function EmailCaptureCta({
   source,
@@ -39,6 +52,7 @@ export function EmailCaptureCta({
   theme = "light",
   className = "",
   inputWidthClassName = "flex-[2]",
+  alwaysAskEmail = false,
 }: EmailCaptureCtaProps) {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "working" | "error">("idle");
@@ -65,8 +79,9 @@ export function EmailCaptureCta({
 
   const isDark = theme === "dark";
 
-  // Signed-in visitors skip the email capture and go straight to /create.
-  if (isAuthenticated) {
+  // Signed-in visitors skip the email capture and go straight to /create —
+  // everywhere but the hero, which always makes the same offer to everybody.
+  if (isAuthenticated && !alwaysAskEmail) {
     return (
       <div className={className}>
         <a
