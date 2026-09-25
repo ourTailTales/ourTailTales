@@ -22,7 +22,12 @@ import {
   type Print,
   type Shape,
 } from "@/lib/book/design/primitives";
-import { gridSlots, isCaptionLayout, isPhotoLayout, layoutRegions } from "@/lib/book/layouts";
+import {
+  gridSlots,
+  isCaptionLayout,
+  isPhotoLayout,
+  layoutRegions,
+} from "@/lib/book/layouts";
 import { CLOSING_LINE, titlePageHeading } from "@/lib/book/pagination";
 import { mixHex } from "@/lib/book/palette";
 import type { BookPage, PhotoLayoutId, Slot } from "@/types/book";
@@ -303,7 +308,8 @@ function designPage(page: BookPage, context: DesignContext): PageDesign {
       return design;
 
     default: {
-      if (!isPhotoLayout(page.layoutId) || page.photoIds.length === 0) return design;
+      if (!isPhotoLayout(page.layoutId)) return design;
+      if (page.photoIds.length === 0) return design;
       if (isCaptionLayout(page.layoutId)) return captionPage(page, context, random, design);
       const captioned = page.photoIds.length <= 2;
       const slots = gridSlots(page.layoutId, FRAME, GRID);

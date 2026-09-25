@@ -45,13 +45,13 @@ function book(designId: DesignId = "scrapbook") {
   };
   const orientations = new Map(
     chapters.flatMap((chapter) =>
-      chapter.photoIds.map((id, index) => [id, ORIENTATIONS[index % 3]]),
+      chapter.photoIds.map((id, index) => [id, { orientation: ORIENTATIONS[index % 3] }]),
     ),
   );
   const contextFor = (page: BookPage): DesignContext => ({
     meta,
     chapter: chapters.find((chapter) => chapter.id === page.chapterId),
-    orientationOf: (id) => orientations.get(id),
+    orientationOf: (id) => orientations.get(id)?.orientation,
     captionOf: () => "June 2019",
     palette: BRAND_PALETTE,
   });
@@ -350,6 +350,8 @@ describe("layouts that hold words", () => {
     expect(new Set(captioned.map((spec) => spec.notesAt))).toEqual(
       new Set(["right", "left", "below"]),
     );
+    // Every layout carries a photograph: a page with none is not printed.
+    expect(PHOTO_LAYOUTS.every((spec) => spec.photoCount > 0)).toBe(true);
   });
 
   it("never lays a note over a photograph", () => {

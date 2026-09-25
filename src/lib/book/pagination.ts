@@ -8,12 +8,20 @@ import {
   layoutPhotoCount,
   seededUnit,
 } from "@/lib/book/layouts";
-import { STORY_PAGES_PER_CHAPTER } from "@/lib/pricing";
+import {
+  MAX_PHOTO_PAGES,
+  planPages,
+  reconcilePlan,
+  type PlannablePhoto,
+} from "@/lib/book/page-plan";
 import type { BookMeta, BookPage, Chapter, LayoutId, PhotoLayoutId } from "@/types/book";
 import type { Orientation } from "@/types/photo";
 
-/** The opener is one of the chapter's 10 story pages. */
-export const PHOTO_PAGES_PER_CHAPTER = STORY_PAGES_PER_CHAPTER - 1;
+/**
+ * The most photo pages a chapter can run to. The opener is the first of its
+ * story pages, and a chapter is at most `MAX_STORY_PAGES_PER_CHAPTER` long.
+ */
+export const PHOTO_PAGES_PER_CHAPTER = MAX_PHOTO_PAGES;
 
 /**
  * Photos a page takes when the book decides. Pages the customer chose a
@@ -22,7 +30,19 @@ export const PHOTO_PAGES_PER_CHAPTER = STORY_PAGES_PER_CHAPTER - 1;
  */
 const AUTO_MAX_PHOTOS_PER_PAGE = 4;
 
-export type OrientationLookup = Map<string, Orientation>;
+/**
+ * What pagination needs to know about a photograph: which way it faces, and
+ * enough about when and where it was taken to group it with the ones it
+ * belongs beside.
+ */
+export type PagePhoto = {
+  orientation: Orientation;
+  capturedAt?: number | null;
+  lat?: number;
+  lng?: number;
+};
+
+export type PhotoLookup = Map<string, PagePhoto>;
 
 /**
  * Builds the complete interior page list:
@@ -36,7 +56,7 @@ export type OrientationLookup = Map<string, Orientation>;
 export function paginateBook(
   meta: BookMeta,
   chapters: Chapter[],
-  orientations: OrientationLookup = new Map(),
+  photos: PhotoLookup = new Map(),
 ): BookPage[] {
   const pages: BookPage[] = [];
   let pageNumber = 1;
@@ -85,41 +105,40 @@ export function paginateBook(
     const body = chapter.photoIds.filter((id) => id !== hero);
     const chosen = chapterPageLayouts(chapter);
     const notes = chapterPageNotes(chapter);
-    const { counts } = planChapterPages(body.length, chosen, chapter.id);
+    const { counts } = planChapterPages(body.length, chosen, chapter.id, pageSizes(chapter, body, photos));
 
-    for (let index = 0; index < PHOTO_PAGES_PER_CHAPTER; index += 1) {
+    for (let index = 0; index < counts.length; index += 1) {
       const slice = body.splice(0, counts[index]!);
+      // A chapter is only as long as its photographs: a page with none left
+      // for it is not printed at all.
+      if (slice.length === 0) continue;
       const wanted = chosen[index];
       const pageId = `page-${chapter.id}-${index}`;
 
-      const layoutId: PhotoLayoutId | null =
-        slice.length === 0
-          ? null
-          : wanted && layoutPhotoCount(wanted) === slice.length
-            ? wanted
-            : chooseLayout(
-                slice.map((id) => orientations.get(id) ?? "landscape"),
-                { recent, seed: pageId, wantsWords: wantsWords(photoPages) },
-              );
+      const layoutId: PhotoLayoutId =
+        wanted && layoutPhotoCount(wanted) === slice.length
+          ? wanted
+          : chooseLayout(
+              slice.map((id) => photos.get(id)?.orientation ?? "landscape"),
+              { recent, seed: pageId, wantsWords: wantsWords(photoPages) },
+            );
 
-      if (layoutId) {
-        recent.push(layoutId);
-        if (recent.length > RECENT_MEMORY) recent.shift();
-        photoPages += 1;
-      }
+      recent.push(layoutId);
+      if (recent.length > RECENT_MEMORY) recent.shift();
+      photoPages += 1;
 
       const ordered =
-        layoutId && slice.length > 1
+        slice.length > 1
           ? assignToSlots(
               layoutId,
               slice.map((id) => ({
                 id,
-                orientation: orientations.get(id) ?? "landscape",
+                orientation: photos.get(id)?.orientation ?? "landscape",
               })),
             )
           : slice;
 
-      const pageNotes = layoutId ? notesForPage(notes[index], layoutNoteCount(layoutId)) : null;
+      const pageNotes = notesForPage(notes[index], layoutNoteCount(layoutId));
 
       push({
         id: pageId,
@@ -164,8 +183,7 @@ export function paginateBook(
  *
  * The bounds are what keep it honest: never so many that the pages after it
  * cannot be filled, never so few that the chapter runs out of pages before it
- * runs out of photographs. Photos are never repeated to fill space — a sparse
- * chapter simply gets larger images.
+ * runs out of photographs. Photos are never repeated to fill space.
  */
 function photosForPage(remaining: number, pagesLeft: number, seed: string): number {
   if (remaining <= 0 || pagesLeft <= 0) return 0;
@@ -187,6 +205,26 @@ function photosForPage(remaining: number, pagesLeft: number, seed: string): numb
   const wanted =
     roll < 0.14 ? 1 : Math.round(even) + (roll < 0.44 ? -1 : roll < 0.74 ? 1 : 0);
   return Math.min(Math.max(wanted, floor), ceiling);
+}
+
+/**
+ * How many pages a chapter's photographs are worth.
+ *
+ * Two to a page is the floor, so a chapter is never stretched into a run of
+ * pages each holding a single photograph with nothing else on them — and a
+ * chapter that cannot reach even one full page is one page long. Nine is the
+ * most a chapter's story pages allow; past that the pages simply hold more.
+ *
+ * This is what decides the length of a book made from a small album: fifteen
+ * photographs make three or four good pages, not nine thin ones and five
+ * blank ones.
+ */
+export const MIN_PHOTOS_PER_AUTO_PAGE = 2;
+
+function pagesWorthUsing(bodyPhotos: number): number {
+  if (bodyPhotos <= 0) return 0;
+  const byDensity = Math.floor(bodyPhotos / MIN_PHOTOS_PER_AUTO_PAGE);
+  return Math.min(PHOTO_PAGES_PER_CHAPTER, Math.max(1, byDensity));
 }
 
 /** Pages the book means to give room for words: about one in three. */
@@ -269,10 +307,18 @@ export function planChapterPages(
   total: number,
   chosen: readonly (PhotoLayoutId | null)[],
   seed = "",
+  sizes?: readonly number[],
 ): { counts: number[]; leftover: number } {
   const counts: number[] = [];
   let remaining = total;
-  for (let index = 0; index < PHOTO_PAGES_PER_CHAPTER; index += 1) {
+
+  // How long the chapter runs: the pages its own grouping asks for, and any
+  // page after them that the customer claimed with a layout of their own.
+  const lastChosen = chosen.reduce((last, id, index) => (id ? index : last), -1);
+  const planned = sizes && sizes.length > 0 ? sizes.length : pagesWorthUsing(total);
+  const pages = Math.min(PHOTO_PAGES_PER_CHAPTER, Math.max(1, planned, lastChosen + 1));
+
+  for (let index = 0; index < pages; index += 1) {
     const wanted = chosen[index];
     if (wanted) {
       const take = Math.min(layoutPhotoCount(wanted), remaining);
@@ -280,9 +326,10 @@ export function planChapterPages(
       remaining -= take;
       continue;
     }
+
     let reserved = 0;
     let freePages = 0;
-    for (let later = index; later < PHOTO_PAGES_PER_CHAPTER; later += 1) {
+    for (let later = index; later < pages; later += 1) {
       const laterWanted = chosen[later];
       if (laterWanted) {
         if (later > index) reserved += layoutPhotoCount(laterWanted);
@@ -290,11 +337,59 @@ export function planChapterPages(
         freePages += 1;
       }
     }
-    const take = photosForPage(Math.max(0, remaining - reserved), freePages, `${seed}:${index}`);
+
+    const available = Math.max(0, remaining - reserved);
+    const target = sizes?.[index];
+    const take =
+      target === undefined
+        ? photosForPage(available, freePages, `${seed}:${index}`)
+        : // The grouping decided this page; it only gives way where the
+          // photographs it counted on have been claimed by a chosen layout
+          // or have left the chapter.
+          Math.min(
+            Math.max(target, 1),
+            Math.max(1, available - (freePages - 1)),
+            MAX_PHOTOS_PER_PAGE,
+            Math.max(available, 0),
+          );
     counts.push(take);
     remaining -= take;
   }
+
+  // Whatever the grouping could not place — photographs that arrived after
+  // it was made — joins the last page with room rather than falling out of
+  // the book. A page the customer chose a layout for is left exactly as they
+  // asked for it.
+  for (let index = counts.length - 1; index >= 0 && remaining > 0; index -= 1) {
+    if (chosen[index]) continue;
+    const taken = Math.min(MAX_PHOTOS_PER_PAGE - counts[index]!, remaining);
+    counts[index] += taken;
+    remaining -= taken;
+  }
+
   return { counts, leftover: remaining };
+}
+
+/**
+ * How many photographs sit on each of a chapter's pages: the grouping made
+ * when the chapter was written, brought in line with the photographs the
+ * chapter holds now, or a fresh grouping for a chapter saved before the book
+ * kept one.
+ */
+function pageSizes(
+  chapter: Chapter,
+  body: readonly string[],
+  photos: PhotoLookup,
+): number[] | undefined {
+  const kept = reconcilePlan(chapter.pagePlan, body);
+  if (kept) return kept.map((page) => page.length);
+  if (body.length === 0) return undefined;
+  return planPages(body.map((id) => plannable(id, photos))).map((page) => page.length);
+}
+
+function plannable(id: string, photos: PhotoLookup): PlannablePhoto {
+  const photo = photos.get(id);
+  return { id, capturedAt: photo?.capturedAt, lat: photo?.lat, lng: photo?.lng };
 }
 
 /**
@@ -377,7 +472,12 @@ export function applyPageLayout(
   chosen[pageIndex] = layoutId;
 
   const body = chapter.photoIds.filter((id) => id !== hero);
-  const { counts } = planChapterPages(body.length, before);
+  const { counts } = planChapterPages(
+    body.length,
+    before,
+    chapter.id,
+    reconcilePlan(chapter.pagePlan, body)?.map((page) => page.length),
+  );
   const start = counts.slice(0, pageIndex).reduce((sum, count) => sum + count, 0);
   const current = counts[pageIndex] ?? 0;
 
@@ -390,7 +490,12 @@ export function applyPageLayout(
     }
   }
 
-  const plan = planChapterPages(body.length, chosen);
+  const plan = planChapterPages(
+    body.length,
+    chosen,
+    chapter.id,
+    reconcilePlan(chapter.pagePlan, body)?.map((page) => page.length),
+  );
   const photoIds = plan.leftover > 0 ? body.slice(0, body.length - plan.leftover) : body;
   const heroAt = hero ? chapter.photoIds.indexOf(hero) : -1;
   if (hero && heroAt !== -1) photoIds.splice(Math.min(heroAt, photoIds.length), 0, hero);

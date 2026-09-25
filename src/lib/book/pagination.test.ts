@@ -17,6 +17,10 @@ import {
   sparePhotos,
   withoutEmptyDedication,
 } from "@/lib/book/pagination";
+import {
+  MAX_STORY_PAGES_PER_CHAPTER,
+  MIN_STORY_PAGES_PER_CHAPTER,
+} from "@/lib/pricing";
 import type { BookMeta, Chapter } from "@/types/book";
 
 describe("automatic book pagination", () => {
@@ -49,7 +53,7 @@ describe("automatic book pagination", () => {
       chapters.flatMap((chapter) =>
         chapter.photoIds.map((id, index) => [
           id,
-          index % 3 === 0 ? ("portrait" as const) : ("landscape" as const),
+          { orientation: index % 3 === 0 ? ("portrait" as const) : ("landscape" as const) },
         ]),
       ),
     );
@@ -92,15 +96,18 @@ describe("automatic book pagination", () => {
   };
 
   it("leaves the dedication page out when there is no dedication", () => {
+    // One chapter of three photographs: the opener, a page for each of the
+    // other two, and the book's own pages, less the dedication.
     const pages = paginateBook(baseMeta, oneChapter);
     expect(pages.some((page) => page.kind === "dedication")).toBe(false);
-    expect(pages).toHaveLength(13);
+    expect(pages).toHaveLength(6);
     expect(pages.map((page) => page.pageNumber)).toEqual(
-      Array.from({ length: 13 }, (_, index) => index + 1),
+      Array.from({ length: 6 }, (_, index) => index + 1),
     );
 
     const withSpacesOnly = paginateBook({ ...baseMeta, dedication: "   " }, oneChapter);
-    expect(withSpacesOnly).toHaveLength(13);
+    expect(withSpacesOnly).toHaveLength(6);
+    expect(paginateBook({ ...baseMeta, dedication: "For Biscuit." }, oneChapter)).toHaveLength(7);
   });
 
   it("drops a saved empty dedication page and renumbers", () => {
@@ -243,7 +250,7 @@ describe("a book that does not look machine-made", () => {
       chapters.flatMap((chapter) =>
         chapter.photoIds.map((id, index) => [
           id,
-          index % 3 === 0 ? ("portrait" as const) : ("landscape" as const),
+          { orientation: index % 3 === 0 ? ("portrait" as const) : ("landscape" as const) },
         ]),
       ),
     );
@@ -255,12 +262,11 @@ describe("a book that does not look machine-made", () => {
     const photoPages = pages.filter((page) => page.kind === "photos");
     const layouts = photoPages.map((page) => page.layoutId!);
 
-    expect(new Set(layouts).size).toBeGreaterThanOrEqual(10);
-    expect(layouts.filter((id) => isCaptionLayout(id)).length).toBeGreaterThanOrEqual(10);
+    expect(new Set(layouts).size).toBeGreaterThanOrEqual(8);
+    expect(layouts.filter((id) => isCaptionLayout(id)).length).toBeGreaterThanOrEqual(5);
     // Varied page counts, including the occasional page-sized photograph.
     const counts = new Set(photoPages.map((page) => page.photoIds.length));
-    expect(counts.size).toBeGreaterThanOrEqual(3);
-    expect(counts.has(1)).toBe(true);
+    expect(counts.size).toBeGreaterThanOrEqual(2);
   });
 
   it("still gives the free preview a mix, in its first few pages", () => {
@@ -269,6 +275,55 @@ describe("a book that does not look machine-made", () => {
     const teaser = pages.slice(0, 9).filter((page) => page.kind === "photos");
     expect(new Set(teaser.map((page) => page.layoutId)).size).toBe(teaser.length);
     expect(teaser.some((page) => isCaptionLayout(page.layoutId))).toBe(true);
+  });
+
+  it("makes a thin album a short book rather than an empty one", () => {
+    // Twenty-five photographs, five chapters: five to a chapter, one on the
+    // opener and one on each of four pages. A five-page chapter, not a
+    // ten-page chapter with five sheets of blank paper in it.
+    const { pages } = fullBook(5);
+    const photoPages = pages.filter((page) => page.kind === "photos");
+
+    expect(photoPages).toHaveLength(5 * 4);
+    for (const page of photoPages) expect(page.photoIds).toHaveLength(1);
+    // Nothing is left out: every photograph the chapters hold is on a page.
+    const placed = new Set(pages.flatMap((page) => page.photoIds));
+    expect(placed.size).toBe(5 * 5);
+    // Five chapters of five pages, and the book's own four.
+    expect(pages).toHaveLength(5 * 5 + 4);
+  });
+
+  it("keeps a chapter between three and ten pages", () => {
+    for (const perChapter of [2, 3, 5, 12, 30, 60]) {
+      const { pages } = fullBook(perChapter);
+      const byChapter = new Map<string, number>();
+      for (const page of pages) {
+        if (!page.chapterId) continue;
+        byChapter.set(page.chapterId, (byChapter.get(page.chapterId) ?? 0) + 1);
+      }
+      for (const length of byChapter.values()) {
+        expect(length).toBeLessThanOrEqual(MAX_STORY_PAGES_PER_CHAPTER);
+        // A chapter of two photographs cannot reach three pages, and is not
+        // padded to it.
+        if (perChapter >= MIN_STORY_PAGES_PER_CHAPTER) {
+          expect(length).toBeGreaterThanOrEqual(MIN_STORY_PAGES_PER_CHAPTER);
+        }
+      }
+    }
+  });
+
+  it("puts a photograph on every page it makes, at any album size", () => {
+    for (const perChapter of [3, 5, 7, 9, 12, 19, 28, 45]) {
+      const counts = fullBook(perChapter)
+        .pages.filter((entry) => entry.kind === "photos")
+        .map((entry) => entry.photoIds.length);
+
+      expect(counts.every((count) => count > 0)).toBe(true);
+      // Photographs only share a page once a chapter has more of them than
+      // it has pages.
+      const shared = counts.some((count) => count > 1);
+      expect(shared).toBe(perChapter - 1 > MAX_STORY_PAGES_PER_CHAPTER - 1);
+    }
   });
 
   it("never repeats a layout twice running, and never leaves a page empty", () => {

@@ -707,7 +707,8 @@ function photoPage(
   random: () => number,
   design: PageDesign,
 ): PageDesign {
-  if (!isPhotoLayout(page.layoutId) || page.photoIds.length === 0) return design;
+  if (!isPhotoLayout(page.layoutId)) return design;
+  if (page.photoIds.length === 0) return design;
   if (isCaptionLayout(page.layoutId)) return captionPage(page, context, random, design);
 
   const polaroid = page.photoIds.length <= 2;

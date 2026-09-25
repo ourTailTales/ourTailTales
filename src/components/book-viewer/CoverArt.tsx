@@ -84,7 +84,11 @@ export function CoverFrontArt({
           style={{
             ...nameStyle,
             fontFamily: coverFontVar(fontId),
-            fontSize: `clamp(1rem, ${nameSize * 2.5}cqw, ${nameSize * 1.25}rem)`,
+            // The print file shrinks a long name until it fits the cover. CSS
+            // cannot measure text, so it steps down by length the same way —
+            // otherwise a short name matches the printed book and a long one
+            // wraps onto three lines here and onto one there.
+            fontSize: `clamp(0.9rem, ${nameSize * 2.5 * Math.min(1, 10 / Math.max(petName.length, 1))}cqw, ${nameSize * 1.25}rem)`,
             fontWeight: nameBold ? 700 : 400,
             textDecoration: nameUnderline ? "underline" : "none",
             textUnderlineOffset: "0.15em",

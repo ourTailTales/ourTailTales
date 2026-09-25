@@ -32,7 +32,7 @@ import type { CoverFontId } from "@/types/book";
 import type { PhotoAsset } from "@/types/photo";
 
 const NAME_SIZES = [
-  1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3, 3.25, 3.5, 3.75, 4, 4.5, 5,
+  1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8, 9, 10,
 ] as const;
 
 const inputClass =

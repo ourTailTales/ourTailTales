@@ -17,6 +17,18 @@ export const BASE_PRICE = 49.99;
 export const PRICE_PER_EXTRA_CHAPTER = 4.99;
 export const STORY_PAGES_PER_CHAPTER = 10;
 
+/**
+ * How long a chapter may actually run.
+ *
+ * A chapter is no longer a fixed ten pages. It is as long as its own
+ * photographs are worth — three pages at the least, ten at the most — which
+ * is what stops a small album from printing half a book of empty paper and a
+ * large one from burying a chapter's best pictures six to a page.
+ * `STORY_PAGES_PER_CHAPTER` stays the number the price is quoted on.
+ */
+export const MIN_STORY_PAGES_PER_CHAPTER = 3;
+export const MAX_STORY_PAGES_PER_CHAPTER = STORY_PAGES_PER_CHAPTER;
+
 /** Title, dedication, closing, imprint. Included at no extra charge. */
 export const FIXED_INTERIOR_PAGES = 4;
 
@@ -53,6 +65,35 @@ export function storyPages(chapterCount: number): number {
 
 export function luluInteriorPages(chapterCount: number): number {
   return storyPages(chapterCount) + FIXED_INTERIOR_PAGES;
+}
+
+/**
+ * The fewest interior pages the printer will bind.
+ *
+ * Lulu's hardcover (casewrap) minimum. A book shorter than this is padded
+ * with blank leaves at the back to reach it — the only place blank paper is
+ * ever printed. Confirm against the pod package in `LULU_POD_PACKAGE_ID`
+ * before changing it: ordering below a package's minimum is rejected at the
+ * cover-dimensions call, before the customer pays.
+ */
+export const MIN_PRINTABLE_INTERIOR_PAGES = 24;
+
+/**
+ * How many interior pages to order for a book that is `actualPages` long.
+ *
+ * Chapters are as long as their photographs are worth, so a book is rarely
+ * exactly `chapters × 10 + 4`. What is ordered is what the book actually
+ * needs: never more than the chapters bought allow, never fewer than the
+ * printer binds, and always an even count, because a leaf has two sides.
+ */
+export function orderedInteriorPages(
+  actualPages: number,
+  chapterCount: number,
+): number {
+  const ceiling = luluInteriorPages(chapterCount);
+  const wanted = Math.max(actualPages, MIN_PRINTABLE_INTERIOR_PAGES);
+  const even = wanted + (wanted % 2);
+  return Math.min(even, ceiling);
 }
 
 export type BookSpec = {

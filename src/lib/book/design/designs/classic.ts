@@ -20,7 +20,12 @@ import {
   type PageDesign,
   type Print,
 } from "@/lib/book/design/primitives";
-import { gridSlots, isCaptionLayout, isPhotoLayout, layoutRegions } from "@/lib/book/layouts";
+import {
+  gridSlots,
+  isCaptionLayout,
+  isPhotoLayout,
+  layoutRegions,
+} from "@/lib/book/layouts";
 import { CLOSING_LINE, titlePageHeading } from "@/lib/book/pagination";
 import type { BookPage, PhotoLayoutId, Slot } from "@/types/book";
 import type { Orientation } from "@/types/photo";
@@ -225,7 +230,8 @@ function designPage(page: BookPage, context: DesignContext): PageDesign {
 }
 
 function photoPage(page: BookPage, context: DesignContext, design: PageDesign): PageDesign {
-  if (!isPhotoLayout(page.layoutId) || page.photoIds.length === 0) return design;
+  if (!isPhotoLayout(page.layoutId)) return design;
+  if (page.photoIds.length === 0) return design;
 
   if (isCaptionLayout(page.layoutId)) return captionPage(page, context, design);
 

@@ -18,7 +18,13 @@ import {
   type PageDesign,
   type RectShape,
 } from "@/lib/book/design/primitives";
-import { SAFE, gridSlots, isCaptionLayout, isPhotoLayout, layoutRegions } from "@/lib/book/layouts";
+import {
+  SAFE,
+  gridSlots,
+  isCaptionLayout,
+  isPhotoLayout,
+  layoutRegions,
+} from "@/lib/book/layouts";
 import { CLOSING_LINE } from "@/lib/book/pagination";
 import type { BookPage, PhotoLayoutId, Slot } from "@/types/book";
 
@@ -181,7 +187,8 @@ function designPage(page: BookPage, context: DesignContext): PageDesign {
 }
 
 function photoPage(page: BookPage, context: DesignContext, design: PageDesign): PageDesign {
-  if (!isPhotoLayout(page.layoutId) || page.photoIds.length === 0) return design;
+  if (!isPhotoLayout(page.layoutId)) return design;
+  if (page.photoIds.length === 0) return design;
 
   if (isCaptionLayout(page.layoutId)) return captionPage(page, context, design);
 

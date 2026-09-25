@@ -1,10 +1,11 @@
+import { MAX_PHOTO_PAGES, MIN_PHOTO_PAGES } from "@/lib/book/page-plan";
 import { clusterCentroids, describeSeasons } from "@/lib/geo";
 import * as assetStore from "@/lib/photo/assetStore";
 import { postHogHeaders } from "@/lib/posthog-client";
 import { renderAiThumbnail } from "@/lib/photo/pipeline";
 import type { Chapter, PlaceLabel } from "@/types/book";
 import type { PhotoAsset } from "@/types/photo";
-import type { PetProfile, StoryDraft, StoryRequest } from "@/types/story";
+import type { PetProfile, PhotoFacts, StoryDraft, StoryRequest } from "@/types/story";
 
 /**
  * Representative thumbnails sent per chapter. The product promise is three to
@@ -37,6 +38,7 @@ export async function generateChapterStory(
   signal?: AbortSignal,
   position?: { chapterNumber: number; chapterCount: number },
 ): Promise<{ story: StoryDraft; places: PlaceLabel[] }> {
+  const pagePhotos = chapterBodyIds(chapter);
   const samples = pickSamples(chapter, photos);
   const places = await resolvePlaces(chapter, photos, signal);
 
@@ -76,6 +78,11 @@ export async function generateChapterStory(
     places,
     seasons: describeSeasons(timestamps),
     thumbnails,
+    // The pages are the model's to plan: which of these belong together, and
+    // how many pages that makes. Facts only — thirty thumbnails a chapter
+    // would cost more than the whole book's writing does.
+    photos: pagePhotos.map((id, index) => photoFacts(index, photos.get(id), places)),
+    pageBudget: { min: MIN_PHOTO_PAGES, max: MAX_PHOTO_PAGES },
   };
 
   const response = await fetch("/api/story", {
@@ -92,6 +99,33 @@ export async function generateChapterStory(
 
   const story = (await response.json()) as StoryDraft;
   return { story, places };
+}
+
+/**
+ * The chapter's photographs less the one that opens it — the ones the model
+ * is grouping onto pages, in the order the book holds them. Derived the same
+ * way wherever the plan is read back (`paginateBook`, `applyChapterStory`).
+ */
+export function chapterBodyIds(chapter: Chapter): string[] {
+  const hero = chapter.heroPhotoId ?? chapter.photoIds[0] ?? null;
+  return chapter.photoIds.filter((id) => id !== hero);
+}
+
+function photoFacts(
+  index: number,
+  photo: PhotoAsset | undefined,
+  places: PlaceLabel[],
+): PhotoFacts {
+  const taken = photo?.capturedAt ? new Date(photo.capturedAt) : null;
+  const place = places[0];
+  return {
+    i: index,
+    ...(taken && !Number.isNaN(taken.getTime())
+      ? { on: taken.toISOString().slice(0, 10) }
+      : {}),
+    ...(place?.city || place?.region ? { place: place.city ?? place.region } : {}),
+    orientation: photo?.orientation ?? "landscape",
+  };
 }
 
 /** Spreads samples across the chapter so the AI sees its whole span. */

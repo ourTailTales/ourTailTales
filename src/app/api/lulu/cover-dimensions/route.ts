@@ -4,9 +4,8 @@ import { routeError } from "@/lib/env";
 import { fetchCoverDimensions } from "@/lib/lulu/client";
 import { LIMITS, enforceRateLimit } from "@/lib/rate-limit";
 import {
-  BASE_CHAPTERS,
-  FIXED_INTERIOR_PAGES,
   MAX_CHAPTERS,
+  MIN_PRINTABLE_INTERIOR_PAGES,
   luluInteriorPages,
 } from "@/lib/pricing";
 
@@ -14,7 +13,7 @@ const requestSchema = z.object({
   pageCount: z
     .number()
     .int()
-    .min(luluInteriorPages(BASE_CHAPTERS))
+    .min(MIN_PRINTABLE_INTERIOR_PAGES)
     .max(luluInteriorPages(MAX_CHAPTERS)),
 });
 
@@ -38,8 +37,10 @@ export async function POST(request: Request): Promise<Response> {
 
     const { pageCount } = parsed.data;
 
-    // Every book is chapters * 10 plus the four fixed pages.
-    if ((pageCount - FIXED_INTERIOR_PAGES) % 10 !== 0) {
+    // A book is as long as its chapters turned out to be, so the old
+    // "chapters * 10 + 4" shape no longer holds — only the binder's own
+    // rules do: at least the minimum, and a whole number of leaves.
+    if (pageCount % 2 !== 0) {
       return Response.json(
         { error: "That page count isn't a book we print." },
         { status: 400 },

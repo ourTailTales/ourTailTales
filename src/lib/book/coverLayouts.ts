@@ -103,9 +103,12 @@ export function coverUsesPhoto(id: CoverLayoutId): boolean {
 export const PORTRAIT_WINDOW = { x: 0.125, y: 0.1, w: 0.75, h: 0.58 } as const;
 export const PORTRAIT_MAT = 0.022;
 export const KEEPSAKE_RULES = [0.085, 0.105] as const;
-/** Where a photo-free cover prints the years, and its small dividing rule. */
-export const PLATE_YEARS_Y = 0.655;
-export const PLATE_RULE_Y = 0.6;
+/**
+ * Where a photo-free cover prints the years, and its small dividing rule —
+ * far enough below the middle to clear a name set at the default size.
+ */
+export const PLATE_YEARS_Y = 0.71;
+export const PLATE_RULE_Y = 0.645;
 export const PLATE_RULE_HALF_WIDTH = 0.07;
 /** The paw stamped at the head of the keepsake cover. */
 export const KEEPSAKE_PAW = { cy: 0.235, size: 0.11 } as const;
@@ -217,8 +220,16 @@ export const COVER_NAME_ANCHORS: {
   { id: "bottom-right", label: "Bottom right", dot: { x: 72, y: 78 } },
 ];
 
-/** Default cover-name size (rem) — one notch up from the old default, which read too small. */
-export const DEFAULT_COVER_NAME_SIZE = 3.75;
+/**
+ * Default cover-name size.
+ *
+ * Not a point size: a share of the cover, spent the same way on screen
+ * (`nameSize × 2.5` cqw) and in the print file (`nameSize × 15` pt on the
+ * 612pt trim). Six puts a short name across about half the cover, which is
+ * how a book title is set — the old 3.75 read like a caption under a
+ * photograph, which is what it was.
+ */
+export const DEFAULT_COVER_NAME_SIZE = 6;
 
 /**
  * The classic cover's scrim, bottom (0) to top (1) of its band, which covers

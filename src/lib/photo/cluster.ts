@@ -7,6 +7,7 @@ import {
   MIN_PHOTOS_PER_CHAPTER,
   PHOTOS_PER_CHAPTER_TARGET,
 } from "@/lib/pricing";
+import { photoFactsOf, planPages } from "@/lib/book/page-plan";
 import type { Chapter } from "@/types/book";
 import type { PhotoAsset } from "@/types/photo";
 
@@ -46,6 +47,11 @@ export function proposeChapters(
       id: `chapter-${index + 1}`,
       index,
       photoIds: selected.map((photo) => photo.id),
+      // Grouped by when and where they were taken until the chapter is
+      // written, at which point the model's own grouping replaces this.
+      pagePlan: planPages(
+        selected.filter((photo) => photo.id !== hero?.id).map(photoFactsOf),
+      ),
       candidateIds: segment.map((photo) => photo.id),
       startAt,
       endAt,

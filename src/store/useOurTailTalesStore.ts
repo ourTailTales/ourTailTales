@@ -10,7 +10,10 @@ import {
   hasDedication,
   paginateBook,
   withoutEmptyDedication,
+  type PhotoLookup,
 } from "@/lib/book/pagination";
+import { planFromIndexes } from "@/lib/book/page-plan";
+import { chapterBodyIds } from "@/lib/story/client";
 import * as assetStore from "@/lib/photo/assetStore";
 import { clearCustomCoverFile } from "@/lib/book/customCoverStore";
 import {
@@ -345,7 +348,7 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
       }
       return {
         meta,
-        pages: paginateBook(meta, state.chapters, orientationsOf(state.photos)),
+        pages: paginateBook(meta, state.chapters, photoFactsOf(state.photos)),
       };
     }),
 
@@ -368,7 +371,7 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
       return {
         chapters,
         meta,
-        pages: paginateBook(meta, chapters, orientationsOf(state.photos)),
+        pages: paginateBook(meta, chapters, photoFactsOf(state.photos)),
         funnelState: "organizing",
       };
     }),
@@ -393,20 +396,28 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
     })),
 
   applyChapterStory: (chapterId, story) =>
-    set((state) => ({
-      chapters: state.chapters.map((chapter) =>
-        chapter.id === chapterId
-          ? {
-              ...chapter,
-              title: story.title || chapter.title,
-              dateLabel: story.dateLabel || chapter.dateLabel,
-              blurb: story.blurb || chapter.blurb,
-              aiStatus: "done",
-              aiError: undefined,
-            }
-          : chapter,
-      ),
-    })),
+    set((state) => {
+      const chapters = state.chapters.map((chapter) => {
+        if (chapter.id !== chapterId) return chapter;
+        // The model grouped the chapter's photographs onto pages as well as
+        // writing it. Anything unusable in that grouping leaves the chapter
+        // with the one it was created with, never without one.
+        const planned = planFromIndexes(chapterBodyIds(chapter), story.pages);
+        return {
+          ...chapter,
+          title: story.title || chapter.title,
+          dateLabel: story.dateLabel || chapter.dateLabel,
+          blurb: story.blurb || chapter.blurb,
+          pagePlan: planned ?? chapter.pagePlan,
+          aiStatus: "done" as const,
+          aiError: undefined,
+        };
+      });
+      return {
+        chapters,
+        pages: paginateBook(state.meta, chapters, photoFactsOf(state.photos)),
+      };
+    }),
 
   setChapterPlaces: (chapterId, places) =>
     set((state) => ({
@@ -464,7 +475,7 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
       });
       return {
         chapters,
-        pages: paginateBook(state.meta, chapters, orientationsOf(state.photos)),
+        pages: paginateBook(state.meta, chapters, photoFactsOf(state.photos)),
       };
     }),
 
@@ -481,7 +492,7 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
       });
       return {
         chapters,
-        pages: paginateBook(state.meta, chapters, orientationsOf(state.photos)),
+        pages: paginateBook(state.meta, chapters, photoFactsOf(state.photos)),
       };
     }),
 
@@ -490,7 +501,7 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
       const meta = { ...state.meta, coverPhotoId: photoId };
       return {
         meta,
-        pages: paginateBook(meta, state.chapters, orientationsOf(state.photos)),
+        pages: paginateBook(meta, state.chapters, photoFactsOf(state.photos)),
       };
     }),
 
@@ -508,7 +519,7 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
       );
       return {
         chapters,
-        pages: paginateBook(state.meta, chapters, orientationsOf(state.photos)),
+        pages: paginateBook(state.meta, chapters, photoFactsOf(state.photos)),
       };
     }),
 
@@ -521,7 +532,7 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
       );
       return {
         chapters,
-        pages: paginateBook(state.meta, chapters, orientationsOf(state.photos)),
+        pages: paginateBook(state.meta, chapters, photoFactsOf(state.photos)),
       };
     }),
 
@@ -534,7 +545,7 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
       );
       return {
         chapters,
-        pages: paginateBook(state.meta, chapters, orientationsOf(state.photos)),
+        pages: paginateBook(state.meta, chapters, photoFactsOf(state.photos)),
       };
     }),
 
@@ -769,6 +780,21 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-function orientationsOf(photos: PhotoAsset[]) {
-  return new Map(photos.map((photo) => [photo.id, photo.orientation]));
+/**
+ * What pagination needs from the album: which way each photograph faces, and
+ * when and where it was taken — the facts that decide which photographs
+ * belong on a page together.
+ */
+function photoFactsOf(photos: PhotoAsset[]): PhotoLookup {
+  return new Map(
+    photos.map((photo) => [
+      photo.id,
+      {
+        orientation: photo.orientation,
+        capturedAt: photo.capturedAt,
+        lat: photo.lat,
+        lng: photo.lng,
+      },
+    ]),
+  );
 }
