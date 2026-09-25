@@ -58,7 +58,21 @@ export type Chapter = {
    * Photos that arrive later, or leave, are reconciled against it rather
    * than throwing it away.
    */
-  pagePlan?: string[][];
+  pagePlan?: PlannedPage[];
+};
+
+/**
+ * One page of a chapter as it was planned: the photographs that share it,
+ * and the line written about them.
+ *
+ * The caption is the model's, written when the chapter was — a few words
+ * about what that page holds, printed under the date wherever the page's
+ * layout keeps room for words. Anything the owner writes themselves takes
+ * its place; nothing overwrites what they wrote.
+ */
+export type PlannedPage = {
+  photos: string[];
+  caption?: string;
 };
 
 /**
@@ -129,9 +143,11 @@ export type BookPage = {
   /**
    * The owner's words for this page, one per note slot in its layout, carried
    * over from the chapter so a design never has to go looking for them. Null
-   * where they wrote nothing and the page falls back to its own date.
+   * where they wrote nothing and the page falls back to its caption.
    */
   notes?: (string | null)[];
+  /** The line the book wrote about this page, under anything the owner wrote. */
+  caption?: string;
 };
 
 /** Free position on the front cover, as a percentage of width/height (0–100), anchored at its center. */

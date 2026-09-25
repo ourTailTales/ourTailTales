@@ -3,6 +3,7 @@ import {
   MAX_STORY_PAGES_PER_CHAPTER,
   MIN_STORY_PAGES_PER_CHAPTER,
 } from "@/lib/pricing";
+import type { PlannedPage } from "@/types/book";
 import type { PhotoAsset } from "@/types/photo";
 
 /**
@@ -53,7 +54,7 @@ export function photoFactsOf(photo: PhotoAsset): PlannablePhoto {
  * ones between one afternoon and the next, so a page almost never straddles
  * two occasions.
  */
-export function planPages(photos: readonly PlannablePhoto[]): string[][] {
+export function planPages(photos: readonly PlannablePhoto[]): PlannedPage[] {
   if (photos.length === 0) return [];
   const pages = photos.map((photo) => [photo]);
   const maxPages = Math.min(MAX_PHOTO_PAGES, Math.max(MIN_PHOTO_PAGES, photos.length));
@@ -81,11 +82,11 @@ export function planPages(photos: readonly PlannablePhoto[]): string[][] {
   // occasions anyway, so it is dealt evenly, in order, instead.
   if (pages.length > maxPages) return evenGroups(photos, maxPages);
 
-  return pages.map((page) => page.map((photo) => photo.id));
+  return pages.map((page) => ({ photos: page.map((photo) => photo.id) }));
 }
 
 /** The photographs in order, split into `count` groups of as even a size as possible. */
-function evenGroups(photos: readonly PlannablePhoto[], count: number): string[][] {
+function evenGroups(photos: readonly PlannablePhoto[], count: number): PlannedPage[] {
   const groups: string[][] = [];
   const base = Math.floor(photos.length / count);
   let remainder = photos.length % count;
@@ -101,7 +102,7 @@ function evenGroups(photos: readonly PlannablePhoto[], count: number): string[][
   if (cursor < photos.length) {
     groups[groups.length - 1]!.push(...photos.slice(cursor).map((photo) => photo.id));
   }
-  return groups;
+  return groups.map((photos) => ({ photos }));
 }
 
 /**
@@ -155,28 +156,37 @@ function kmBetween(a: PlannablePhoto, b: PlannablePhoto): number {
  */
 export function planFromIndexes(
   photoIds: readonly string[],
-  indexes: readonly (readonly number[])[] | undefined,
-): string[][] | null {
-  if (!indexes || indexes.length === 0 || photoIds.length === 0) return null;
+  planned: readonly { photos?: readonly number[]; caption?: string }[] | undefined,
+): PlannedPage[] | null {
+  if (!planned || planned.length === 0 || photoIds.length === 0) return null;
 
   const used = new Set<number>();
-  const pages: string[][] = [];
-  for (const group of indexes) {
-    const page: string[] = [];
-    for (const index of group) {
+  const pages: PlannedPage[] = [];
+  for (const group of planned) {
+    const photos: string[] = [];
+    for (const index of group.photos ?? []) {
       if (!Number.isInteger(index) || index < 0 || index >= photoIds.length) continue;
       if (used.has(index)) continue;
-      if (page.length >= MAX_PHOTOS_PER_PAGE) break;
+      if (photos.length >= MAX_PHOTOS_PER_PAGE) break;
       used.add(index);
-      page.push(photoIds[index]!);
+      photos.push(photoIds[index]!);
     }
-    if (page.length > 0) pages.push(page);
+    if (photos.length > 0) pages.push({ photos, ...captionOf(group.caption) });
   }
   if (pages.length === 0) return null;
 
   const missing = photoIds.filter((_, index) => !used.has(index));
   return reconcile(pages, [...photoIds], missing);
 }
+
+/** A caption the model wrote, trimmed — or nothing, rather than an empty line. */
+function captionOf(caption: string | undefined): { caption?: string } {
+  const text = caption?.trim();
+  return text ? { caption: text.slice(0, MAX_CAPTION_LENGTH) } : {};
+}
+
+/** The most a written-for-you caption may run to. Past this it is a paragraph. */
+export const MAX_CAPTION_LENGTH = 120;
 
 /**
  * Brings a saved plan back in line with the chapter as it is now: photographs
@@ -185,18 +195,24 @@ export function planFromIndexes(
  * bounds. Returns null when nothing usable is left.
  */
 export function reconcilePlan(
-  plan: readonly (readonly string[])[] | undefined,
+  plan: readonly (PlannedPage | readonly string[])[] | undefined,
   photoIds: readonly string[],
-): string[][] | null {
+): PlannedPage[] | null {
   if (!plan || plan.length === 0) return null;
   const present = new Set(photoIds);
   const seen = new Set<string>();
-  const pages: string[][] = [];
+  const pages: PlannedPage[] = [];
 
-  for (const page of plan) {
-    const kept = page.filter((id) => present.has(id) && !seen.has(id));
+  for (const entry of plan) {
+    // Plans saved before pages carried a caption are plain lists of ids.
+    const page: PlannedPage = Array.isArray(entry)
+      ? { photos: entry as string[] }
+      : (entry as PlannedPage);
+    const kept = (page.photos ?? []).filter((id) => present.has(id) && !seen.has(id));
     for (const id of kept) seen.add(id);
-    if (kept.length > 0) pages.push(kept.slice(0, MAX_PHOTOS_PER_PAGE));
+    if (kept.length > 0) {
+      pages.push({ photos: kept.slice(0, MAX_PHOTOS_PER_PAGE), ...captionOf(page.caption) });
+    }
   }
   if (pages.length === 0) return null;
 
@@ -208,8 +224,15 @@ export function reconcilePlan(
 }
 
 /** Adds what the plan left out, then trims it to the pages a chapter may have. */
-function reconcile(pages: string[][], order: string[], missing: string[]): string[][] {
+function reconcile(
+  pages: PlannedPage[],
+  order: string[],
+  missing: string[],
+): PlannedPage[] {
   const positionOf = new Map(order.map((id, index) => [id, index]));
+  const placeOf = (page: PlannedPage): number =>
+    Math.min(...page.photos.map((id) => positionOf.get(id) ?? 0));
+
   for (const id of missing) {
     const at = positionOf.get(id) ?? 0;
     // Onto the page it sits nearest in the chapter, or a page of its own
@@ -217,23 +240,21 @@ function reconcile(pages: string[][], order: string[], missing: string[]): strin
     const nearest = pages.reduce(
       (best, page, index) => {
         const distance = Math.min(
-          ...page.map((other) => Math.abs((positionOf.get(other) ?? 0) - at)),
+          ...page.photos.map((other) => Math.abs((positionOf.get(other) ?? 0) - at)),
         );
         return distance < best.distance ? { index, distance } : best;
       },
       { index: 0, distance: Infinity },
     );
     const page = pages[nearest.index]!;
-    if (page.length < AUTO_MAX_PER_PAGE) page.push(id);
-    else pages.splice(nearest.index + 1, 0, [id]);
+    if (page.photos.length < AUTO_MAX_PER_PAGE) page.photos.push(id);
+    else pages.splice(nearest.index + 1, 0, { photos: [id] });
   }
 
   // Pages stay in the order their photographs fall in the chapter.
-  pages.sort(
-    (a, b) => (positionOf.get(a[0]!) ?? 0) - (positionOf.get(b[0]!) ?? 0),
-  );
+  pages.sort((a, b) => placeOf(a) - placeOf(b));
   for (const page of pages) {
-    page.sort((a, b) => (positionOf.get(a) ?? 0) - (positionOf.get(b) ?? 0));
+    page.photos.sort((a, b) => (positionOf.get(a) ?? 0) - (positionOf.get(b) ?? 0));
   }
 
   while (pages.length > MAX_PHOTO_PAGES) {
@@ -241,26 +262,33 @@ function reconcile(pages: string[][], order: string[], missing: string[]): strin
     let bestAt = 0;
     let bestSize = Infinity;
     for (let index = 0; index < pages.length - 1; index += 1) {
-      const size = pages[index]!.length + pages[index + 1]!.length;
+      const size = pages[index]!.photos.length + pages[index + 1]!.photos.length;
       if (size < bestSize && size <= MAX_PHOTOS_PER_PAGE) {
         bestSize = size;
         bestAt = index;
       }
     }
     if (bestSize === Infinity) break;
-    pages.splice(bestAt, 2, [...pages[bestAt]!, ...pages[bestAt + 1]!]);
+    const left = pages[bestAt]!;
+    const right = pages[bestAt + 1]!;
+    pages.splice(bestAt, 2, {
+      photos: [...left.photos, ...right.photos],
+      // The surviving line is the first one written: a merged page says one
+      // thing, not two.
+      ...captionOf(left.caption ?? right.caption),
+    });
   }
 
   // A chapter shorter than its minimum spreads out rather than pads: the
   // fullest page gives one back until there are enough pages, and a chapter
   // with too few photographs to reach the minimum stays short.
-  while (pages.length < MIN_PHOTO_PAGES && pages.some((page) => page.length > 1)) {
+  while (pages.length < MIN_PHOTO_PAGES && pages.some((page) => page.photos.length > 1)) {
     const fullest = pages.reduce(
-      (best, page, index) => (page.length > pages[best]!.length ? index : best),
+      (best, page, index) => (page.photos.length > pages[best]!.photos.length ? index : best),
       0,
     );
     const page = pages[fullest]!;
-    pages.splice(fullest + 1, 0, [page.pop()!]);
+    pages.splice(fullest + 1, 0, { photos: [page.photos.pop()!] });
   }
 
   return pages;

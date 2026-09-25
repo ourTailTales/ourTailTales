@@ -60,8 +60,8 @@ describe("the Gemini provider's cost settings", () => {
     expect(request.model).toBe("gemini-flash-lite-latest");
     expect(request.config.thinkingConfig).toEqual({ thinkingLevel: ThinkingLevel.MINIMAL });
     expect(request.config.mediaResolution).toBe(MediaResolution.MEDIA_RESOLUTION_LOW);
-    // Copy plus the page grouping; still a cap, and still small.
-    expect(request.config.maxOutputTokens).toBeLessThanOrEqual(1100);
+    // Copy, the page grouping and a line for each page; still a cap.
+    expect(request.config.maxOutputTokens).toBeLessThanOrEqual(1600);
     expect(usage).toHaveBeenCalledWith(
       expect.objectContaining({ kind: "chapter", inputTokens: 1200, outputTokens: 90, images: 1 }),
     );

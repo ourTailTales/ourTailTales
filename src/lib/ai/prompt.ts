@@ -54,9 +54,9 @@ The voice we want:
  * share a page because they belong together — the same afternoon, the same
  * walk, the same weather — and never because a page had room.
  */
-const PAGE_PLAN_RULES = `You also lay out the chapter's pages.
+const PAGE_PLAN_RULES = `You also lay out the chapter's pages and caption them.
 
-You are given the chapter's photographs in order, each with the day it was taken, roughly where, and which way it faces. Group them into pages and return the grouping as "pages": a list of pages, each a list of photo numbers.
+You are given the chapter's photographs in order, each with the day it was taken, roughly where, and which way it faces. Return "pages": a list of pages, each with the photo numbers on it and a short caption.
 
 How to group them:
 - Photographs share a page only when they belong together: taken the same day or within a few days, in the same place, plainly part of one occasion. Never put two unrelated photographs on a page to save space.
@@ -64,7 +64,14 @@ How to group them:
 - One to four photographs a page. Prefer one or two; three or four only for a run that clearly belongs together, like one afternoon.
 - Use every photograph exactly once, and no number twice.
 - Stay inside the page budget you are given. If there are fewer photographs than the smallest number of pages, use one page each and no more.
-- More pages of fewer photographs is the better book. Only crowd a page when the chapter has more photographs than the budget has pages.`
+- More pages of fewer photographs is the better book. Only crowd a page when the chapter has more photographs than the budget has pages.
+
+The caption on each page:
+- Three to ten words, one line, in the same voice as the introduction. It sits under the date, in the owner's book, beside their photographs.
+- Say something about that page: the season it falls in, the place, where it comes in the chapter's story. "Back at the lake by June", "The long slow middle of winter", "First week in the new house".
+- Only what the dates, the seasons, the place and the story you just wrote actually support. You cannot see these photographs individually — never invent what one shows, never name a person, never claim an event.
+- No full stop at the end unless the line is a sentence. Never a date alone: the date is already printed. Never mention photographs, pictures, or the camera.
+- Every page gets one, and no two pages in a chapter get the same line.`
 
 const LIVING = `This pet is alive and the book celebrates a life still being lived. A little playfulness is welcome. Never imply they have died: no "will be missed", no "rest", no farewells, no "always remembered". The period described is in the past; the pet is not.`;
 
@@ -147,7 +154,7 @@ function pageLayoutLines(chapter: StoryRequest): string {
 
   return `
 
-Then group these ${photos.length} photographs into pages. ${range}
+Then lay these ${photos.length} photographs out as pages, and caption each page. ${range}
 ${rows}`;
 }
 

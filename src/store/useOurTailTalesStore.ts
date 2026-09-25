@@ -399,9 +399,9 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
     set((state) => {
       const chapters = state.chapters.map((chapter) => {
         if (chapter.id !== chapterId) return chapter;
-        // The model grouped the chapter's photographs onto pages as well as
-        // writing it. Anything unusable in that grouping leaves the chapter
-        // with the one it was created with, never without one.
+        // The model laid the chapter's pages out and captioned them as well
+        // as writing it. Anything unusable leaves the chapter with the
+        // grouping it was created with, never without one.
         const planned = planFromIndexes(chapterBodyIds(chapter), story.pages);
         return {
           ...chapter,

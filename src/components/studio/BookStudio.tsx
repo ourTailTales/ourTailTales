@@ -1,7 +1,17 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, Download, Lock, Maximize2, RotateCcw } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  BookImage,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Lock,
+  Maximize2,
+  Palette,
+  RotateCcw,
+  SlidersHorizontal,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { track } from "@/lib/analytics";
 
@@ -13,6 +23,7 @@ import { DesignPicker } from "@/components/studio/DesignPicker";
 import { LockedWall } from "@/components/studio/LockedWall";
 import { PageFilmstrip } from "@/components/studio/PageFilmstrip";
 import { PageInspector } from "@/components/studio/PageInspector";
+import { ToolsDock, type ToolSection } from "@/components/studio/ToolsDock";
 import { TEASER_DESIGN_ID, withDesign } from "@/lib/book/design";
 import { buildSlides } from "@/lib/book/studio";
 import { summarizeTeaser } from "@/lib/book/teaser";
@@ -123,6 +134,73 @@ export function BookStudio({
   // LockedWall, and an unlocked account has nothing left to continue to.
   const showContinueToEdit = !slide.locked && !unlocked;
 
+  // One definition of each tool panel, shown in the sidebar on a wide screen
+  // and lifted into a sheet from the dock on a narrow one.
+  const designPanel = (): ReactNode => (
+    <DesignPicker page={slide.page} meta={meta} chapters={chapters} photos={photoMap} />
+  );
+  const pagePanel = (): ReactNode => (
+    <PageInspector
+      key={slide.key}
+      slide={slide}
+      photos={photoList}
+      onRegenerate={onRegenerate}
+      onFiles={onFiles}
+      processing={processing}
+      unlocked={unlocked}
+      onUnlock={onUnlock}
+    />
+  );
+  const coverPanel = (): ReactNode => (
+    <div>
+      <h2 className="font-display text-lg text-page-ink">Cover styles</h2>
+      <p className="mt-1 text-xs leading-5 text-page-ink-faint">
+        Your free book is bound in the first one. The rest — including two with no photo at
+        all — open with an account.
+      </p>
+      <div className="mt-3">
+        <CoverStylePicker
+          current={meta.coverLayoutId}
+          petName={meta.petName}
+          unlocked={false}
+          onPick={() => {}}
+          onUnlock={onUnlock}
+        />
+      </div>
+    </div>
+  );
+
+  // What the tools are, for this page and this reader. A locked page has no
+  // tools at all — what it has is the wall, which is not a tool but the
+  // whole point of the page, and stays under the book where it is read.
+  const sections: ToolSection[] = slide.locked
+    ? []
+    : unlocked
+      ? [
+          {
+            id: `page-${slide.key}`,
+            label: slide.page ? slide.label : "Cover",
+            icon: <SlidersHorizontal aria-hidden className="size-5" />,
+            panel: pagePanel,
+          },
+          {
+            id: "design",
+            label: "Book design",
+            icon: <Palette aria-hidden className="size-5" />,
+            panel: designPanel,
+          },
+        ]
+      : slide.page
+        ? []
+        : [
+            {
+              id: "covers",
+              label: "Cover styles",
+              icon: <BookImage aria-hidden className="size-5" />,
+              panel: coverPanel,
+            },
+          ];
+
   return (
     <div className="flex flex-col gap-5">
       {!unlocked && bookExpiresAt ? (
@@ -150,7 +228,26 @@ export function BookStudio({
         </p>
       ) : null}
 
-      <div className="flex flex-col gap-5">
+      {/* The book and its tools, side by side where there is room for both.
+          The tools used to sit under the page and under the filmstrip, so
+          changing anything began with scrolling the book off the screen. */}
+      <div className="lg:grid lg:grid-cols-[21rem_minmax(0,1fr)] lg:items-start lg:gap-6">
+        <aside className="hidden lg:sticky lg:top-4 lg:block lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto lg:pr-1">
+          {sections.length > 0 ? (
+            <div className="flex flex-col gap-4">
+              {sections.map((section) => (
+                <div
+                  key={section.id}
+                  className="rounded-2xl border border-page-line bg-white/95 p-5"
+                >
+                  {section.panel()}
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </aside>
+
+        <div className="flex min-w-0 flex-col gap-5">
         {/* Viewport — one page at a time, at every width. The carousel's
             peek-at-the-neighbors treatment did not render the page correctly
             once it was squeezed to a partial-width slide on a phone, so this
@@ -258,66 +355,18 @@ export function BookStudio({
           />
         </div>
 
-        {/* Tools for this page, or the way past the wall. Below the carousel
-            at every width now, rather than in a column beside it: the page is
-            what people came to look at, so it gets the whole width, and the
-            account CTA is what they read next, so it comes next. */}
-        <aside className="mx-auto w-full max-w-2xl">
-          {slide.locked ? (
+        {slide.locked ? (
+          <div className="mx-auto w-full max-w-2xl">
             <LockedWall
               petName={meta.petName}
               hiddenPages={teaser.hiddenPages}
               hiddenChapters={teaser.hiddenChapters}
               onUnlock={onUnlock}
             />
-          ) : unlocked ? (
-            <div className="flex flex-col gap-4">
-            <div className="rounded-2xl border border-page-line bg-white/95 p-5">
-              <DesignPicker
-                page={slide.page}
-                meta={meta}
-                chapters={chapters}
-                photos={photoMap}
-              />
-            </div>
-            <div className="rounded-2xl border border-page-line bg-white/95 p-5">
-              <PageInspector
-                key={slide.key}
-                slide={slide}
-                photos={photoList}
-                onRegenerate={onRegenerate}
-                onFiles={onFiles}
-                processing={processing}
-                unlocked
-                onUnlock={onUnlock}
-              />
-            </div>
-            </div>
-          ) : !slide.page ? (
-            // Signed out, on the cover: the one panel worth showing before an
-            // account exists. Somebody deciding whether to make one should be
-            // able to see the six covers they would be choosing between, not
-            // be told there are some.
-            <div className="rounded-2xl border border-page-line bg-white/95 p-5">
-              <h2 className="font-display text-lg text-page-ink">Cover styles</h2>
-              <p className="mt-1 text-xs leading-5 text-page-ink-faint">
-                Your free book is bound in the first one. The rest — including two with no
-                photo at all — open with an account.
-              </p>
-              <div className="mt-3">
-                <CoverStylePicker
-                  current={meta.coverLayoutId}
-                  petName={meta.petName}
-                  unlocked={false}
-                  onPick={() => {}}
-                  onUnlock={onUnlock}
-                />
-              </div>
-            </div>
-          ) : null}
-        </aside>
+          </div>
+        ) : null}
 
-        {/* Download, below the tools on narrow screens. No free-pages
+        {/* Download, below the book on narrow screens. No free-pages
             download here either: signed out, there is only the order. */}
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-2.5 lg:hidden">
           {unlocked ? (
@@ -332,7 +381,14 @@ export function BookStudio({
             </button>
           ) : null}
         </div>
+
+        {/* Room for the dock to float over, so the last control on the page
+            is never under it. */}
+          {sections.length > 0 ? <div aria-hidden className="h-16 lg:hidden" /> : null}
+        </div>
       </div>
+
+      <ToolsDock sections={sections} />
     </div>
   );
 }

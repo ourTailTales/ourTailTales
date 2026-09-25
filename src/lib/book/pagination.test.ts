@@ -377,6 +377,21 @@ describe("words written on a page", () => {
     coverPhotoId: "p0",
   };
 
+  it("carries the line the book wrote for a page onto that page", () => {
+    const planned: Chapter = {
+      ...chapter,
+      pagePlan: [
+        { photos: ["p1", "p2"], caption: "Back at the lake by June" },
+        { photos: ["p3"], caption: "The long slow middle of winter" },
+      ],
+    };
+    const pages = paginateBook(meta, [planned]).filter((entry) => entry.kind === "photos");
+
+    expect(pages[0]!.photoIds).toEqual(["p1", "p2"]);
+    expect(pages[0]!.caption).toBe("Back at the lake by June");
+    expect(pages[1]!.caption).toBe("The long slow middle of winter");
+  });
+
   it("rides from the chapter onto the page it was written on", () => {
     const withLayout = applyPageLayout(chapter, 2, "caption-right-2");
     const written = applyPageNote(withLayout, 2, 0, "He met the water all at once.");

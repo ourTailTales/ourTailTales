@@ -379,6 +379,28 @@ describe("layouts that hold words", () => {
     }
   });
 
+  it("prints the line written for the page under the owner's own words", () => {
+    const { contextFor } = book();
+    const spec = PHOTO_LAYOUTS.find((entry) => entry.id === "caption-right-1")!;
+    const written = (page: BookPage): string =>
+      designPage(page, contextFor(page))
+        .texts.flatMap((block) => layoutTextBlock(block).lines.map((line) => line.text))
+        .join(" ");
+
+    const base = photoPage(spec);
+    // The line the book wrote for this page.
+    expect(written({ ...base, caption: "Back at the lake by June" })).toMatch(
+      /Back at the lake by June/,
+    );
+    // The owner's own words win over it.
+    expect(
+      written({ ...base, caption: "Back at the lake by June", notes: ["He swam in anything."] }),
+    ).toMatch(/He swam in anything/);
+    expect(
+      written({ ...base, caption: "Back at the lake by June", notes: ["He swam in anything."] }),
+    ).not.toMatch(/Back at the lake/);
+  });
+
   it("falls back to the page's own date when nothing has been written", () => {
     const { contextFor } = book();
     const spec = PHOTO_LAYOUTS.find((entry) => entry.id === "caption-right-1")!;
