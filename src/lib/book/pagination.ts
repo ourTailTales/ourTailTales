@@ -396,21 +396,6 @@ export function planChapterPages(
 }
 
 /**
- * How many photographs sit on each of a chapter's pages: the grouping made
- * when the chapter was written, brought in line with the photographs the
- * chapter holds now, or a fresh grouping for a chapter saved before the book
- * kept one.
- */
-function pageSizes(
-  chapter: Chapter,
-  body: readonly string[],
-  photos: PhotoLookup,
-): number[] | undefined {
-  const kept = chapterPlan(chapter, body, photos);
-  return kept?.map((page) => page.photos.length);
-}
-
-/**
  * The chapter's pages as they were planned, brought in line with the
  * photographs it holds now — or a fresh grouping for a chapter saved before
  * the book kept one.

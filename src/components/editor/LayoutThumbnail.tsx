@@ -41,29 +41,38 @@ export function LayoutThumbnail({
       aria-checked={active}
       aria-label={`${spec.label} cover${locked ? " — needs an account" : ""}`}
       title={locked ? `${spec.label} — ${spec.description} Free account required.` : spec.description}
-      className={`group relative aspect-square w-full overflow-hidden rounded-lg border-2 transition-all ${
+      className={`group relative block w-full overflow-hidden rounded-lg border-2 text-left transition-all ${
         active
           ? "border-periwinkle shadow-md"
           : "border-line hover:border-periwinkle/50"
       }`}
     >
-      <span className={locked ? "block h-full w-full opacity-60 grayscale-[0.35]" : "block h-full w-full"}>
+      <span
+        className={`relative block aspect-square w-full ${
+          locked ? "opacity-60 grayscale-[0.35]" : ""
+        }`}
+      >
         <SkeletonLayout layoutId={layoutId} petName={petName} />
       </span>
 
       {active ? (
-        <span className="absolute right-1 top-1 flex size-5 items-center justify-center rounded-full bg-periwinkle text-white shadow-sm">
-          <Check aria-hidden className="size-3" strokeWidth={3} />
+        <span className="absolute right-1.5 top-1.5 flex size-6 items-center justify-center rounded-full bg-periwinkle text-white shadow-sm">
+          <Check aria-hidden className="size-3.5" strokeWidth={3} />
         </span>
       ) : locked ? (
-        <span className="absolute right-1 top-1 flex size-5 items-center justify-center rounded-full bg-ink/70 text-white shadow-sm">
-          <Lock aria-hidden className="size-2.5" strokeWidth={2.5} />
+        <span className="absolute right-1.5 top-1.5 flex size-6 items-center justify-center rounded-full bg-ink/70 text-white shadow-sm">
+          <Lock aria-hidden className="size-3" strokeWidth={2.5} />
         </span>
       ) : null}
 
+      {/* Under the square rather than over it: the name of the style and the
+          pet's name in the miniature were landing on top of each other, and
+          the one thing a cover picker has to be is legible. */}
       <span
-        className={`absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink/60 to-transparent px-2 pb-1.5 pt-4 text-center text-[10px] font-medium tracking-wide text-white ${
-          active ? "opacity-100" : "opacity-80 group-hover:opacity-100"
+        className={`block border-t px-2 py-1.5 text-center text-[0.7rem] font-medium ${
+          active
+            ? "border-periwinkle/40 bg-periwinkle-wash/50 text-periwinkle-deep"
+            : "border-line bg-white text-page-ink-soft"
         }`}
       >
         {spec.label}

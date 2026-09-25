@@ -80,6 +80,8 @@ export function BookStudio({
   const [selected, setSelected] = useState(0);
   const [confirmReset, setConfirmReset] = useState(false);
   const [zoomed, setZoomed] = useState(false);
+  /** How far the page has been dragged sideways, in pixels. */
+  const [drag, setDrag] = useState(0);
 
   const photoMap = useMemo(() => photoMapOf(photos), [photos]);
   const photoList = useMemo(() => selectablePhotos(photos), [photos]);
@@ -105,6 +107,58 @@ export function BookStudio({
     },
     [slides.length],
   );
+
+  /**
+   * Turning the page by pushing it.
+   *
+   * The same gesture the strip below already answers to, on the thing people
+   * actually look at: drag or swipe the page sideways and it follows your
+   * hand, let go past a quarter of its width and the book turns. Anything
+   * short of that springs back, so a hesitant swipe never loses your place.
+   * Vertical movement is left alone — the page still scrolls under a thumb.
+   */
+  const swipe = useRef<{ x: number; y: number; active: boolean } | null>(null);
+  /** True from the end of a drag until the click it would otherwise fire. */
+  const justSwiped = useRef(false);
+  const SWIPE_SLOP = 8;
+
+  const onPagePointerDown = (event: React.PointerEvent<HTMLDivElement>): void => {
+    if (event.button !== 0 || zoomed) return;
+    swipe.current = { x: event.clientX, y: event.clientY, active: false };
+  };
+
+  const onPagePointerMove = (event: React.PointerEvent<HTMLDivElement>): void => {
+    const start = swipe.current;
+    if (!start) return;
+    const dx = event.clientX - start.x;
+    const dy = event.clientY - start.y;
+    // A gesture is a page turn only once it is clearly sideways; until then
+    // it may still be a scroll, and the page must not swallow it.
+    if (!start.active) {
+      if (Math.abs(dx) < SWIPE_SLOP || Math.abs(dx) <= Math.abs(dy)) return;
+      start.active = true;
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+    // Resistance at the ends: the first and last pages give a little and
+    // stop, the way a real book does.
+    const atEnd = (dx > 0 && position === 0) || (dx < 0 && position >= slides.length - 1);
+    setDrag(atEnd ? dx * 0.25 : dx);
+  };
+
+  const endPageSwipe = (event: React.PointerEvent<HTMLDivElement>): void => {
+    const start = swipe.current;
+    swipe.current = null;
+    if (start?.active && event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    if (!start?.active) return;
+    // The click this pointer is about to fire belongs to the drag, not to
+    // whatever it happened to finish on top of.
+    justSwiped.current = true;
+    const width = event.currentTarget.clientWidth || 1;
+    if (Math.abs(drag) > Math.min(width * 0.25, 120)) move(drag < 0 ? 1 : -1);
+    setDrag(0);
+  };
 
   // The moment someone runs out of free book is the number worth watching.
   const wallSeen = useRef(false);
@@ -231,14 +285,20 @@ export function BookStudio({
       {/* The book and its tools, side by side where there is room for both.
           The tools used to sit under the page and under the filmstrip, so
           changing anything began with scrolling the book off the screen. */}
-      <div className="lg:grid lg:grid-cols-[21rem_minmax(0,1fr)] lg:items-start lg:gap-6">
-        <aside className="hidden lg:sticky lg:top-4 lg:block lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto lg:pr-1">
+      <div className="lg:grid lg:grid-cols-[21rem_minmax(0,1fr)] lg:gap-6">
+        {/* As tall as the book beside it — from the top of the page to the
+            foot of the strip — so the tools are a column rather than a card
+            floating against white space. The panel that runs long scrolls
+            inside it instead of pushing the page down. */}
+        <aside className="hidden select-none lg:block [&_input]:select-text [&_textarea]:select-text">
           {sections.length > 0 ? (
-            <div className="flex flex-col gap-4">
-              {sections.map((section) => (
+            <div className="flex h-full flex-col gap-4">
+              {sections.map((section, index) => (
                 <div
                   key={section.id}
-                  className="rounded-2xl border border-page-line bg-white/95 p-5"
+                  className={`overflow-y-auto rounded-2xl border border-page-line bg-white/95 p-5 ${
+                    index === 0 ? "min-h-0 flex-1" : ""
+                  }`}
                 >
                   {section.panel()}
                 </div>
@@ -248,14 +308,38 @@ export function BookStudio({
         </aside>
 
         <div className="flex min-w-0 flex-col gap-5">
-        {/* Viewport — one page at a time, at every width. The carousel's
+        {/* The page and the strip of pages under it, at one width: the strip
+            is the book's own pages, so it is as wide as a page is.
+
+            Viewport — one page at a time, at every width. The carousel's
             peek-at-the-neighbors treatment did not render the page correctly
             once it was squeezed to a partial-width slide on a phone, so this
             goes back to the same full-width page and chevrons on mobile as
             on desktop. */}
+        <div className="mx-auto flex w-full max-w-[min(100%,calc(100dvh-9rem))] flex-col gap-4">
         <div className="relative">
-          <div className="relative mx-auto w-full max-w-[min(100%,calc(100dvh-9rem))]">
-            <div className="overflow-hidden rounded-xl bg-white shadow-[0_18px_50px_-24px_rgb(25_32_58/0.5)] ring-1 ring-page-line">
+          <div
+            className="relative w-full touch-pan-y select-none"
+            onPointerDown={onPagePointerDown}
+            onPointerMove={onPagePointerMove}
+            onPointerUp={endPageSwipe}
+            onPointerCancel={endPageSwipe}
+            // A drag that ends on the zoom button, or on a chevron, was a
+            // drag and not a tap.
+            onClickCapture={(event) => {
+              if (!justSwiped.current) return;
+              justSwiped.current = false;
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+          >
+            <div
+              className="overflow-hidden rounded-xl bg-white shadow-[0_18px_50px_-24px_rgb(25_32_58/0.5)] ring-1 ring-page-line"
+              style={{
+                transform: drag ? `translateX(${drag}px)` : undefined,
+                transition: drag ? "none" : "transform 220ms cubic-bezier(0.22, 1, 0.36, 1)",
+              }}
+            >
               <div className={slide.locked ? "blur-[7px] saturate-50" : ""}>
                 {slide.page ? (
                   <PageCanvas
@@ -343,7 +427,7 @@ export function BookStudio({
 
         {/* Filmstrip — under the page on every width, so switching pages and
             looking at one stay next to each other. */}
-        <div className="-mx-5 overflow-hidden sm:-mx-8 lg:mx-0 lg:rounded-xl lg:border lg:border-page-line">
+        <div className="overflow-hidden rounded-xl border border-page-line">
           <PageFilmstrip
             slides={slides}
             selected={position}
@@ -353,6 +437,7 @@ export function BookStudio({
             photos={photoMap}
             photoList={photoList}
           />
+        </div>
         </div>
 
         {slide.locked ? (

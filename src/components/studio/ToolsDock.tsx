@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDown, Plus, X } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 
 import { useDialogA11y } from "@/lib/a11y/useDialog";
 
@@ -27,14 +27,10 @@ export type ToolSection = {
 export function ToolsDock({ sections }: { sections: ToolSection[] }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState<string | null>(null);
+  // Derived rather than reset: a page change takes its own panel's id out of
+  // the list, and the sheet closes because there is nothing to show — no
+  // effect chasing the change.
   const section = sections.find((entry) => entry.id === active) ?? null;
-
-  // A page change closes whatever was open: the panel belonged to the page
-  // that has just gone.
-  const ids = sections.map((entry) => entry.id).join("|");
-  useEffect(() => {
-    setActive((current) => (current && ids.includes(current) ? current : null));
-  }, [ids]);
 
   if (sections.length === 0) return null;
 
@@ -112,7 +108,7 @@ function ToolSheet({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="absolute inset-x-0 bottom-0 max-h-[82dvh] overflow-y-auto overscroll-contain rounded-t-2xl bg-white shadow-[0_-12px_40px_-16px_rgb(25_32_58/0.45)]"
+        className="absolute inset-x-0 bottom-0 max-h-[82dvh] select-none overflow-y-auto overscroll-contain rounded-t-2xl bg-white shadow-[0_-12px_40px_-16px_rgb(25_32_58/0.45)] [&_input]:select-text [&_textarea]:select-text"
       >
         <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-page-line bg-white/95 px-5 py-3 backdrop-blur">
           <span aria-hidden className="absolute inset-x-0 -top-0 mx-auto h-1 w-10 rounded-full" />
