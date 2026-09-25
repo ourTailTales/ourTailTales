@@ -5,21 +5,23 @@ import { Info, RefreshCw } from "lucide-react";
 
 import { AddMediaControl } from "@/components/editor/AddMediaControl";
 import { CustomCoverPanel } from "@/components/editor/CustomCoverPanel";
-import { LayoutThumbnail } from "@/components/editor/LayoutThumbnail";
+import { CoverStylePicker } from "@/components/studio/CoverStylePicker";
 import { LayoutPicker } from "@/components/studio/LayoutPicker";
 import { NamePositionPicker } from "@/components/studio/controls/NamePositionPicker";
 import { PhotoPicker } from "@/components/studio/controls/PhotoPicker";
 import {
   COVER_FONTS,
-  COVER_LAYOUTS,
   DEFAULT_COVER_FONT,
   DEFAULT_COVER_LAYOUT,
   DEFAULT_COVER_NAME_SIZE,
   defaultNameAnchor,
 } from "@/lib/book/coverLayouts";
 import { track } from "@/lib/analytics";
+import { layoutNoteCount } from "@/lib/book/layouts";
 import {
+  MAX_NOTE_LENGTH,
   chapterPageLayouts,
+  chapterPageNotes,
   maxPhotosForPage,
   photoPageIndex,
 } from "@/lib/book/pagination";
@@ -53,12 +55,17 @@ export function PageInspector({
   onRegenerate,
   onFiles,
   processing,
+  unlocked = true,
+  onUnlock,
 }: {
   slide: StudioSlide;
   photos: PhotoAsset[];
   onRegenerate: (chapterId: string) => void;
   onFiles: (files: File[]) => void;
   processing: boolean;
+  /** False for a reader with no account — the locked cover styles still show. */
+  unlocked?: boolean;
+  onUnlock?: () => void;
 }) {
   if (!slide.editable) {
     return (
@@ -70,7 +77,15 @@ export function PageInspector({
   }
 
   if (!slide.page) {
-    return <CoverPanel photos={photos} onFiles={onFiles} processing={processing} />;
+    return (
+      <CoverPanel
+        photos={photos}
+        onFiles={onFiles}
+        processing={processing}
+        unlocked={unlocked}
+        onUnlock={onUnlock}
+      />
+    );
   }
 
   switch (slide.page.kind) {
@@ -104,10 +119,14 @@ function CoverPanel({
   photos,
   onFiles,
   processing,
+  unlocked,
+  onUnlock,
 }: {
   photos: PhotoAsset[];
   onFiles: (files: File[]) => void;
   processing: boolean;
+  unlocked: boolean;
+  onUnlock?: () => void;
 }) {
   const meta = useOurTailTalesStore((state) => state.meta);
   const setMeta = useOurTailTalesStore((state) => state.setMeta);
@@ -133,17 +152,13 @@ function CoverPanel({
       </Field>
 
       <Field label="Style">
-        <div className="grid grid-cols-3 gap-2">
-          {COVER_LAYOUTS.map((layout) => (
-            <LayoutThumbnail
-              key={layout.id}
-              layoutId={layout.id}
-              petName={meta.petName || "Type name here"}
-              active={layoutId === layout.id}
-              onClick={() => setMeta({ coverLayoutId: layout.id })}
-            />
-          ))}
-        </div>
+        <CoverStylePicker
+          current={layoutId}
+          petName={meta.petName}
+          unlocked={unlocked}
+          onPick={(coverLayoutId) => setMeta({ coverLayoutId })}
+          onUnlock={onUnlock ?? (() => {})}
+        />
       </Field>
 
       <BookColors />
@@ -565,6 +580,7 @@ function PhotoPagePanel({
   const chapters = useOurTailTalesStore((state) => state.chapters);
   const swapChapterPhoto = useOurTailTalesStore((state) => state.swapChapterPhoto);
   const setPageLayout = useOurTailTalesStore((state) => state.setPageLayout);
+  const setPageNote = useOurTailTalesStore((state) => state.setPageNote);
 
   const page = slide.page!;
   const chapter = chapters.find((entry) => entry.id === slide.chapterId);
@@ -597,6 +613,44 @@ function PhotoPagePanel({
     chapter && pageIndex !== null ? (chapterPageLayouts(chapter)[pageIndex] ?? null) : null;
   const maxPhotos = chapter && pageIndex !== null ? maxPhotosForPage(chapter, pageIndex) : 0;
 
+  // Only the caption layouts have anywhere to put words, and they say how
+  // many: one note per photo, never more than two.
+  const noteSlots = layoutNoteCount(page.layoutId);
+  const written = chapter && pageIndex !== null ? (chapterPageNotes(chapter)[pageIndex] ?? []) : [];
+
+  const notesField =
+    chapter && pageIndex !== null && noteSlots > 0 ? (
+      <Field
+        label={noteSlots === 1 ? "Words on this page" : "Words beside each photo"}
+        note="Leave it empty and the page keeps the month the photos were taken."
+      >
+        <div className="flex flex-col gap-2">
+          {Array.from({ length: noteSlots }, (_, slot) => (
+            <textarea
+              key={slot}
+              value={written[slot] ?? ""}
+              onChange={(event) =>
+                setPageNote(chapter.id, pageIndex, slot, event.target.value.slice(0, MAX_NOTE_LENGTH))
+              }
+              // Counted once the note is finished, not once per keystroke.
+              onBlur={(event) => {
+                if (event.target.value.trim()) track("page_note_written", { slot });
+              }}
+              rows={3}
+              maxLength={MAX_NOTE_LENGTH}
+              aria-label={noteSlots === 1 ? "Note for this page" : `Note ${slot + 1} of ${noteSlots}`}
+              placeholder={
+                slot === 0
+                  ? "He met the water the way he met everything."
+                  : "And the second photo's story."
+              }
+              className={`${inputClass} resize-none leading-relaxed`}
+            />
+          ))}
+        </div>
+      </Field>
+    ) : null;
+
   const layoutField =
     chapter && pageIndex !== null && maxPhotos > 0 ? (
       <Field
@@ -627,6 +681,7 @@ function PhotoPagePanel({
         }
       >
         {layoutField}
+        {notesField}
       </Panel>
     );
   }
@@ -634,8 +689,9 @@ function PhotoPagePanel({
   const active = page.photoIds[slotIndex];
 
   return (
-    <Panel title={slide.label} hint="Pick a layout, or swap any photo on this page.">
+    <Panel title={slide.label} hint="Pick a layout, write on the page, or swap any photo on it.">
       {layoutField}
+      {notesField}
 
       <Field label={onPage.length === 1 ? "Photo on this page" : "Photos on this page"}>
         <ol className="flex flex-wrap gap-2">

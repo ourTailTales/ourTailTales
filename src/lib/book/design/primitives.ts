@@ -118,7 +118,18 @@ export type TapeShape = Tape & { kind: "tape" };
 
 export type Shape = RectShape | CircleShape | LineShape | TapeShape;
 
-export type DoodleKind = "heart" | "star" | "sparkle" | "loop" | "paw" | "wave";
+export type DoodleKind =
+  | "heart"
+  | "star"
+  | "sparkle"
+  | "loop"
+  | "paw"
+  | "wave"
+  | "bone"
+  | "bowl"
+  | "rosette"
+  | "pup"
+  | "arrow";
 
 export type Doodle = {
   kind: DoodleKind;
@@ -128,6 +139,16 @@ export type Doodle = {
   size: number;
   rotation: number;
   color: string;
+  /**
+   * Filled rather than drawn, whatever the shape's own default is — a heart
+   * drawn in pen becomes a heart cut out of vinyl.
+   */
+  fill?: boolean;
+  /**
+   * A contrasting edge around a filled doodle: the white border of a die-cut
+   * sticker, which is what makes one read as stuck on rather than printed.
+   */
+  outline?: string;
 };
 
 /**
@@ -409,6 +430,49 @@ export const DOODLE_PATHS: Record<DoodleKind, { d: string; fill: boolean }> = {
       ellipse(17.8, 10.4, 1.7, 2.2),
     ].join(" "),
     fill: true,
+  },
+  /** A biscuit-shaped bone: a shaft with a knob at each of its four ends. */
+  bone: {
+    d: [
+      "M6.8 9.7 L17.2 9.7 L17.2 14.3 L6.8 14.3 Z",
+      ellipse(6.8, 10.1, 2.7, 2.6),
+      ellipse(6.8, 13.9, 2.7, 2.6),
+      ellipse(17.2, 10.1, 2.7, 2.6),
+      ellipse(17.2, 13.9, 2.7, 2.6),
+    ].join(" "),
+    fill: true,
+  },
+  /** A supper bowl, drawn in pen: the rim, then the sides. */
+  bowl: {
+    d: "M4.3 10.5C4.3 8.6 19.7 8.6 19.7 10.5C19.7 12.1 4.3 12.1 4.3 10.5M4.8 11.6L6.7 18.1C7 19.1 17 19.1 17.3 18.1L19.2 11.6",
+    fill: false,
+  },
+  /** A first-place rosette, ribbons and all. */
+  rosette: {
+    d: [
+      ellipse(12, 9.2, 4.9, 4.9),
+      ellipse(12, 9.2, 2.6, 2.6),
+      "M9 13.1 L7.5 21.2 L12 18.5 L16.5 21.2 L15 13.1",
+    ].join(" "),
+    fill: false,
+  },
+  /** A dog looking back at the reader: ears, eyes, nose, and a small smile. */
+  pup: {
+    d: [
+      ellipse(12, 13.6, 5.2, 4.5),
+      "M7.9 9.9C6.3 7.5 6.9 4.9 8.7 5.5C10.1 6 10.9 7.5 11.1 8.9",
+      "M16.1 9.9C17.7 7.5 17.1 4.9 15.3 5.5C13.9 6 13.1 7.5 12.9 8.9",
+      ellipse(10.1, 12.7, 0.55, 0.72),
+      ellipse(13.9, 12.7, 0.55, 0.72),
+      ellipse(12, 14.9, 1.15, 0.88),
+      "M12 15.8 L12 16.7 M12 16.7C11.2 17.6 10.2 17.2 10 16.5 M12 16.7C12.8 17.6 13.8 17.2 14 16.5",
+    ].join(" "),
+    fill: false,
+  },
+  /** The curved arrow an owner draws to point at the one they mean. */
+  arrow: {
+    d: "M3.5 6.5C7.5 5.5 14.5 6.5 17.5 13.5M17.5 13.5L13.6 12.3M17.5 13.5L18.8 9.6",
+    fill: false,
   },
 };
 

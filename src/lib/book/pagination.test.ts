@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  isCaptionLayout,
+  isPhotoLayout,
+  layoutNoteCount,
+  layoutPhotoCount,
+} from "@/lib/book/layouts";
+import {
   applyPageLayout,
+  applyPageNote,
+  chapterPageNotes,
   maxPhotosForPage,
   paginateBook,
   photoPageIndex,
@@ -205,5 +213,144 @@ describe("choosing a page's layout", () => {
     const pages = photoPages([chapter(20)]);
     expect(photoPageIndex(pages[4]!)).toBe(4);
     expect(photoPageIndex({ ...pages[4]!, chapterPageIndex: undefined })).toBe(4);
+  });
+});
+
+describe("a book that does not look machine-made", () => {
+  function fullBook(photosPerChapter = 28) {
+    const chapters: Chapter[] = Array.from({ length: 5 }, (_, index) => ({
+      id: `chapter-${index + 1}`,
+      index,
+      photoIds: Array.from({ length: photosPerChapter }, (_u, photo) => `p-${index}-${photo}`),
+      candidateIds: [],
+      startAt: null,
+      endAt: null,
+      title: `Chapter ${index + 1}`,
+      dateLabel: "Summer 2019",
+      blurb: "",
+      places: [],
+      heroPhotoId: `p-${index}-0`,
+      aiStatus: "done" as const,
+    }));
+    const meta: BookMeta = {
+      petName: "Biscuit",
+      birthYear: "",
+      deathYear: "",
+      dedication: "For Biscuit.",
+      coverPhotoId: "p-0-0",
+    };
+    const orientations = new Map(
+      chapters.flatMap((chapter) =>
+        chapter.photoIds.map((id, index) => [
+          id,
+          index % 3 === 0 ? ("portrait" as const) : ("landscape" as const),
+        ]),
+      ),
+    );
+    return { chapters, meta, pages: paginateBook(meta, chapters, orientations) };
+  }
+
+  it("deals many different layouts, some of them holding words", () => {
+    const { pages } = fullBook();
+    const photoPages = pages.filter((page) => page.kind === "photos");
+    const layouts = photoPages.map((page) => page.layoutId!);
+
+    expect(new Set(layouts).size).toBeGreaterThanOrEqual(10);
+    expect(layouts.filter((id) => isCaptionLayout(id)).length).toBeGreaterThanOrEqual(10);
+    // Varied page counts, including the occasional page-sized photograph.
+    const counts = new Set(photoPages.map((page) => page.photoIds.length));
+    expect(counts.size).toBeGreaterThanOrEqual(3);
+    expect(counts.has(1)).toBe(true);
+  });
+
+  it("still gives the free preview a mix, in its first few pages", () => {
+    const { pages } = fullBook();
+    // The teaser is the front of the book: nine interior pages.
+    const teaser = pages.slice(0, 9).filter((page) => page.kind === "photos");
+    expect(new Set(teaser.map((page) => page.layoutId)).size).toBe(teaser.length);
+    expect(teaser.some((page) => isCaptionLayout(page.layoutId))).toBe(true);
+  });
+
+  it("never repeats a layout twice running, and never leaves a page empty", () => {
+    const { pages } = fullBook(22);
+    const photoPages = pages.filter((page) => page.kind === "photos");
+    for (const page of photoPages) {
+      expect(page.photoIds.length).toBeGreaterThan(0);
+      expect(isPhotoLayout(page.layoutId)).toBe(true);
+      if (isPhotoLayout(page.layoutId)) {
+        expect(page.photoIds).toHaveLength(layoutPhotoCount(page.layoutId));
+      }
+    }
+    for (let index = 1; index < photoPages.length; index += 1) {
+      expect(photoPages[index]!.layoutId).not.toBe(photoPages[index - 1]!.layoutId);
+    }
+  });
+
+  it("places every photograph a chapter has", () => {
+    for (const perChapter of [12, 19, 28, 34]) {
+      const { chapters, pages } = fullBook(perChapter);
+      const placed = new Set(pages.flatMap((page) => page.photoIds));
+      for (const id of chapters[0]!.photoIds) expect(placed.has(id)).toBe(true);
+    }
+  });
+
+  it("lays the same book out the same way every time", () => {
+    expect(fullBook().pages).toEqual(fullBook().pages);
+  });
+});
+
+describe("words written on a page", () => {
+  const chapter: Chapter = {
+    id: "chapter-1",
+    index: 0,
+    photoIds: Array.from({ length: 20 }, (_, index) => `p${index}`),
+    candidateIds: [],
+    startAt: null,
+    endAt: null,
+    title: "Chapter 1",
+    dateLabel: "Summer 2019",
+    blurb: "",
+    places: [],
+    heroPhotoId: "p0",
+    aiStatus: "done",
+  };
+  const meta: BookMeta = {
+    petName: "Biscuit",
+    birthYear: "",
+    deathYear: "",
+    dedication: "",
+    coverPhotoId: "p0",
+  };
+
+  it("rides from the chapter onto the page it was written on", () => {
+    const withLayout = applyPageLayout(chapter, 2, "caption-right-2");
+    const written = applyPageNote(withLayout, 2, 0, "He met the water all at once.");
+    const page = paginateBook(meta, [written]).filter((entry) => entry.kind === "photos")[2]!;
+
+    expect(page.layoutId).toBe("caption-right-2");
+    expect(page.notes).toEqual(["He met the water all at once.", null]);
+    expect(layoutNoteCount(page.layoutId)).toBe(2);
+  });
+
+  it("clears a note that is emptied, and keeps the chapter tidy", () => {
+    const written = applyPageNote(chapter, 1, 0, "Something.");
+    expect(chapterPageNotes(written)[1]).toEqual(["Something."]);
+
+    const cleared = applyPageNote(written, 1, 0, "   ");
+    expect(cleared.pageNotes).toBeUndefined();
+  });
+
+  it("keeps a note off a page whose layout has nowhere to put it", () => {
+    const written = applyPageNote(applyPageLayout(chapter, 0, "four-grid"), 0, 0, "Nowhere to go.");
+    const page = paginateBook(meta, [written]).filter((entry) => entry.kind === "photos")[0]!;
+    expect(page.layoutId).toBe("four-grid");
+    expect(page.notes).toBeUndefined();
+    // The words are not lost — they come back if the page takes a layout that holds them.
+    expect(chapterPageNotes(written)[0]).toEqual(["Nowhere to go."]);
+  });
+
+  it("refuses a third note on a page", () => {
+    const written = applyPageNote(chapter, 0, 2, "One too many.");
+    expect(written.pageNotes).toBeUndefined();
   });
 });

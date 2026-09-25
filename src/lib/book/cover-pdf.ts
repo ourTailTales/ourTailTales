@@ -14,12 +14,21 @@ import {
   CLASSIC_SCRIM_HEIGHT,
   CLASSIC_SCRIM_STOPS,
   DEFAULT_COVER_NAME_SIZE,
+  KEEPSAKE_PAW,
+  KEEPSAKE_RULES,
+  MONOGRAM_LETTER,
+  PLATE_RULE_HALF_WIDTH,
+  PLATE_RULE_Y,
+  PLATE_YEARS_Y,
+  PORTRAIT_MAT,
+  PORTRAIT_WINDOW,
   coverTextTone,
   defaultNameAnchor,
 } from "@/lib/book/coverLayouts";
+import { DOODLE_PATHS, DOODLE_STROKE, lifespanText } from "@/lib/book/design/primitives";
 import { verticalAlphaRampPng } from "@/lib/book/gradient-png";
-import { resolvePalette } from "@/lib/book/palette";
-import { coverNameFont, drawable, loadBookFonts } from "@/lib/book/pdf-fonts";
+import { resolvePalette, type BookPalette } from "@/lib/book/palette";
+import { coverNameFont, drawable, loadBookFonts, type BookFonts } from "@/lib/book/pdf-fonts";
 import { brand, hexToRgb01 } from "@/lib/brand";
 import { expiryHeadline, formatExpiryDate } from "@/lib/drafts/expiry";
 import * as assetStore from "@/lib/photo/assetStore";
@@ -101,6 +110,9 @@ export async function renderCoverPdf(args: {
     artHeight,
     coverFile,
     targetPpi,
+    meta,
+    palette,
+    fonts,
   });
 
   const nameBold = meta.coverNameBold ?? true;
@@ -234,7 +246,7 @@ function drawCoverName(
   // used to end up in the file.
   if (!petName) return;
   const anchor = meta.coverNameAnchor ?? defaultNameAnchor(layoutId);
-  const nameColor = coverTextTone(layoutId) === "dark" ? INK : PAPER;
+  const nameColor = coverTextTone(layoutId) === "dark" ? brandRgb(resolvePalette(meta).ink) : PAPER;
 
   // Large, but never wider than the cover: a long name steps down to fit
   // rather than running off the edge.
@@ -299,6 +311,9 @@ export async function drawFrontCoverPage(
     artHeight: height,
     coverFile,
     targetPpi,
+    meta,
+    palette: resolvePalette(meta),
+    fonts,
   });
 
   const nameFont = coverNameFont(fontId, fonts, meta.coverNameBold ?? true);
@@ -330,21 +345,23 @@ async function drawCoverLayout(
     artHeight: number;
     coverFile: File | undefined;
     targetPpi: number;
+    meta: BookMeta;
+    palette: BookPalette;
+    fonts: BookFonts;
   },
 ): Promise<void> {
-  const { layoutId, artLeft, artWidth, artHeight, coverFile, targetPpi } = args;
+  const { layoutId, artLeft, artWidth, artHeight, coverFile, targetPpi, meta, palette, fonts } = args;
+  const full: Rect = { x: artLeft, y: 0, width: artWidth, height: artHeight };
 
   switch (layoutId) {
     case "minimal": {
-      const rect: Rect = { x: artLeft, y: 0, width: artWidth, height: artHeight };
-      await drawPhotoOrFallback(pdf, page, coverFile, targetPpi, rect);
-      page.drawRectangle({ ...rect, color: SCRIM, opacity: 0.4 });
+      await drawPhotoOrFallback(pdf, page, coverFile, targetPpi, full);
+      page.drawRectangle({ ...full, color: SCRIM, opacity: 0.4 });
       return;
     }
 
     case "editorial": {
-      const rect: Rect = { x: artLeft, y: 0, width: artWidth, height: artHeight };
-      await drawPhotoOrFallback(pdf, page, coverFile, targetPpi, rect);
+      await drawPhotoOrFallback(pdf, page, coverFile, targetPpi, full);
       // A bold ink title band across the vertical middle — mirrors
       // `CoverLayoutChrome`'s "editorial" case (top 40%, height 27%).
       const bandHeight = artHeight * 0.27;
@@ -360,13 +377,134 @@ async function drawCoverLayout(
       return;
     }
 
+    case "portrait": {
+      // The photograph as a framed print on the book's own paper, the name
+      // set on the paper beneath it.
+      page.drawRectangle({ ...full, color: brandRgb(palette.paper) });
+      const window: Rect = {
+        x: artLeft + PORTRAIT_WINDOW.x * artWidth,
+        y: artHeight - (PORTRAIT_WINDOW.y + PORTRAIT_WINDOW.h) * artHeight,
+        width: PORTRAIT_WINDOW.w * artWidth,
+        height: PORTRAIT_WINDOW.h * artHeight,
+      };
+      const mat = PORTRAIT_MAT * artWidth;
+      page.drawRectangle({
+        x: window.x - mat,
+        y: window.y - mat,
+        width: window.width + mat * 2,
+        height: window.height + mat * 2,
+        color: PAPER,
+      });
+      await drawPhotoOrFallback(pdf, page, coverFile, targetPpi, window);
+      drawPlate(page, { meta, palette, fonts, artLeft, artWidth, artHeight });
+      return;
+    }
+
+    case "keepsake": {
+      page.drawRectangle({ ...full, color: brandRgb(palette.paper) });
+      const ink = brandRgb(palette.inkSoft);
+      KEEPSAKE_RULES.forEach((inset, index) => {
+        page.drawRectangle({
+          x: artLeft + inset * artWidth,
+          y: inset * artHeight,
+          width: artWidth * (1 - inset * 2),
+          height: artHeight * (1 - inset * 2),
+          borderColor: ink,
+          borderWidth: index === 0 ? 1.6 : 0.8,
+          borderOpacity: index === 0 ? 0.45 : 0.32,
+        });
+      });
+      const paw = KEEPSAKE_PAW.size * artWidth;
+      page.drawSvgPath(DOODLE_PATHS.paw.d, {
+        x: artLeft + artWidth / 2 - paw / 2,
+        y: artHeight - KEEPSAKE_PAW.cy * artHeight + paw / 2,
+        scale: paw / 24,
+        color: brandRgb(palette.accent),
+        opacity: 0.85,
+        borderWidth: DOODLE_STROKE,
+      });
+      drawPlate(page, { meta, palette, fonts, artLeft, artWidth, artHeight });
+      return;
+    }
+
+    case "monogram": {
+      page.drawRectangle({ ...full, color: brandRgb(palette.paper) });
+      const initial = meta.petName.trim().slice(0, 1).toUpperCase();
+      if (initial) {
+        const size = MONOGRAM_LETTER.size * artWidth;
+        const width = fonts.serif.widthOfTextAtSize(initial, size);
+        page.drawText(drawable(fonts.serif, initial), {
+          x: artLeft + artWidth / 2 - width / 2,
+          y: artHeight - MONOGRAM_LETTER.cy * artHeight - size * 0.35,
+          size,
+          font: fonts.serif,
+          color: brandRgb(palette.accent),
+          opacity: MONOGRAM_LETTER.opacity,
+        });
+      }
+      drawPlate(page, { meta, palette, fonts, artLeft, artWidth, artHeight });
+      return;
+    }
+
     case "classic":
     default: {
-      const rect: Rect = { x: artLeft, y: 0, width: artWidth, height: artHeight };
-      await drawPhotoOrFallback(pdf, page, coverFile, targetPpi, rect);
+      await drawPhotoOrFallback(pdf, page, coverFile, targetPpi, full);
       await drawScrim(pdf, page, artLeft, artWidth, artHeight * CLASSIC_SCRIM_HEIGHT, 0);
       return;
     }
+  }
+}
+
+/**
+ * The small rule and the years under it, on the covers whose name sits on
+ * paper rather than on a photograph. Mirrors `PlateRule`/`PlateYears` in
+ * `CoverLayoutChrome`.
+ */
+function drawPlate(
+  page: PDFPage,
+  args: {
+    meta: BookMeta;
+    palette: BookPalette;
+    fonts: BookFonts;
+    artLeft: number;
+    artWidth: number;
+    artHeight: number;
+  },
+): void {
+  const { meta, palette, fonts, artLeft, artWidth, artHeight } = args;
+  const centerX = artLeft + artWidth / 2;
+
+  page.drawLine({
+    start: {
+      x: centerX - PLATE_RULE_HALF_WIDTH * artWidth,
+      y: artHeight - PLATE_RULE_Y * artHeight,
+    },
+    end: {
+      x: centerX + PLATE_RULE_HALF_WIDTH * artWidth,
+      y: artHeight - PLATE_RULE_Y * artHeight,
+    },
+    thickness: 0.9,
+    color: brandRgb(palette.accent),
+    opacity: 0.7,
+  });
+
+  const years = lifespanText(meta);
+  if (!years) return;
+  const size = artWidth * 0.032;
+  const tracking = size * 0.34;
+  const text = drawable(fonts.sans, years);
+  const width =
+    fonts.sans.widthOfTextAtSize(text, size) + tracking * Math.max(0, [...text].length - 1);
+  let cursor = centerX - width / 2;
+  for (const character of [...text]) {
+    page.drawText(character, {
+      x: cursor,
+      y: artHeight - PLATE_YEARS_Y * artHeight - size * 0.8,
+      size,
+      font: fonts.sans,
+      color: brandRgb(palette.inkSoft),
+    });
+    cursor += fonts.sans.widthOfTextAtSize(character, size) + tracking;
   }
 }
 

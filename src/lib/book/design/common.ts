@@ -7,6 +7,8 @@ import {
   type Paragraph,
   type TextBlock,
 } from "@/lib/book/design/primitives";
+import { layoutTextBlock } from "@/lib/book/design/text";
+import { isPhotoLayout, layoutNoteCount } from "@/lib/book/layouts";
 import { possessivePetName } from "@/lib/book/pagination";
 import type { BookPage, DesignId } from "@/types/book";
 
@@ -102,4 +104,118 @@ export function dedicationType(text: string): { size: number; leading: number } 
 /** The page's hero photo, if it has one. */
 export function heroOf(page: BookPage): string | undefined {
   return page.photoIds[0];
+}
+
+/* ------------------------------ page notes ------------------------------ */
+
+/**
+ * What a caption layout's note slot has to say.
+ *
+ * The owner's own words when they wrote some, and when they did not, what the
+ * book already knows about that page: the month its photographs were taken
+ * and, once per page, where. That fallback is the whole reason a caption
+ * layout can be dealt automatically — a page that would otherwise print an
+ * empty box instead prints a date line, which is what an album page has said
+ * since long before any of this.
+ */
+export type PageNote = {
+  /** The owner's words, or null. */
+  text: string | null;
+  /** "June 2019", from the photograph on this page, or the chapter's own line. */
+  date: string | null;
+  /** "Lake Tahoe" — only ever on a page's first note. */
+  place: string | null;
+};
+
+/** The notes a page carries, one per slot its layout keeps room for. */
+export function pageNotes(page: BookPage, context: DesignContext): PageNote[] {
+  const slots = isPhotoLayout(page.layoutId) ? layoutNoteCount(page.layoutId) : 0;
+  if (slots === 0) return [];
+
+  return Array.from({ length: slots }, (_, index) => {
+    const written = page.notes?.[index];
+    // Two notes on a page of two photographs belong one to each.
+    const photoId = slots === page.photoIds.length ? page.photoIds[index] : page.photoIds[0];
+    const date = (photoId ? context.captionOf(photoId) : null) ?? chapterDate(context);
+    return {
+      text: typeof written === "string" && written.trim() ? written.trim() : null,
+      date,
+      place: index === 0 && slots === 1 ? placeLabel(context) : null,
+    };
+  });
+}
+
+function chapterDate(context: DesignContext): string | null {
+  const label = context.chapter?.dateLabel.trim();
+  return label ? label : null;
+}
+
+function placeLabel(context: DesignContext): string | null {
+  const place = context.chapter?.places[0];
+  if (!place) return null;
+  return place.city || place.region || place.country || null;
+}
+
+/** True for a note with nothing at all to print. */
+export function isEmptyNote(note: PageNote): boolean {
+  return !note.text && !note.date && !note.place;
+}
+
+export type NoteStyle = {
+  /** The owner's words. */
+  body: { font: FontRole; size: number; leading?: number; color: string; maxLines?: number };
+  /** The date line, and the place beside it. */
+  meta: { font: FontRole; size: number; color: string; tracking?: number; uppercase?: boolean };
+  /** The date on its own, when there are no words to head. */
+  alone?: { font: FontRole; size: number; color: string };
+  align?: "left" | "center" | "right";
+};
+
+/**
+ * One note, set as paragraphs: the owner's words with the date under them,
+ * or — when they wrote none — the date alone, set larger, the way a date is
+ * written on an album page rather than filed under a caption.
+ */
+export function noteParagraphs(note: PageNote, style: NoteStyle): Paragraph[] {
+  const align = style.align ?? "left";
+  const meta = [note.date, note.place].filter(Boolean).join("  ·  ");
+
+  if (!note.text) {
+    if (!meta) return [];
+    const alone = style.alone ?? { font: style.body.font, size: style.body.size, color: style.body.color };
+    return [{ text: meta, font: alone.font, size: alone.size, color: alone.color, align }];
+  }
+
+  const paragraphs: Paragraph[] = [
+    {
+      text: note.text,
+      font: style.body.font,
+      size: style.body.size,
+      leading: style.body.leading,
+      color: style.body.color,
+      align,
+      maxLines: style.body.maxLines,
+      // Takes the room the block has and no more: a long note on a shallow
+      // band ends on an ellipsis rather than running across the photographs.
+      fill: true,
+    },
+  ];
+  if (meta) {
+    paragraphs.push({
+      text: meta,
+      font: style.meta.font,
+      size: style.meta.size,
+      color: style.meta.color,
+      tracking: style.meta.tracking,
+      uppercase: style.meta.uppercase,
+      align,
+      gap: style.body.size * 0.75,
+    });
+  }
+  return paragraphs;
+}
+
+/** How tall the words in a block actually stand, normalized. */
+export function textHeight(block: TextBlock): number {
+  return fromPt(layoutTextBlock(block).used);
 }

@@ -33,9 +33,26 @@ export type Chapter = {
    * survive that.
    */
   pageLayouts?: (PhotoLayoutId | null)[];
+  /**
+   * The owner's words for this chapter's photo pages, by page and then by the
+   * layout's note slot (at most two). Kept beside `pageLayouts`, and for the
+   * same reason: pages are rebuilt from chapters on every edit, so anything
+   * written on a page has to live on the chapter to survive.
+   *
+   * A missing or empty entry is not a missing caption — a `caption-*` layout
+   * falls back to what the book already knows about the page (see
+   * `pageNotes` in `lib/book/design/common`).
+   */
+  pageNotes?: ((string | null)[] | null)[];
 };
 
-/** The ten photo-page layouts every design offers (see `lib/book/layouts`). */
+/**
+ * The photo-page layouts every design offers (see `lib/book/layouts`).
+ *
+ * Ten are photographs alone. The twelve `caption-*` layouts keep room for the
+ * owner's own words beside, before, or under the pictures — one note per
+ * photo, never more than two on a page.
+ */
 export type PhotoLayoutId =
   | "full-bleed"
   | "single-framed"
@@ -46,7 +63,19 @@ export type PhotoLayoutId =
   | "four-grid"
   | "one-large-three-small"
   | "five-mosaic"
-  | "six-grid";
+  | "six-grid"
+  | "caption-right-1"
+  | "caption-right-2"
+  | "caption-right-3"
+  | "caption-right-4"
+  | "caption-left-1"
+  | "caption-left-2"
+  | "caption-left-3"
+  | "caption-left-4"
+  | "caption-below-1"
+  | "caption-below-2"
+  | "caption-below-3"
+  | "caption-below-4";
 
 export type LayoutId = PhotoLayoutId | "chapter-opener";
 
@@ -82,13 +111,31 @@ export type BookPage = {
   chapterIndex?: number;
   /** Which of its chapter's photo pages this is, from 0 — photo pages only. */
   chapterPageIndex?: number;
+  /**
+   * The owner's words for this page, one per note slot in its layout, carried
+   * over from the chapter so a design never has to go looking for them. Null
+   * where they wrote nothing and the page falls back to its own date.
+   */
+  notes?: (string | null)[];
 };
 
 /** Free position on the front cover, as a percentage of width/height (0–100), anchored at its center. */
 export type CoverPosition = { x: number; y: number };
 
-/** Background composition of the front cover — photo treatment + logo placement. */
-export type CoverLayoutId = "classic" | "minimal" | "editorial";
+/**
+ * The front cover's composition.
+ *
+ * The first four are built on the owner's photograph; `keepsake` and
+ * `monogram` carry none at all — a plain, engraved-looking cover in the
+ * book's own colors, which is what a great many memorial books actually are.
+ */
+export type CoverLayoutId =
+  | "classic"
+  | "minimal"
+  | "editorial"
+  | "portrait"
+  | "keepsake"
+  | "monogram";
 
 /** Which typeface renders the pet's name on the front cover. */
 export type CoverFontId = "cover" | "display" | "playfair" | "caveat" | "sans";

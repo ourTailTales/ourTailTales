@@ -1,4 +1,15 @@
-import { dedicationType, fromPt, heroOf, imprintTexts, lineAt, type BookDesign } from "@/lib/book/design/common";
+import {
+  dedicationType,
+  fromPt,
+  heroOf,
+  imprintTexts,
+  isEmptyNote,
+  lineAt,
+  noteParagraphs,
+  pageNotes,
+  textHeight,
+  type BookDesign,
+} from "@/lib/book/design/common";
 import {
   emptyDesign,
   flatPrint,
@@ -9,9 +20,9 @@ import {
   type PageDesign,
   type Print,
 } from "@/lib/book/design/primitives";
-import { gridSlots, isPhotoLayout } from "@/lib/book/layouts";
+import { gridSlots, isCaptionLayout, isPhotoLayout, layoutRegions } from "@/lib/book/layouts";
 import { CLOSING_LINE, titlePageHeading } from "@/lib/book/pagination";
-import type { BookPage, Slot } from "@/types/book";
+import type { BookPage, PhotoLayoutId, Slot } from "@/types/book";
 import type { Orientation } from "@/types/photo";
 
 /**
@@ -25,7 +36,17 @@ import type { Orientation } from "@/types/photo";
 
 const MARGIN = 0.1;
 const FRAME: Slot = { x: MARGIN, y: MARGIN, w: 1 - MARGIN * 2, h: 1 - MARGIN * 2 };
-const GRID = { gutter: 0.028, feature: 0.62, lead: 0.56, framed: { w: 0.8, h: 0.78, y: 0.02 } };
+const GRID = {
+  gutter: 0.028,
+  feature: 0.62,
+  lead: 0.56,
+  framed: { w: 0.8, h: 0.78, y: 0.02 },
+  noteShare: 0.32,
+  noteGap: 0.042,
+};
+
+/** Space kept clear on either side of a note, points. */
+const NOTE_PAD = 10;
 
 function keyline(context: DesignContext): Print["keyline"] {
   return { color: context.palette.ink, width: 0.5, opacity: 0.28 };
@@ -206,6 +227,8 @@ function designPage(page: BookPage, context: DesignContext): PageDesign {
 function photoPage(page: BookPage, context: DesignContext, design: PageDesign): PageDesign {
   if (!isPhotoLayout(page.layoutId) || page.photoIds.length === 0) return design;
 
+  if (isCaptionLayout(page.layoutId)) return captionPage(page, context, design);
+
   if (page.layoutId === "full-bleed") {
     // The one place Classic lets a photo off the leash: a single, edge to edge.
     design.prints = [flatPrint({ x: 0, y: 0, w: 1, h: 1 }, page.photoIds[0])];
@@ -230,6 +253,56 @@ function photoPage(page: BookPage, context: DesignContext, design: PageDesign): 
       ];
     }
   }
+  return design;
+}
+
+/**
+ * Words on a gallery page: set centred in italic under a hairline rule, the
+ * way a plate is captioned in a catalogue. Nothing is boxed and nothing is
+ * tilted — the note is another quiet element on the same grid.
+ */
+function captionPage(page: BookPage, context: DesignContext, design: PageDesign): PageDesign {
+  const { palette } = context;
+  const regions = layoutRegions(page.layoutId as PhotoLayoutId, FRAME, GRID);
+
+  design.prints = page.photoIds.flatMap((id, index) => {
+    const slot = regions.photos[index];
+    return slot ? [framedPrint(slot, id, context)] : [];
+  });
+
+  pageNotes(page, context).forEach((note, index) => {
+    const slot = regions.texts[index];
+    if (!slot || isEmptyNote(note)) return;
+
+    const paragraphs = noteParagraphs(note, {
+      body: { font: "serifItalic", size: 14, leading: 20, color: palette.ink, maxLines: 11 },
+      meta: { font: "sans", size: 8, tracking: 3, uppercase: true, color: palette.inkSoft },
+      alone: { font: "serifItalic", size: 16, color: palette.inkSoft },
+      align: "center",
+    });
+
+    const block = {
+      x: slot.x + fromPt(NOTE_PAD),
+      y: slot.y,
+      w: slot.w - fromPt(NOTE_PAD * 2),
+      h: slot.h,
+      valign: "middle" as const,
+      paragraphs,
+    };
+    const top = slot.y + slot.h / 2 - textHeight(block) / 2;
+    design.under.push({
+      kind: "line",
+      x1: slot.x + slot.w / 2 - 0.028,
+      y1: top - fromPt(16),
+      x2: slot.x + slot.w / 2 + 0.028,
+      y2: top - fromPt(16),
+      color: palette.accent,
+      width: 0.75,
+      opacity: 0.7,
+    });
+    design.texts.push(block);
+  });
+
   return design;
 }
 

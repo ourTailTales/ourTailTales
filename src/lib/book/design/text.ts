@@ -116,6 +116,8 @@ export type LaidOutBlock = {
   width: number;
   height: number;
   rotation: number;
+  /** How much of the block's height the words actually take, points. */
+  used: number;
   lines: LaidLine[];
   pills: LaidPill[];
   rules: LaidRule[];
@@ -259,6 +261,7 @@ export function layoutTextBlock(block: TextBlock): LaidOutBlock {
     width,
     height,
     rotation: block.rotation ?? 0,
+    used: total,
     lines,
     pills,
     rules,
