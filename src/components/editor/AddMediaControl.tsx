@@ -23,12 +23,15 @@ export function AddMediaControl({
   readyCount,
   videoCount,
   compact = false,
+  photosOnly = false,
 }: {
   onFiles: (files: File[]) => void;
   processing: boolean;
   readyCount: number;
   videoCount: number;
   compact?: boolean;
+  /** Photographs alone — videos are added in the page's Videos tab. */
+  photosOnly?: boolean;
 }) {
   const photosRef = useRef<HTMLInputElement>(null);
   const folderRef = useRef<HTMLInputElement>(null);
@@ -58,7 +61,7 @@ export function AddMediaControl({
       <input
         ref={photosRef}
         type="file"
-        accept="image/*,video/*"
+        accept={photosOnly ? "image/*" : "image/*,video/*"}
         multiple
         className="sr-only"
         onChange={handleChange}
@@ -79,7 +82,7 @@ export function AddMediaControl({
           className="inline-flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-md bg-periwinkle px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-periwinkle-deep"
         >
           <FolderUp aria-hidden className="h-4 w-4" strokeWidth={2.25} />
-          {processing ? "Reading…" : "Add photos & videos"}
+          {processing ? "Reading…" : photosOnly ? "Add photos" : "Add photos & videos"}
         </button>
         <button
           type="button"

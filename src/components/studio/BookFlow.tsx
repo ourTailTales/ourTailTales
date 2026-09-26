@@ -11,6 +11,7 @@ import { filesFromDataTransfer } from "@/lib/photo/process";
 import { bookSpec } from "@/lib/pricing";
 import { track } from "@/lib/analytics";
 import {
+  secondsRemaining,
   summarizeAlbum,
   useOurTailTalesStore,
 } from "@/store/useOurTailTalesStore";
@@ -42,7 +43,7 @@ export function BookFlow({
   downloading,
   notice,
 }: {
-  onFiles: (files: File[]) => void;
+  onFiles: (files: File[], target?: { chapterId: string; pageIndex: number }) => void;
   onStartOver: () => void;
   onCreateStory: () => void;
   /** Gives up on the chapters still being written and opens what is done. */
@@ -328,6 +329,7 @@ export function BookFlow({
           <Waiting
             funnelState={funnelState}
             mediaCount={mediaCount}
+            remaining={secondsRemaining(progress)}
             processed={progress.processed}
             total={progress.total}
             chaptersDone={chapters.filter((chapter) => chapter.aiStatus === "done").length}
@@ -352,9 +354,18 @@ export function BookFlow({
  * steps: from the customer's side this is a single wait, and cutting it into
  * named stages only makes it feel longer than it is.
  */
+/** "two minutes", "40 seconds" — the shape of a wait, not a stopwatch. */
+function describeWait(seconds: number): string {
+  if (seconds < 20) return "a few seconds";
+  if (seconds < 90) return `${Math.round(seconds / 10) * 10} seconds`;
+  const minutes = Math.round(seconds / 60);
+  return minutes === 1 ? "a minute" : `${minutes} minutes`;
+}
+
 function Waiting({
   funnelState,
   mediaCount,
+  remaining,
   onStartOver,
   onStopStory,
   error,
@@ -368,6 +379,8 @@ function Waiting({
 }: {
   funnelState: string;
   mediaCount: number;
+  /** Seconds of reading left, once enough has been read to say. */
+  remaining: number | null;
   onStartOver: () => void;
   onStopStory: () => void;
   /** Reading the album failed. */
@@ -390,11 +403,17 @@ function Waiting({
       : "Writing the chapters"
     : readingPhotos
       ? total > 0
-        ? `Reading your photos, ${processed} of ${total}`
+        ? `Reading your photos, ${processed.toLocaleString()} of ${total.toLocaleString()}`
         : "Reading your photos"
       : name
         ? `Sorting ${name}\u2019s life into chapters`
         : "Sorting your album into chapters";
+
+  // An album of four thousand is a few minutes of reading, and a bar creeping
+  // across with no numbers on it is the same picture whether it has thirty in
+  // it or four thousand. Measured from what has actually been read so far.
+  const left = readingPhotos ? remaining : null;
+  const under = left === null ? null : describeWait(left);
 
   const done = writing
     ? chapterCount > 0
@@ -478,7 +497,9 @@ function Waiting({
         <p className="mt-1.5 text-sm text-page-ink-soft">
           {writing
             ? "Every chapter comes from the photos you gave us. You can change all of it afterwards."
-            : "This happens on your own device. Nothing is uploaded."}
+            : under
+              ? `About ${under} left. This happens on your own device — nothing is uploaded.`
+              : "This happens on your own device. Nothing is uploaded."}
         </p>
       </div>
 

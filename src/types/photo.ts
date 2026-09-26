@@ -67,4 +67,6 @@ export type ProcessingProgressState = {
   total: number;
   phase: ProcessingPhase;
   failed: number;
+  /** When this batch started, for the rate and what is left of it. */
+  startedAt: number;
 };

@@ -1,11 +1,9 @@
 "use client";
 
 import { ArrowLeft, ArrowRight, Download, Loader2 } from "lucide-react";
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 
 import { BuyDigitalButton } from "@/components/BuyDigitalButton";
-import { VideoMemoriesPanel } from "@/components/VideoMemoriesPanel";
-import { track } from "@/lib/analytics";
 import { orderSummary } from "@/lib/order/summary";
 import { DIGITAL_PRICE, formatUsd } from "@/lib/pricing";
 import { placedMemoriesReadyForCheckout } from "@/lib/video-memory/checkout-ready";
@@ -21,11 +19,11 @@ import { useOurTailTalesStore } from "@/store/useOurTailTalesStore";
  * has its own panel — with nothing anywhere leading to any of it. This is the
  * step that leads to it.
  *
- * The order it puts things in is the order the decisions have to be made in.
- * Video Memories come first, because their codes are printed on the pages: a
- * book already at the printer cannot have one added. The hardcover follows,
- * priced to the cent from the same functions the order row is written from.
- * The PDF comes last, for somebody who wants the book but not the parcel.
+ * The hardcover first, priced to the cent from the same functions the order
+ * row is written from; the PDF after it, for somebody who wants the book but
+ * not the parcel. Video Memories are only counted here, never added: their
+ * codes are printed on a page, so they are chosen on that page, in the editor,
+ * rather than in front of a customer who is trying to pay.
  */
 export function FinishBook({
   onBack,
@@ -59,6 +57,7 @@ export function FinishBook({
   );
 
   const petName = meta.petName.trim();
+  const placedPages = new Set(placements.map((placement) => placement.pageId)).size;
   const preparing = funnelState === "exporting";
 
   // A code printed in the book has to point at a video that is ready to be
@@ -66,14 +65,6 @@ export function FinishBook({
   // in front of the button, rather than left to come back as an error after
   // somebody has pressed it. Videos nobody placed can keep processing.
   const memoriesReady = placedMemoriesReadyForCheckout(placements, videoAssets);
-
-  // The one place the pack is ever offered, so whether it is seen at all is
-  // the number that says whether the offer works.
-  useEffect(() => {
-    track("video_memories_offer_viewed", { placed: placements.length });
-    // Once per visit to this step, not once per video placed on it.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-5">
@@ -98,12 +89,17 @@ export function FinishBook({
         </p>
       </header>
 
-      {/* Before the order, not after it: a Video Memory is a QR code printed
-          on a page, so a book already at the printer cannot be given one. */}
-      <section>
-        <h2 className="sr-only">Add Video Memories</h2>
-        <VideoMemoriesPanel pages={pages} />
-      </section>
+      {summary.videoMemoryCount > 0 ? (
+        <section className="rounded-2xl border border-line bg-white p-5 shadow-lift sm:p-6">
+          <h2 className="font-display text-xl text-ink">Video Memories</h2>
+          <p className="mt-1 text-sm leading-6 text-ink-soft">
+            {summary.videoMemoryCount}{" "}
+            {summary.videoMemoryCount === 1 ? "video" : "videos"} will have a QR
+            code printed in the book, on the {placedPages === 1 ? "page" : "pages"}{" "}
+            you placed {summary.videoMemoryCount === 1 ? "it" : "them"} on.
+          </p>
+        </section>
+      ) : null}
 
       <section className="rounded-2xl border border-line bg-white p-5 shadow-lift sm:p-6">
         <h2 className="font-display text-xl text-ink">The printed book</h2>

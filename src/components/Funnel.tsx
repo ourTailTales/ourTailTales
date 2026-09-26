@@ -205,7 +205,7 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
   }, [save]);
 
   const handleFiles = useCallback(
-    (files: File[]) => {
+    (files: File[], target?: { chapterId: string; pageIndex: number }) => {
       const { images, videos } = partitionMedia(files);
       if (images.length === 0 && videos.length === 0) {
         // Dropping a folder of PDFs or raw files used to do nothing at all,
@@ -244,6 +244,15 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
       track("album_processing_started", {
         count: images.length + videos.length,
       });
+      // How long an album actually takes to read, on the machines customers
+      // actually have. Reading four thousand photographs is the difference
+      // between this product working and not, and until this was measured the
+      // only evidence was somebody saying it felt slow.
+      const readingFrom = Date.now();
+
+      // What arrived, when these files were chosen for one page rather than
+      // for the album at large.
+      const arrived: string[] = [];
 
       const photosDone = new Promise<void>((resolve) => {
         if (images.length === 0) {
@@ -251,7 +260,14 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
           return;
         }
         ingestion.current = startIngestion(images, {
-          onBatch: (batch) => store.addProcessedPhotos(batch),
+          onBatch: (batch) => {
+            store.addProcessedPhotos(batch);
+            if (target) {
+              // A picture too small to print is not put on a page; it stays in
+              // the album, where it can still be looked at and chosen.
+              for (const photo of batch) if (photo.usable) arrived.push(photo.id);
+            }
+          },
           onFailures: (count) => store.noteFailures(count),
           onDone: resolve,
           onError: (message) => {
@@ -277,6 +293,20 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
       void Promise.all([photosDone, videosDone]).then(() => {
         store.setProgressPhase("deduplicating");
         store.finishProcessing();
+
+        // Chosen while looking at a page, so that is where they go — and the
+        // editor turns to whichever page the last of them landed on, which is
+        // a new one when the page they were meant for was already full.
+        if (target && arrived.length > 0) {
+          store.addPhotosToPage(target.chapterId, target.pageIndex, arrived);
+        } else if (target) {
+          setNotice(
+            images.length > 0
+              ? "Those pictures are too small to print, so they were kept in the album rather than put on the page."
+              : "Only photos can go on a page. Videos are added in the Videos tab.",
+          );
+        }
+
         useOurTailTalesStore.getState().setSaveStatus("saving");
         void save().then((ok) => {
           if (!ok) {
@@ -285,8 +315,12 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
             );
           }
         });
+        const seconds = Math.round((Date.now() - readingFrom) / 100) / 10;
+        const read = images.length + videos.length;
         track("album_processing_completed", {
-          count: images.length + videos.length,
+          count: read,
+          seconds,
+          per_photo_ms: read > 0 ? Math.round((seconds * 1000) / read) : 0,
         });
       });
     },

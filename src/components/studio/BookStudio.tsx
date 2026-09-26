@@ -187,7 +187,7 @@ export function BookStudio({
   price: number;
   onUnlock: () => void;
   onRegenerate: (chapterId: string) => void;
-  onFiles: (files: File[]) => void;
+  onFiles: (files: File[], target?: { chapterId: string; pageIndex: number }) => void;
   processing: boolean;
   onDownload: () => void;
   /** Done editing: on to the Video Memories offer, the price and the order. */
@@ -420,20 +420,36 @@ export function BookStudio({
   );
 
   /**
-   * Staying on the page you are editing while the book is repaginated.
+   * Where the reader is once the book has been rebuilt.
    *
-   * Every edit rebuilds the pages, and a page can come out of that rebuild at
-   * a different index or not come out of it at all — `followSelection` is
-   * where that is worked out. Without it, choosing a layout that used up the
-   * chapter's last page left the selection meaning the next chapter's opener,
-   * and the editor jumped there while somebody was still working.
+   * Two things can decide it, and they decide it here rather than in whatever
+   * made the change:
+   *
+   * A page the book has been *asked* to show wins. Photographs added while
+   * looking at a page can overflow onto a page that did not exist a moment
+   * ago, and leaving somebody on the page they were on — unchanged, because
+   * everything went past its ceiling — looks exactly like an upload that did
+   * nothing.
+   *
+   * Otherwise the page being edited is followed through the rebuild, which is
+   * `followSelection`: a page can come back at a different index or not come
+   * back at all, and without this, choosing a layout that used up the
+   * chapter's last page left the selection meaning the next chapter's opener.
    */
   const shelf = useRef(slides);
   useEffect(() => {
     const before = shelf.current;
     shelf.current = slides;
     if (before === slides) return;
-    const next = followSelection(before, slides, selected);
+
+    const asked = useOurTailTalesStore.getState().revealPageId;
+    const revealed = asked
+      ? slides.findIndex((entry) => entry.page?.id === asked)
+      : -1;
+    if (asked) useOurTailTalesStore.getState().revealPage(null);
+
+    const next =
+      revealed !== -1 ? revealed : followSelection(before, slides, selected);
     if (next !== selected) setSelected(next);
   }, [slides, selected]);
 
