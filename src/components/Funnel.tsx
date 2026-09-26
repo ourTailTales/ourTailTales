@@ -244,6 +244,11 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
       track("album_processing_started", {
         count: images.length + videos.length,
       });
+      // How long an album actually takes to read, on the machines customers
+      // actually have. Reading four thousand photographs is the difference
+      // between this product working and not, and until this was measured the
+      // only evidence was somebody saying it felt slow.
+      const readingFrom = Date.now();
 
       // What arrived, when these files were chosen for one page rather than
       // for the album at large.
@@ -310,8 +315,12 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
             );
           }
         });
+        const seconds = Math.round((Date.now() - readingFrom) / 100) / 10;
+        const read = images.length + videos.length;
         track("album_processing_completed", {
-          count: images.length + videos.length,
+          count: read,
+          seconds,
+          per_photo_ms: read > 0 ? Math.round((seconds * 1000) / read) : 0,
         });
       });
     },

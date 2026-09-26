@@ -24,6 +24,9 @@ import type { PhotoAsset } from "@/types/photo";
  * without the portal this would cover that one component's box instead of
  * the screen.
  */
+/** Thumbnails drawn at once. Enough to browse, far short of a camera roll. */
+const PAGE = 120;
+
 export function MediaLibraryModal({
   photos,
   videos,
@@ -39,6 +42,10 @@ export function MediaLibraryModal({
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
   useDialogA11y(dialogRef, { onClose });
+
+  const [limit, setLimit] = useState(PAGE);
+  const shown = photos.slice(0, limit);
+  const hidden = photos.length - shown.length;
 
   const total = photos.length + videos.length;
   // Deleting the last thing in here leaves nothing to look at — close on its
@@ -78,7 +85,7 @@ export function MediaLibraryModal({
 
         <div className="overflow-y-auto p-5">
           <ol className="grid grid-cols-3 gap-3 sm:grid-cols-4">
-            {photos.map((photo) => (
+            {shown.map((photo) => (
               <li key={photo.id} className="relative">
                 <span className="block aspect-square overflow-hidden rounded-lg bg-page-line/40">
                   <MediaThumb src={photo.thumbUrl} />
@@ -112,6 +119,25 @@ export function MediaLibraryModal({
               </li>
             ))}
           </ol>
+
+          {/* A camera roll is four thousand pictures, and every one of them as
+              an <img> is four thousand decodes for a grid nobody scrolls to
+              the end of. The rest are still in the book; this is the window
+              onto them. */}
+          {hidden > 0 ? (
+            <div className="mt-5 flex flex-col items-center gap-2">
+              <p className="text-sm text-ink-soft">
+                Showing {shown.length.toLocaleString()} of {total.toLocaleString()}.
+              </p>
+              <button
+                type="button"
+                onClick={() => setLimit((current) => current + PAGE)}
+                className="min-h-11 rounded-xl border border-line px-4 text-sm font-medium text-ink transition-colors hover:border-periwinkle hover:text-periwinkle-deep"
+              >
+                Show {Math.min(hidden, PAGE).toLocaleString()} more
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>,

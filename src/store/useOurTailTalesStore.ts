@@ -214,15 +214,42 @@ const emptyProgress: ProcessingProgressState = {
   total: 0,
   phase: "reading",
   failed: 0,
+  startedAt: 0,
 };
 
-export function beginBatchProgress(total: number): ProcessingProgressState {
+export function beginBatchProgress(
+  total: number,
+  startedAt = Date.now(),
+): ProcessingProgressState {
   return {
     processed: 0,
     total: Math.max(0, total),
     phase: "reading",
     failed: 0,
+    startedAt,
   };
+}
+
+/**
+ * How much longer this album has, in seconds, or null while it is too early
+ * to say.
+ *
+ * A bar creeping across with no numbers on it is the same picture whether an
+ * album has thirty photographs or four thousand, and four thousand is the
+ * album this has to be honest about. Measured from what has actually been read
+ * so far rather than from a guess at what a photograph costs, and withheld
+ * until enough have gone through to mean anything.
+ */
+export function secondsRemaining(
+  progress: ProcessingProgressState,
+  now = Date.now(),
+): number | null {
+  const done = progress.processed;
+  const left = progress.total - done;
+  if (done < 8 || left <= 0) return null;
+  const elapsed = now - progress.startedAt;
+  if (elapsed <= 0) return null;
+  return Math.max(1, Math.round((elapsed / done) * left) / 1000);
 }
 
 export function advanceBatchProgress(
