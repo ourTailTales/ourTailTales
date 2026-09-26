@@ -93,8 +93,6 @@ export function PageInspector({
   switch (slide.page.kind) {
     case "title":
       return <TitlePanel photos={photos} />;
-    case "dedication":
-      return <DedicationPanel />;
     case "chapter-opener":
       return (
         <ChapterPanel
@@ -338,21 +336,6 @@ function TitlePanel({ photos }: { photos: PhotoAsset[] }) {
 
       <BookColors />
 
-      {/* Here as well as on its own page: with no dedication there is no
-          dedication page, so this is the only way to add one back. */}
-      <Field
-        label={`Dedication · ${meta.dedication.length}/320`}
-        note="Optional. Leave it empty and the book has no dedication page."
-      >
-        <textarea
-          value={meta.dedication}
-          onChange={(event) => setMeta({ dedication: event.target.value.slice(0, 320) })}
-          rows={3}
-          placeholder="For the best copilot a family could ask for."
-          className={`${inputClass} resize-none leading-relaxed`}
-        />
-      </Field>
-
       <Field
         label="Photo"
         note="The title page uses the cover photo. Changing it here changes both."
@@ -449,30 +432,6 @@ function BookColors() {
         })}
       </div>
     </Field>
-  );
-}
-
-/* -------------------------------- dedication ------------------------------ */
-
-function DedicationPanel() {
-  const meta = useOurTailTalesStore((state) => state.meta);
-  const setMeta = useOurTailTalesStore((state) => state.setMeta);
-
-  return (
-    <Panel
-      title="Dedication"
-      hint="A line or two of your own. It also goes on the back cover."
-    >
-      <Field label={`Dedication · ${meta.dedication.length}/320`}>
-        <textarea
-          value={meta.dedication}
-          onChange={(event) => setMeta({ dedication: event.target.value.slice(0, 320) })}
-          rows={6}
-          placeholder="For the best copilot a family could ask for."
-          className={`${inputClass} resize-none leading-relaxed`}
-        />
-      </Field>
-    </Panel>
   );
 }
 
@@ -889,7 +848,7 @@ function digitsOnly(value: string): string {
  * A labelled control.
  *
  * The label used to be a `<span>`, which is not a label: every text field in
- * the editor — the pet's name, the years, the notes, the dedication, every
+ * the editor — the pet's name, the years, the notes, every
  * chapter title and story — announced as "edit text, blank" to anyone not
  * looking at the screen, and tapping the label did nothing.
  *

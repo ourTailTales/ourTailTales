@@ -147,13 +147,13 @@ export async function renderCoverPdf(args: {
 
   /* ---------------------------------- back ---------------------------------
    * Styled like a real memoir/photo-book back cover: a centered pull-quote
-   * (the dedication, or a fallback line) sitting in the upper-middle third,
+   * sitting in the upper-middle third,
    * a small divider, and a publisher-style colophon anchored at the bottom —
    * mirrors `BackCoverArt` (the on-screen version). */
 
   const backCenterX = WRAP_PT + (TRIM_PT + BLEED_PT) / 2;
   const backWidth = TRIM_PT - 1.6 * PT_PER_INCH;
-  const backText = meta.dedication.trim() || CLOSING_LINE;
+  const backText = CLOSING_LINE;
   const quoteSize = 13;
   const quoteLines = wrap(`“${backText}”`, fonts.serifItalic, quoteSize, backWidth).slice(0, 8);
   const lineHeight = 20;

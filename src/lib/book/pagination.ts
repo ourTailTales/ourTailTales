@@ -56,12 +56,10 @@ export type PhotoLookup = Map<string, PagePhoto>;
 
 /**
  * Builds the complete interior page list:
- * title, dedication, then 10 pages per chapter, then closing and imprint.
+ * title, then 10 pages per chapter, then closing and imprint.
  *
- * The dedication page only exists when there is a dedication — an empty page
- * with a rule on it read as something missing. Page count is therefore
- * `chapters * 10 + 4` with a dedication and one fewer without; the print file
- * pads back to the ordered count (`padToPageCount` in the interior renderer).
+ * Page count is therefore at most `chapters * 10 + 3`; the print file pads
+ * back to the ordered count (`padToPageCount` in the interior renderer).
  */
 export function paginateBook(
   meta: BookMeta,
@@ -85,15 +83,6 @@ export function paginateBook(
     layoutId: null,
     photoIds: titlePhoto ? [titlePhoto] : [],
   });
-
-  if (hasDedication(meta)) {
-    push({
-      id: "page-dedication",
-      kind: "dedication",
-      layoutId: null,
-      photoIds: [],
-    });
-  }
 
   // Carried across chapters, not reset with each one: a book whose every
   // chapter opens with the same three layouts is the same template twice.
@@ -626,26 +615,19 @@ export function possessivePetName(petName: string): string {
   return /s$/i.test(name) ? `${name}'` : `${name}'s`;
 }
 
-/** Whether the book carries a dedication page. */
-export function hasDedication(meta: Pick<BookMeta, "dedication">): boolean {
-  return meta.dedication.trim().length > 0;
-}
-
 /**
- * Brings a saved page list in line with its dedication: drops a dedication
- * page whose text is gone. Books saved before an empty dedication stopped
- * getting a page still carry one, and re-paginating them from scratch would
- * throw away every layout the customer picked.
+ * Drops the dedication page from a saved page list.
+ *
+ * Books saved while the book still had a dedication page carry one, and
+ * re-paginating them from scratch would throw away every layout the customer
+ * picked — so the page is removed and the rest renumbered in place.
  */
-export function withoutEmptyDedication(
-  pages: BookPage[],
-  meta: Pick<BookMeta, "dedication">,
-): BookPage[] {
-  if (hasDedication(meta) || !pages.some((page) => page.kind === "dedication")) {
-    return pages;
-  }
+export function withoutDedicationPages(pages: BookPage[]): BookPage[] {
+  const isDedication = (page: BookPage): boolean =>
+    (page.kind as string) === "dedication";
+  if (!pages.some(isDedication)) return pages;
   return pages
-    .filter((page) => page.kind !== "dedication")
+    .filter((page) => !isDedication(page))
     .map((page, index) => ({ ...page, pageNumber: index + 1 }));
 }
 

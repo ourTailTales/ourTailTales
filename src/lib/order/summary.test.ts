@@ -4,7 +4,7 @@ import { orderSummary } from "@/lib/order/summary";
 import {
   BASE_CHAPTERS,
   BASE_PRICE,
-  PRICE_PER_EXTRA_CHAPTER,
+  CHAPTER_TIERS,
   MIN_PRINTABLE_INTERIOR_PAGES,
 } from "@/lib/pricing";
 import { VIDEO_MEMORIES_PER_PACK } from "@/lib/video-memory/config";
@@ -33,10 +33,42 @@ describe("what the finished book costs before shipping", () => {
       placements: [],
     });
     // Rounded to the cent, which is what `bookPrice` promises and what raw
-    // floating-point addition of 49.99 and three 4.99s does not give.
-    expect(summary.bookPrice).toBeCloseTo(BASE_PRICE + 3 * PRICE_PER_EXTRA_CHAPTER, 2);
-    expect(summary.bookPrice).toBe(64.96);
+    // floating-point addition of eight 9.99s does not give.
+    expect(summary.bookPrice).toBe(79.92);
     expect(summary.subtotal).toBe(summary.bookPrice);
+  });
+
+  it("shows the invoice which band each chapter was billed at", () => {
+    const summary = orderSummary({
+      chapterCount: 12,
+      pageCount: 124,
+      placements: [],
+    });
+    expect(
+      summary.bookPriceLines.map((line) => [
+        line.tier.id,
+        line.chapters,
+        line.subtotal,
+      ]),
+    ).toEqual([
+      ["keepsake", 9, 89.91],
+      ["chronicle", 3, 23.97],
+    ]);
+    // What the customer is shown adds up to what they are charged.
+    expect(
+      summary.bookPriceLines.reduce((total, line) => total + line.subtotal, 0),
+    ).toBeCloseTo(summary.bookPrice, 2);
+    expect(summary.bookPriceLines[0]!.tier).toBe(CHAPTER_TIERS[0]);
+  });
+
+  it("gives the base book a single band", () => {
+    const summary = orderSummary({
+      chapterCount: BASE_CHAPTERS,
+      pageCount: 54,
+      placements: [],
+    });
+    expect(summary.bookPriceLines).toHaveLength(1);
+    expect(summary.bookPriceLines[0]!.subtotal).toBe(BASE_PRICE);
   });
 
   it("counts a pack for the videos that have a QR code in the book", () => {

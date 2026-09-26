@@ -1,5 +1,4 @@
 import {
-  dedicationType,
   fromPt,
   heroOf,
   imprintTexts,
@@ -69,7 +68,6 @@ const GRID = {
   noteGap: STANDARD_GUTTER * 1.5,
 };
 
-const DEDICATION_CARD: Box = { cx: 0.5, cy: 0.49, w: 0.64, h: 0.42 };
 const OPENER_CARD: Box = { cx: 0.5, cy: 0.255, w: 0.82, h: 0.35 };
 /** Inside the card: where the date, title and blurb go. */
 const OPENER_TEXT: Box = { cx: 0.5, cy: 0.26, w: 0.7, h: 0.3 };
@@ -487,26 +485,6 @@ function titleTexts(context: DesignContext): TextBlock[] {
   return texts;
 }
 
-function dedicationTexts(context: DesignContext): TextBlock[] {
-  const text = context.meta.dedication.trim();
-  if (!text) return [];
-  const { size, leading } = dedicationType(text);
-  const card = DEDICATION_CARD;
-  return [
-    {
-      x: card.cx - card.w / 2 + fromPt(26),
-      y: card.cy - card.h / 2 + fromPt(30),
-      w: card.w - fromPt(52),
-      h: card.h - fromPt(50),
-      valign: "middle",
-      ruled: { color: context.palette.accent, opacity: 0.2 },
-      paragraphs: [
-        { text, font: "serifItalic", size, leading, color: context.palette.ink, align: "center" },
-      ],
-    },
-  ];
-}
-
 function openerTexts(context: DesignContext): TextBlock[] {
   const { chapter, palette } = context;
   if (!chapter) return [];
@@ -578,46 +556,6 @@ function designPage(page: BookPage, context: DesignContext): PageDesign {
         ["sparkle", "heart", "star"],
       );
       design.texts = titleTexts(context);
-      return design;
-    }
-
-    case "dedication": {
-      const card = DEDICATION_CARD;
-      design.under = [
-        {
-          kind: "rect",
-          ...card,
-          w: card.w + 0.05,
-          h: card.h + 0.04,
-          rotation: -3,
-          fill: palette.scraps[1] ?? palette.scraps[0]!,
-          opacity: 0.6,
-        },
-        { kind: "rect", ...card, rotation: 0, fill: CARD, shadow: true },
-      ];
-      design.over = [
-        {
-          kind: "tape",
-          cx: card.cx,
-          cy: card.cy - card.h / 2,
-          w: 0.13,
-          h: 0.036,
-          rotation: -3,
-          color: palette.tape[1] ?? palette.tape[0]!,
-          opacity: 0.82,
-        },
-      ];
-      design.doodles = [
-        {
-          kind: "heart",
-          cx: 0.5,
-          cy: card.cy + card.h / 2 + 0.08,
-          size: 0.045,
-          rotation: -8,
-          color: palette.doodle,
-        },
-      ];
-      design.texts = dedicationTexts(context);
       return design;
     }
 

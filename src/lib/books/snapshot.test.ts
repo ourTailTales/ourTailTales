@@ -9,7 +9,6 @@ describe("createBookProjectSnapshot", () => {
         petName: "Milo",
         birthYear: "2018",
         deathYear: "",
-        dedication: "For our best friend",
         coverPhotoId: "photo-1",
       },
       chapters: [

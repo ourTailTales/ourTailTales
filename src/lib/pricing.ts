@@ -11,10 +11,8 @@
  */
 export const DIGITAL_PRICE = 4.99;
 
-/** The base book contains five ten-page story chapters (50 story pages). */
+/** The shortest book we will print: five chapters. */
 export const BASE_CHAPTERS = 5;
-export const BASE_PRICE = 49.99;
-export const PRICE_PER_EXTRA_CHAPTER = 4.99;
 export const STORY_PAGES_PER_CHAPTER = 10;
 
 /**
@@ -29,42 +27,15 @@ export const STORY_PAGES_PER_CHAPTER = 10;
 export const MIN_STORY_PAGES_PER_CHAPTER = 3;
 export const MAX_STORY_PAGES_PER_CHAPTER = STORY_PAGES_PER_CHAPTER;
 
-/** Title, dedication, closing, imprint. Included at no extra charge. */
+/**
+ * Title, closing, imprint, plus one leaf of slack. Included at no extra
+ * charge. Four rather than three so the ceiling this feeds
+ * (`luluInteriorPages`) stays even — a leaf has two sides.
+ */
 export const FIXED_INTERIOR_PAGES = 4;
 
 /** Cap after physical-sample testing. 50 => 500 story / 504 Lulu pages. */
 export const MAX_CHAPTERS = 50;
-
-/**
- * The longest book offered without being asked for.
- *
- * `MAX_CHAPTERS` is what the printer will bind; this is what a customer is
- * shown by default. An album of four thousand photographs across two hundred
- * outings has fifty chapters' worth of periods in it, and quoting $274 to
- * somebody who came for a $49.99 book — because their camera roll is long —
- * is not an offer, it is an ambush. Past this, the longer book is offered
- * explicitly and taken explicitly.
- */
-export const DEFAULT_CHAPTER_CAP = 12;
-
-/**
- * Chapters past this one would carry `TOP_TIER_DISCOUNT_PER_CHAPTER`.
- */
-export const TOP_TIER_FROM_CHAPTER = 30;
-
-/**
- * A discount on the chapters of a very long book. Off.
- *
- * Here so that turning it on is a number rather than a rewrite — but the
- * headroom is small, and a future edit should not set it without redoing the
- * arithmetic. The basis, from the pricing review rather than from anything
- * this repository can check: Lulu's print cost runs about $2.148 a chapter
- * and is linear from five chapters to fifty, so the print margin holds at
- * roughly 55-57% across the whole range at $4.99 a chapter. That leaves about
- * 3-5% of real room — a $1 discount is most of it, a $2 discount is past it.
- * Re-derive from current Lulu quotes before changing this.
- */
-export const TOP_TIER_DISCOUNT_PER_CHAPTER = 0;
 
 /**
  * Customer-selectable density: five to thirty photos per chapter.
@@ -83,41 +54,137 @@ export const MIN_PHOTOS_PER_CHAPTER = PHOTOS_PER_CHAPTER_TARGET.min;
 export const MIN_PHOTOS_FOR_BOOK =
   BASE_CHAPTERS * PHOTOS_PER_CHAPTER_TARGET.min;
 
-export function bookPrice(chapterCount: number): number {
-  const extra = Math.max(0, chapterCount - BASE_CHAPTERS);
-  const discounted = Math.max(0, chapterCount - TOP_TIER_FROM_CHAPTER);
-  return round2(
-    BASE_PRICE +
-      extra * PRICE_PER_EXTRA_CHAPTER -
-      discounted * TOP_TIER_DISCOUNT_PER_CHAPTER,
-  );
+
+/* --------------------------------- tiers --------------------------------- */
+
+/**
+ * A band of chapters and what each chapter inside it costs.
+ *
+ * Books are priced by the chapter, and the chapter gets cheaper the longer
+ * the book runs. The bands are *progressive*, the way income tax brackets
+ * are: a twelve-chapter book pays the Keepsake rate on its first nine
+ * chapters and the Chronicle rate on the three after that. It is not a flat
+ * rate chosen by the book's total length — that version makes a twenty-
+ * chapter book cost less than a nineteen-chapter one, and an invoice that
+ * charges more for less is one nobody trusts twice.
+ *
+ * What a chapter holds does not change between bands: every chapter in every
+ * book runs `MIN_STORY_PAGES_PER_CHAPTER`–`MAX_STORY_PAGES_PER_CHAPTER` pages
+ * and takes `PHOTOS_PER_CHAPTER_TARGET` photographs. The tiers buy length,
+ * not richness.
+ */
+export type ChapterTier = {
+  id: "keepsake" | "chronicle" | "archive";
+  name: string;
+  /** First chapter number priced at this rate, 1-based and inclusive. */
+  fromChapter: number;
+  /** Last chapter number priced at this rate, inclusive. */
+  toChapter: number;
+  ratePerChapter: number;
+  /** One line on who the band is for, for the pricing table. */
+  blurb: string;
+};
+
+export const CHAPTER_TIERS: readonly ChapterTier[] = [
+  {
+    id: "keepsake",
+    name: "Keepsake",
+    fromChapter: 1,
+    toChapter: 9,
+    ratePerChapter: 9.99,
+    blurb: "One life, told once through. Where every book starts.",
+  },
+  {
+    id: "chronicle",
+    name: "Chronicle",
+    fromChapter: 10,
+    toChapter: 24,
+    ratePerChapter: 7.99,
+    blurb: "A full decade of them, year by year.",
+  },
+  {
+    id: "archive",
+    name: "Archive",
+    fromChapter: 25,
+    toChapter: 50,
+    ratePerChapter: 5.99,
+    blurb: "The whole album, nothing left in the folder.",
+  },
+] as const;
+
+/** How many of a book's chapters fall inside this band. */
+export function chaptersInTier(tier: ChapterTier, chapterCount: number): number {
+  return clamp(chapterCount - tier.fromChapter + 1, 0, tier.toChapter - tier.fromChapter + 1);
 }
 
-export type BookTier = {
-  id: "keepsake" | "story" | "saga" | "life";
-  label: string;
-  /** The largest book this tier covers. */
-  upTo: number;
+export type PriceLine = {
+  tier: ChapterTier;
+  chapters: number;
+  ratePerChapter: number;
+  subtotal: number;
 };
 
 /**
- * What to call a book of this length.
- *
- * Names for the customer's benefit only — nothing about the price, the
- * printing or the writing changes at a boundary. A five-chapter book and a
- * fifty-chapter book are the same product at different lengths, and the label
- * is there so the length means something when it is quoted.
+ * The book's price, band by band — what the invoice prints so the customer
+ * can see the rate they were charged rather than one total to take on faith.
+ * Bands the book never reaches are left out.
  */
-const TIERS: readonly BookTier[] = [
-  { id: "keepsake", label: "Keepsake", upTo: BASE_CHAPTERS },
-  { id: "story", label: "Story", upTo: 15 },
-  { id: "saga", label: "Family Saga", upTo: 30 },
-  { id: "life", label: "Complete Life Story", upTo: MAX_CHAPTERS },
-];
-
-export function bookTier(chapterCount: number): BookTier {
-  return TIERS.find((tier) => chapterCount <= tier.upTo) ?? TIERS[TIERS.length - 1]!;
+export function priceBreakdown(chapterCount: number): PriceLine[] {
+  const chapters = clamp(Math.floor(chapterCount), 0, MAX_CHAPTERS);
+  return CHAPTER_TIERS.map((tier) => {
+    const count = chaptersInTier(tier, chapters);
+    return {
+      tier,
+      chapters: count,
+      ratePerChapter: tier.ratePerChapter,
+      subtotal: round2(count * tier.ratePerChapter),
+    };
+  }).filter((line) => line.chapters > 0);
 }
+
+/**
+ * The bands behind a price that was quoted earlier and stored on the order.
+ *
+ * Rates can change, and a receipt must never explain an old total with
+ * today's numbers — so the bands are offered only while they still add up to
+ * what was actually charged. Anything else, and the total stands alone.
+ */
+export function storedPriceBreakdown(
+  chapterCount: number,
+  chargedPrice: number,
+): PriceLine[] {
+  const lines = priceBreakdown(chapterCount);
+  const sum = round2(lines.reduce((total, line) => total + line.subtotal, 0));
+  return sum === round2(chargedPrice) ? lines : [];
+}
+
+/** The band the last chapter of this book falls in. */
+export function tierForChapterCount(chapterCount: number): ChapterTier {
+  const chapters = clamp(Math.floor(chapterCount), BASE_CHAPTERS, MAX_CHAPTERS);
+  return (
+    CHAPTER_TIERS.find((tier) => chapters <= tier.toChapter) ?? CHAPTER_TIERS.at(-1)!
+  );
+}
+
+/** What a book of this band's shortest and longest length costs. */
+export function tierPriceRange(tier: ChapterTier): { min: number; max: number } {
+  return {
+    min: bookPrice(Math.max(tier.fromChapter, BASE_CHAPTERS)),
+    max: bookPrice(tier.toChapter),
+  };
+}
+
+export function bookPrice(chapterCount: number): number {
+  const chapters = clamp(Math.floor(chapterCount), 0, MAX_CHAPTERS);
+  const total = CHAPTER_TIERS.reduce(
+    (sum, tier) => sum + chaptersInTier(tier, chapters) * tier.ratePerChapter,
+    0,
+  );
+  return round2(total);
+}
+
+/** The headline price: the shortest book we print. */
+export const BASE_PRICE = bookPrice(BASE_CHAPTERS);
 
 export function storyPages(chapterCount: number): number {
   return chapterCount * STORY_PAGES_PER_CHAPTER;
@@ -188,14 +255,6 @@ export function maxSupportedChapters(usablePhotoCount: number): number {
   const byPhotos = Math.floor(usablePhotoCount / MIN_PHOTOS_PER_CHAPTER);
   return clamp(byPhotos, BASE_CHAPTERS, MAX_CHAPTERS);
 }
-
-/**
- * How many chapters an album comes to is `chaptersForAlbum` in
- * `lib/photo/cluster`, which reads the album's own dates. It used to be a
- * count guessed from the number of photographs here, and that guess could only
- * ever return five: it asked for `min(5, photos / 15)` and then clamped the
- * answer up to a floor of five.
- */
 
 export function formatUsd(amount: number): string {
   return new Intl.NumberFormat("en-US", {

@@ -16,7 +16,6 @@ function meta(coverLayoutId: CoverLayoutId): BookMeta {
     petName: "Biscuit",
     birthYear: "2011",
     deathYear: "2024",
-    dedication: "For the best copilot a family could ask for.",
     coverPhotoId: null,
     coverLayoutId,
   };

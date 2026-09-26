@@ -106,11 +106,11 @@ export function CoverFrontArt({
 
 /**
  * Hardcover back — styled after real memoir/photo-book backs: a centered
- * pull-quote (the dedication, or a fallback line) in the upper-middle third,
- * a small divider, and a publisher-style colophon anchored at the bottom.
+ * pull-quote in the upper-middle third, a small divider, and a
+ * publisher-style colophon anchored at the bottom.
  */
-export function BackCoverArt({ dedication }: { dedication?: string }) {
-  const body = dedication?.trim() || CLOSING_LINE;
+export function BackCoverArt() {
+  const body = CLOSING_LINE;
 
   return (
     <div className="relative z-[1] flex h-full w-full flex-col bg-transparent px-[13%] py-[13%] text-page-ink">

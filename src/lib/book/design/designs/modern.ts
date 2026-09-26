@@ -1,5 +1,4 @@
 import {
-  dedicationType,
   fromPt,
   heroOf,
   imprintTexts,
@@ -89,24 +88,6 @@ function designPage(page: BookPage, context: DesignContext): PageDesign {
           }),
         );
       }
-      return design;
-    }
-
-    case "dedication": {
-      const text = meta.dedication.trim();
-      if (!text) return design;
-      const { size, leading } = dedicationType(text);
-      design.under = [bar(context, 0.3)];
-      design.texts = [
-        {
-          x: SAFE,
-          y: 0.34,
-          w: 0.72,
-          h: 0.5,
-          valign: "top",
-          paragraphs: [{ text, font: "display", size: size + 1, leading: leading + 2, color: palette.ink }],
-        },
-      ];
       return design;
     }
 

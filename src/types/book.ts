@@ -113,7 +113,6 @@ export type DesignId = "scrapbook" | "classic" | "modern" | "vintage";
 
 export type PageKind =
   | "title"
-  | "dedication"
   | "chapter-opener"
   | "photos"
   | "closing"
@@ -205,7 +204,6 @@ export type BookMeta = {
   petName: string;
   birthYear: string;
   deathYear: string;
-  dedication: string;
   coverPhotoId: string | null;
   /**
    * What kind of animal they are, in the owner's own word — "dog", "cat",

@@ -56,7 +56,7 @@ Allowed:
 - A slight tilt (under 3°), neighbours leaning opposite ways
 - Washi tape in the book palette's pastels
 - Flat pale paper scraps from the book palette, tucked behind prints or note cards
-- White note cards for words, ruled faintly on the dedication
+- White note cards for words, ruled faintly
 - At most two small line doodles a page (heart, star, sparkle, loop, wave),
   in the palette's doodle or accent color; a paw is allowed but rare
 - Type: Caveat for handwriting (title page, captions, dates), Cormorant

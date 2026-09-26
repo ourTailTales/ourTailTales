@@ -111,7 +111,7 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
   }, [emailParam, emailKey]);
 
   // Autosave: anything the customer types or picks — pet name, cover style,
-  // dedication, chapter text, photo order, a custom cover upload — lands in
+  // chapter text, photo order, a custom cover upload — lands in
   // the local draft a moment after they stop editing, and the header's save
   // indicator flips to "saving" for that moment. Skips the very first render
   // after restore, since that's a read, not an edit.
@@ -482,7 +482,6 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
       track("book_created", {
         chapters: completed.chapters.length,
         photos: completed.photos.length,
-        has_dedication: completed.meta.dedication.trim().length > 0,
       });
     }
 

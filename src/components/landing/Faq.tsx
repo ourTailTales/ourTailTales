@@ -2,11 +2,12 @@ import { EmailCaptureCta } from "@/components/landing/EmailCaptureCta";
 import {
   BASE_PRICE,
   BASE_CHAPTERS,
+  CHAPTER_TIERS,
   MAX_CHAPTERS,
   MIN_PHOTOS_FOR_BOOK,
+  MAX_STORY_PAGES_PER_CHAPTER,
+  MIN_STORY_PAGES_PER_CHAPTER,
   PHOTOS_PER_CHAPTER_TARGET,
-  PRICE_PER_EXTRA_CHAPTER,
-  STORY_PAGES_PER_CHAPTER,
   formatUsd,
 } from "@/lib/pricing";
 import {
@@ -28,7 +29,10 @@ const faqs = [
   {
     question: "What does the book cost?",
     answer:
-      `Hardcovers start at ${formatUsd(BASE_PRICE)} for ${BASE_CHAPTERS} chapters (${BASE_CHAPTERS * STORY_PAGES_PER_CHAPTER} story pages). Each additional ${STORY_PAGES_PER_CHAPTER}-page chapter is ${formatUsd(PRICE_PER_EXTRA_CHAPTER)}, up to ${MAX_CHAPTERS} chapters. Optional Video Memories are available in packs of ${VIDEO_MEMORIES_PER_PACK} QR-linked videos for ${formatUsd(VIDEO_MEMORY_PACK_PRICE_CENTS / 100)}. Paperback is coming soon.`,
+      `Hardcovers are priced by the chapter, and the chapter gets cheaper the longer the book runs: ${CHAPTER_TIERS.map(
+        (tier) =>
+          `${formatUsd(tier.ratePerChapter)} each for chapters ${tier.fromChapter}\u2013${tier.toChapter}`,
+      ).join(", ")}. Each rate applies only to the chapters inside its band, so the shortest book — ${BASE_CHAPTERS} chapters — is ${formatUsd(BASE_PRICE)}, and ${MAX_CHAPTERS} chapters is the longest we bind. Every chapter runs ${MIN_STORY_PAGES_PER_CHAPTER}\u2013${MAX_STORY_PAGES_PER_CHAPTER} pages on ${PHOTOS_PER_CHAPTER_TARGET.min}\u2013${PHOTOS_PER_CHAPTER_TARGET.max} photos whichever band it falls in. Optional Video Memories are available in packs of ${VIDEO_MEMORIES_PER_PACK} QR-linked videos for ${formatUsd(VIDEO_MEMORY_PACK_PRICE_CENTS / 100)}. Paperback is coming soon.`,
   },
   {
     question: "Can I edit the story?",

@@ -23,7 +23,7 @@ const cover = Cormorant_Garamond({
   variable: "--font-cover",
   subsets: ["latin"],
   weight: ["500", "600", "700"],
-  // Italic for the book's dedication page.
+  // Italic for the back cover's pull-quote.
   style: ["normal", "italic"],
 });
 

@@ -39,7 +39,6 @@ function book(designId: DesignId = "scrapbook") {
     petName: "Biscuit",
     birthYear: "2011",
     deathYear: "2024",
-    dedication: "For Biscuit, who made every walk an adventure.",
     coverPhotoId: "p-0-0",
     designId,
   };
@@ -157,7 +156,6 @@ describe("every design", () => {
             .join(" ");
         };
         expect(words("title")).toMatch(/Biscuit/);
-        expect(words("dedication")).toMatch(/adventure/);
         expect(words("chapter-opener")).toMatch(/summer we found the lake/i);
         expect(words("closing")).toMatch(/Always part of the story/i);
         expect(words("imprint")).toMatch(/Biscuit's own photographs/);

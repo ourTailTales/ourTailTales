@@ -2,16 +2,15 @@
 
 import { create } from "zustand";
 
-import { albumChapterRange, proposeChapters } from "@/lib/photo/cluster";
+import { proposeChapters } from "@/lib/photo/cluster";
 import { groupDuplicates, selectablePhotos } from "@/lib/photo/dedupe";
 import {
   addPhotosToPage as placeOnPage,
   applyPageLayout,
   applyPageNote,
-  hasDedication,
   paginateBook,
   photoPageIndex,
-  withoutEmptyDedication,
+  withoutDedicationPages,
   type PhotoLookup,
 } from "@/lib/book/pagination";
 import { isPhotoLayout } from "@/lib/book/layouts";
@@ -23,10 +22,7 @@ import {
   releaseAllVideoPosters,
   releaseVideoPoster,
 } from "@/lib/photo/videoPreview";
-import {
-  maxSupportedChapters,
-  BASE_CHAPTERS,
-} from "@/lib/pricing";
+import { maxSupportedChapters, BASE_CHAPTERS } from "@/lib/pricing";
 import type {
   BookMeta,
   BookPage,
@@ -72,11 +68,6 @@ type State = {
   videoAssets: VideoAsset[];
   placements: VideoMemoryPlacement[];
   videoNotice: string | null;
-  /**
-   * True once a length — and so a price — has been agreed to. Until then no
-   * chapter is written, because each one is a paid model call.
-   */
-  sizeConfirmed: boolean;
   /** A page the editor should turn to, once it can. */
   revealPageId: string | null;
   albumVideos: AlbumVideoPreview[];
@@ -123,9 +114,6 @@ type Actions = {
 
   setMeta: (patch: Partial<BookMeta>) => void;
   goToConfigure: () => void;
-  setChapterCount: (count: number) => void;
-  /** Settles the length, and with it the price, before anything is written. */
-  confirmChapterCount: (count: number) => void;
   confirmBookSize: () => void;
 
   beginStoryGeneration: () => void;
@@ -275,7 +263,6 @@ const emptyMeta: BookMeta = {
   petName: "",
   birthYear: "",
   deathYear: "",
-  dedication: "",
   coverPhotoId: null,
 };
 
@@ -297,7 +284,6 @@ const initialState: State = {
   videoAssets: [],
   placements: [],
   videoNotice: null,
-  sizeConfirmed: false,
   revealPageId: null,
   albumVideos: [],
   freePreviewReady: false,
@@ -363,13 +349,14 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
   finishProcessing: () =>
     set((state) => {
       const deduped = groupDuplicates(state.photos);
-      const range = albumChapterRange(deduped);
+      const usable = selectablePhotos(deduped).length;
       return {
         photos: deduped,
-        // How many periods the album is actually made of, not a fixed five —
-        // and, when that is a great many, what is proposed rather than all of
-        // it. The customer settles it on the next screen.
-        chapterCount: range.recommended,
+        // The preview is free, so there is nothing to save by writing a
+        // shorter book than the album can fill: it opens on the longest book
+        // these photographs support, and the price of that length is shown
+        // plainly when they go to order it.
+        chapterCount: maxSupportedChapters(usable),
         progress: { ...state.progress, phase: "done" },
         funnelState: "album_ready",
       };
@@ -392,50 +379,11 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
       };
     }),
 
-  setMeta: (patch) =>
-    set((state) => {
-      const meta = { ...state.meta, ...patch };
-      // A dedication appearing or disappearing adds or removes its page. Any
-      // other edit leaves the page list alone, so layouts the customer chose
-      // are not re-dealt on every keystroke.
-      if (
-        state.pages.length === 0 ||
-        hasDedication(meta) === hasDedication(state.meta)
-      ) {
-        return { meta };
-      }
-      return {
-        meta,
-        pages: paginateBook(meta, state.chapters, photoFactsOf(state.photos)),
-      };
-    }),
+  // No edit here changes the page list, so layouts the customer chose are not
+  // re-dealt on every keystroke.
+  setMeta: (patch) => set((state) => ({ meta: { ...state.meta, ...patch } })),
 
   goToConfigure: () => set({ funnelState: "configure" }),
-
-  setChapterCount: (count) =>
-    set((state) => {
-      const supported = maxSupportedChapters(
-        selectablePhotos(state.photos).length,
-      );
-      return { chapterCount: Math.min(Math.max(count, BASE_CHAPTERS), supported) };
-    }),
-
-  /**
-   * The length the customer chose, and their agreement to what it costs.
-   *
-   * Separate from `confirmBookSize`, which does the work: this records the
-   * decision, and the flow acts on it. Nothing is written before it.
-   */
-  confirmChapterCount: (count) =>
-    set((state) => {
-      const supported = maxSupportedChapters(
-        selectablePhotos(state.photos).length,
-      );
-      return {
-        chapterCount: Math.min(Math.max(count, BASE_CHAPTERS), supported),
-        sizeConfirmed: true,
-      };
-    }),
 
   confirmBookSize: () =>
     set((state) => {
@@ -812,7 +760,7 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
       meta: restored.meta,
       chapterCount: restored.chapterCount,
       chapters: restored.chapters,
-      pages: withoutEmptyDedication(restored.pages, restored.meta),
+      pages: withoutDedicationPages(restored.pages),
       leadEmail: restored.leadEmail,
       albumVideos: restored.albumVideos,
       freePreviewReady: Boolean(restored.previewPdf),
