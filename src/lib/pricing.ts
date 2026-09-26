@@ -307,14 +307,6 @@ export function bookPrice(chapterCount: number): number {
   return round2(BASE_PRICE + extra);
 }
 
-/** What a book at this band's shortest and longest length costs. */
-export function tierPriceRange(tier: ChapterTier): { min: number; max: number } {
-  return {
-    min: bookPrice(Math.max(tier.fromChapter, BASE_CHAPTERS)),
-    max: bookPrice(tier.toChapter),
-  };
-}
-
 export function storyPages(chapterCount: number): number {
   return chapterCount * STORY_PAGES_PER_CHAPTER;
 }

@@ -125,6 +125,23 @@ describe("soundsLikeACaption", () => {
       ),
     ).toBe(false);
   });
+
+  it("catches the ornamental jacket-blurb phrasing the rules now warn against", () => {
+    expect(
+      soundsLikeACaption(
+        "Spring demanded nothing more than the striped blanket draped over the sofa.",
+      ),
+    ).toBe(true);
+    expect(
+      soundsLikeACaption(
+        "Rocket collapsed in the sun, as if he'd earned it.",
+      ),
+    ).toBe(true);
+    expect(soundsLikeACaption("Rocket was content to watch from the step.")).toBe(true);
+    expect(
+      soundsLikeACaption("The warmth finally coaxed him back upright."),
+    ).toBe(true);
+  });
 });
 
 describe("cohesion and the shape of the story", () => {

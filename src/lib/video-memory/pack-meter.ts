@@ -29,7 +29,6 @@ export function packMeterView(includedUniqueCount: number): PackMeterView {
   };
 }
 
-export const ZERO_STATE_HEADING = "Video Memories";
 export const ZERO_STATE_OFFER = `Add up to ${VIDEO_MEMORIES_PER_PACK} Video Memories for ${formatUsd(centsToUsd(VIDEO_MEMORY_PACK_PRICE_CENTS))}`;
 export const ZERO_STATE_BODY =
   "Include videos you can watch from your printed book.";

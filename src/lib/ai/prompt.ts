@@ -214,13 +214,19 @@ const CAMERA_WORDS = [
 ];
 
 /**
- * Phrases the old prompt trained into the copy. If a draft still reaches for
- * one, it gets written again once.
+ * Stock phrases the model reaches for under either failure mode: the old
+ * prompt's caption voice, or the ornamental "jacket blurb" phrasing the rules
+ * now warn against by name. If a draft still uses one, it gets written again
+ * once.
  */
 const FLAT_PHRASES = [
   ...CAMERA_WORDS,
   /\bthese (photo(graph)?s|pictures|images)\b/i,
   /\bthis chapter\b/i,
+  /\b(demanded|brought) nothing (more|better) than\b/i,
+  /\bas if (he|she|they)('d| had| would have) earned it\b/i,
+  /\bcontent to\b/i,
+  /\bfinally (letting|coaxed)\b/i,
 ];
 
 export function soundsLikeACaption(blurb: string): boolean {

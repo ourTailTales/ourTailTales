@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { identifyLead, track } from "@/lib/analytics";
-import { useIsAuthenticated } from "@/hooks/useIsAuthenticated";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -24,26 +23,13 @@ interface EmailCaptureCtaProps {
   rowClassName?: string;
   /** Flex-basis/grow class for the input, relative to the button. Defaults to "flex-[2]". */
   inputWidthClassName?: string;
-  /**
-   * Keep the email field even for a visitor who is already signed in.
-   *
-   * The hero is the one place this is true. It is the first thing anybody sees,
-   * and the offer it makes — hand over an address, get a story back — is the
-   * whole pitch of the page; swapping it for a shortcut button means a signed-in
-   * visitor, and anybody sharing a browser with one, is shown a different
-   * landing page from the one being advertised. The CTAs further down the page
-   * come after the pitch has been made, so there the shortcut is a kindness.
-   */
-  alwaysAskEmail?: boolean;
 }
 
 /**
- * Shared email-capture CTA: an auth-aware button that goes straight to /create
- * for signed-in users, or an email input + submit button that captures the
- * lead and redirects to /create. Used on the landing page hero and in the
- * "How it works" section so both stay visually and behaviorally in sync.
- *
- * `alwaysAskEmail` opts out of the auth-aware half of that, and the hero does.
+ * Shared email-capture CTA: an email input + submit button that captures the
+ * lead and redirects to /create. Used on the landing page hero, "How it
+ * works" section, FAQ, and product listing so all stay visually and
+ * behaviorally in sync.
  */
 export function EmailCaptureCta({
   source,

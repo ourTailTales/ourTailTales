@@ -29,10 +29,6 @@ export const TEASER_DESIGN_ID: DesignId = "scrapbook";
 
 const BY_ID = new Map(DESIGNS.map((design) => [design.id, design]));
 
-export function isDesignId(value: unknown): value is DesignId {
-  return typeof value === "string" && BY_ID.has(value as DesignId);
-}
-
 /** The design a book is set in — Scrapbook when unset or unknown. */
 export function resolveDesign(meta: Pick<BookMeta, "designId">): BookDesign {
   return BY_ID.get(meta.designId ?? DEFAULT_DESIGN_ID) ?? scrapbook;

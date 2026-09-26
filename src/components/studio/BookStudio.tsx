@@ -205,12 +205,9 @@ export function BookStudio({
   const chapters = useOurTailTalesStore((state) => state.chapters);
   const pages = useOurTailTalesStore((state) => state.pages);
   const photos = useOurTailTalesStore((state) => state.photos);
-  const originalBook = useOurTailTalesStore((state) => state.originalBook);
-  const resetToOriginal = useOurTailTalesStore((state) => state.resetToOriginal);
   const bookExpiresAt = useOurTailTalesStore((state) => state.bookExpiresAt);
 
   const [selected, setSelected] = useState(0);
-  const [confirmReset, setConfirmReset] = useState(false);
   const [zoomed, setZoomed] = useState(false);
 
   const photoMap = useMemo(() => photoMapOf(photos), [photos]);

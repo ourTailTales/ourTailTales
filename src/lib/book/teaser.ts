@@ -54,11 +54,6 @@ export function teaserPages(pages: BookPage[]): BookPage[] {
   return pages.slice(0, TEASER_INTERIOR_PAGES);
 }
 
-/** True for a page the customer cannot read without an account. */
-export function isLockedPage(pageIndex: number): boolean {
-  return pageIndex >= TEASER_INTERIOR_PAGES;
-}
-
 export function summarizeTeaser(
   pages: BookPage[],
   chapters: Chapter[],

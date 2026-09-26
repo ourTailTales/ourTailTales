@@ -19,15 +19,3 @@ export function placementsForAsset(
 ): VideoMemoryPlacement[] {
   return placements.filter((placement) => placement.videoAssetId === videoAssetId);
 }
-
-export function pageNumbersForAsset(
-  placements: VideoMemoryPlacement[],
-  pages: { id: string; pageNumber: number }[],
-  videoAssetId: string,
-): number[] {
-  const pageById = new Map(pages.map((page) => [page.id, page.pageNumber]));
-  return placementsForAsset(placements, videoAssetId)
-    .map((placement) => pageById.get(placement.pageId))
-    .filter((value): value is number => typeof value === "number")
-    .sort((a, b) => a - b);
-}

@@ -209,11 +209,3 @@ async function safeMessage(response: Response): Promise<string> {
   }
 }
 
-export function placeSummary(places: PlaceLabel[]): string {
-  return places
-    .map((place) =>
-      [place.city, place.region, place.country].filter(Boolean).join(", "),
-    )
-    .filter(Boolean)
-    .join(" · ");
-}

@@ -209,11 +209,6 @@ export function isCaptionLayout(id: LayoutId | null | undefined): boolean {
   return isPhotoLayout(id) && photoLayoutSpec(id).noteCount > 0;
 }
 
-/** Where a layout's notes sit, or null on a layout with none. */
-export function notePlacement(id: PhotoLayoutId): NotePlacement | null {
-  return photoLayoutSpec(id).notesAt ?? null;
-}
-
 /** The photographs-only layouts, then the ones that hold words. */
 export function layoutGroups(): { label: string; layouts: PhotoLayoutSpec[] }[] {
   return [

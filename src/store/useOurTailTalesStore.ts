@@ -214,7 +214,6 @@ type Actions = {
   setSaveStatus: (status: "saved" | "saving" | "error") => void;
   setCustomCover: (customCover: CustomCoverMeta | null) => void;
   setOriginalBook: (snapshot: BookSnapshot | null) => void;
-  resetToOriginal: () => void;
   reset: () => void;
 };
 
@@ -827,16 +826,6 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
   setCustomCover: (customCover) => set({ customCover }),
 
   setOriginalBook: (originalBook) => set({ originalBook }),
-
-  resetToOriginal: () =>
-    set((state) => {
-      if (!state.originalBook) return {};
-      return {
-        meta: structuredClone(state.originalBook.meta),
-        chapters: structuredClone(state.originalBook.chapters),
-        pages: structuredClone(state.originalBook.pages),
-      };
-    }),
 
   reset: () =>
     set((state) => {
