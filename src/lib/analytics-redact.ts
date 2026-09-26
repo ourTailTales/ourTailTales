@@ -1,8 +1,8 @@
 /**
  * Keeps live credentials out of analytics.
  *
- * A free book opens at `/book/<id>?k=<secret>`, and checkout at
- * `/checkout?order=<id>&t=<orderToken>` — both query parameters are the
+ * A free book opens at `/book/<id>?k=<secret>`, and each step of the checkout
+ * at `/checkout/<step>?order=<id>&t=<orderToken>` — both query parameters are the
  * whole credential, not a lookup key, so anyone holding one can read the
  * book or touch the order. PostHog captures `$current_url` and `$referrer`
  * verbatim, so without this the key to every book and order sits in the
