@@ -29,10 +29,16 @@ const faqs = [
   {
     question: "What does the book cost?",
     answer:
-      `Hardcovers are priced by the chapter, and the chapter gets cheaper the longer the book runs: ${CHAPTER_TIERS.map(
-        (tier) =>
-          `${formatUsd(tier.ratePerChapter)} each for chapters ${tier.fromChapter}\u2013${tier.toChapter}`,
-      ).join(", ")}. Each rate applies only to the chapters inside its band, so the shortest book — ${BASE_CHAPTERS} chapters — is ${formatUsd(BASE_PRICE)}, and ${MAX_CHAPTERS} chapters is the longest we bind. Every chapter runs ${MIN_STORY_PAGES_PER_CHAPTER}\u2013${MAX_STORY_PAGES_PER_CHAPTER} pages on ${PHOTOS_PER_CHAPTER_TARGET.min}\u2013${PHOTOS_PER_CHAPTER_TARGET.max} photos whichever band it falls in. Optional Video Memories are available in packs of ${VIDEO_MEMORIES_PER_PACK} QR-linked videos for ${formatUsd(VIDEO_MEMORY_PACK_PRICE_CENTS / 100)}. Paperback is coming soon.`,
+      `${formatUsd(BASE_PRICE)} covers the hardcover and its first ${BASE_CHAPTERS} chapters outright. Past that, chapters are bought one at a time and get cheaper the longer the book runs: ${CHAPTER_TIERS.filter(
+        (tier) => tier.ratePerChapter > 0,
+      )
+        .map(
+          (tier) =>
+            `${formatUsd(tier.ratePerChapter)} each for chapters ${tier.fromChapter}\u2013${
+              tier.toChapter === MAX_CHAPTERS ? MAX_CHAPTERS : tier.toChapter
+            }`,
+        )
+        .join(", ")}, up to ${MAX_CHAPTERS} chapters in all. Each rate applies only to the chapters inside its band. Every chapter runs ${MIN_STORY_PAGES_PER_CHAPTER}\u2013${MAX_STORY_PAGES_PER_CHAPTER} pages on ${PHOTOS_PER_CHAPTER_TARGET.min}\u2013${PHOTOS_PER_CHAPTER_TARGET.max} photos whichever band it falls in. Optional Video Memories are available in packs of ${VIDEO_MEMORIES_PER_PACK} QR-linked videos for ${formatUsd(VIDEO_MEMORY_PACK_PRICE_CENTS / 100)}. Paperback is coming soon.`,
   },
   {
     question: "Can I edit the story?",

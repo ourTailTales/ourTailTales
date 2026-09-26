@@ -230,7 +230,11 @@ function OrderDetail({ order }: { order: OrderView }) {
         {storedPriceBreakdown(order.chapterCount, order.bookPrice).map((line) => (
           <Row
             key={line.tier.id}
-            label={`${line.tier.name} · ${line.chapters} × ${formatUsd(line.ratePerChapter)} a chapter`}
+            label={
+              line.includedInBase
+                ? `${line.tier.name} · ${line.chapters} chapters, included`
+                : `${line.tier.name} · ${line.chapters} × ${formatUsd(line.ratePerChapter)} a chapter`
+            }
             value={formatUsd(line.subtotal)}
             indented
           />

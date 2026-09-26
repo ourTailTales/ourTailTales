@@ -17,7 +17,9 @@ import type { FunnelState } from "@/store/useOurTailTalesStore";
 export type BookStep =
   /** Something else is already working: photos being read, chapters being written. */
   | "wait"
-  /** Enough photos have arrived — group them into chapters. */
+  /** Enough photos have arrived, but how long a book to make is still theirs to say. */
+  | "chooseSize"
+  /** The size is settled — group the album into chapters. */
   | "build"
   /** Chapters exist with nothing written in them. */
   | "write"
@@ -41,8 +43,17 @@ export function nextBookStep(book: {
    * number that decides whether there is a book to build at all.
    */
   photoCount: number;
+  /**
+   * The customer has said how long a book they want.
+   *
+   * Nothing is grouped or written before they have: chapters are the unit
+   * this is priced and billed in, and the album alone cannot tell a puppy's
+   * first eighteen months from a dog of sixteen years.
+   */
+  sizeConfirmed: boolean;
 }): BookStep {
-  const { funnelState, chapterCount, unwritten, mediaCount, photoCount } = book;
+  const { funnelState, chapterCount, unwritten, mediaCount, photoCount, sizeConfirmed } =
+    book;
 
   // Work already in flight, or a book already open. Nothing to decide.
   if (
@@ -66,7 +77,8 @@ export function nextBookStep(book: {
     // `MIN_PHOTOS_FOR_BOOK` is five chapters times the five pictures a
     // chapter needs, which is exactly the question being asked here.
     void mediaCount;
-    return photoCount >= MIN_PHOTOS_FOR_BOOK ? "build" : "needPhotos";
+    if (photoCount < MIN_PHOTOS_FOR_BOOK) return "needPhotos";
+    return sizeConfirmed ? "build" : "chooseSize";
   }
 
   return unwritten === 0 ? "open" : "write";

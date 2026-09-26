@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 
+import { AlbumSize } from "@/components/studio/AlbumSize";
 import { BookStudio } from "@/components/studio/BookStudio";
 import { FinishBook } from "@/components/studio/FinishBook";
 import { PetIntake } from "@/components/studio/PetIntake";
@@ -64,6 +65,7 @@ export function BookFlow({
   const processingError = useOurTailTalesStore((state) => state.processingError);
   const chapters = useOurTailTalesStore((state) => state.chapters);
   const chapterCount = useOurTailTalesStore((state) => state.chapterCount);
+  const sizeConfirmed = useOurTailTalesStore((state) => state.sizeConfirmed);
   const leadEmail = useOurTailTalesStore((state) => state.leadEmail);
   const setLeadEmail = useOurTailTalesStore((state) => state.setLeadEmail);
   const confirmBookSize = useOurTailTalesStore((state) => state.confirmBookSize);
@@ -101,15 +103,20 @@ export function BookFlow({
     unwritten,
     mediaCount,
     photoCount: summary.placeable,
+    sizeConfirmed,
   });
   const shortOfPhotos = step === "needPhotos";
+  // Asked under the album they just dropped, not on a screen of its own: the
+  // photographs are the reason the question makes sense, and they should
+  // still be in front of them while they answer it.
+  const choosingSize = step === "chooseSize";
 
   // Nothing to build with yet, whether that is because nothing has arrived
   // or because what arrived wasn't enough. Either way the answer is the same
   // album step, not a hand-off to a screen that only repeats the "add at
   // least N" line already sitting under the drop target.
   const atStart = (funnelState === "idle" && mediaCount === 0) || shortOfPhotos;
-  const showIntake = atStart;
+  const showIntake = atStart || choosingSize;
 
   /**
    * Confirming the animal does not replace the screen, it extends it.
@@ -121,18 +128,32 @@ export function BookFlow({
    * motion says where the flow went.
    */
   const uploadRef = useRef<HTMLDivElement>(null);
+  const sizeRef = useRef<HTMLDivElement>(null);
   // A restored draft arrives with the intake already answered. It should find
   // the page where it left it, not be thrown down it on load.
   const confirmedOnArrival = useRef(intakeDone);
   useEffect(() => {
-    if (!atStart || !intakeDone || confirmedOnArrival.current) return;
+    if (!showIntake || !intakeDone || confirmedOnArrival.current) return;
     const node = uploadRef.current;
     if (!node) return;
     const frame = requestAnimationFrame(() => {
       node.scrollIntoView({ behavior: "smooth", block: "center" });
     });
     return () => cancelAnimationFrame(frame);
-  }, [atStart, intakeDone]);
+  }, [showIntake, intakeDone]);
+
+  // The question about how long a book to make appears below an album that
+  // has just filled the screen, so the page goes to it rather than leaving it
+  // to be scrolled up on.
+  useEffect(() => {
+    if (!choosingSize) return;
+    const node = sizeRef.current;
+    if (!node) return;
+    const frame = requestAnimationFrame(() => {
+      node.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [choosingSize]);
 
   /**
    * Gets the book from wherever it is to written, in one place.
@@ -256,6 +277,15 @@ export function BookFlow({
                   onRemovePhoto={removeAlbumPhoto}
                   onRemoveVideo={removeAlbumVideo}
                 />
+
+                {choosingSize ? (
+                  <div
+                    ref={sizeRef}
+                    className="mt-10 scroll-mt-6 border-t border-page-line/70 pt-10"
+                  >
+                    <AlbumSize />
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </>

@@ -6,7 +6,7 @@ import { MIN_PHOTOS_FOR_BOOK } from "@/lib/pricing";
 const enough = MIN_PHOTOS_FOR_BOOK;
 
 describe("nextBookStep", () => {
-  it("groups the album into chapters once enough photos have arrived", () => {
+  it("asks how long a book to make before grouping anything", () => {
     expect(
       nextBookStep({
         funnelState: "album_ready",
@@ -14,6 +14,33 @@ describe("nextBookStep", () => {
         unwritten: 0,
         mediaCount: enough,
         photoCount: enough,
+        sizeConfirmed: false,
+      }),
+    ).toBe("chooseSize");
+  });
+
+  it("still asks for more photos before asking how long a book to make", () => {
+    expect(
+      nextBookStep({
+        funnelState: "album_ready",
+        chapterCount: 0,
+        unwritten: 0,
+        mediaCount: enough - 1,
+        photoCount: enough - 1,
+        sizeConfirmed: false,
+      }),
+    ).toBe("needPhotos");
+  });
+
+  it("groups the album into chapters once the size is confirmed", () => {
+    expect(
+      nextBookStep({
+        funnelState: "album_ready",
+        chapterCount: 0,
+        unwritten: 0,
+        mediaCount: enough,
+        photoCount: enough,
+        sizeConfirmed: true,
       }),
     ).toBe("build");
   });
@@ -26,6 +53,7 @@ describe("nextBookStep", () => {
         unwritten: 0,
         mediaCount: enough - 1,
         photoCount: enough - 1,
+        sizeConfirmed: true,
       }),
     ).toBe("needPhotos");
   });
@@ -38,6 +66,7 @@ describe("nextBookStep", () => {
         unwritten: 5,
         mediaCount: enough,
         photoCount: enough,
+        sizeConfirmed: true,
       }),
     ).toBe("write");
   });
@@ -52,6 +81,7 @@ describe("nextBookStep", () => {
         unwritten: 3,
         mediaCount: enough,
         photoCount: enough,
+        sizeConfirmed: true,
       }),
     ).toBe("write");
   });
@@ -64,6 +94,7 @@ describe("nextBookStep", () => {
         unwritten: 0,
         mediaCount: enough,
         photoCount: enough,
+        sizeConfirmed: true,
       }),
     ).toBe("open");
   });
@@ -76,6 +107,7 @@ describe("nextBookStep", () => {
         unwritten: 1,
         mediaCount: enough,
         photoCount: enough,
+        sizeConfirmed: true,
       }),
     ).toBe("write");
   });
@@ -89,6 +121,7 @@ describe("nextBookStep", () => {
           unwritten: 5,
           mediaCount: enough,
           photoCount: enough,
+          sizeConfirmed: true,
         }),
       ).toBe("wait");
     }
@@ -103,6 +136,7 @@ describe("nextBookStep", () => {
           unwritten: 0,
           mediaCount: enough,
           photoCount: enough,
+          sizeConfirmed: true,
         }),
       ).toBe("wait");
     }
@@ -116,6 +150,7 @@ describe("nextBookStep", () => {
         unwritten: 0,
         mediaCount: 0,
         photoCount: enough,
+        sizeConfirmed: true,
       }),
     ).toBe("wait");
   });
@@ -130,6 +165,7 @@ describe("nextBookStep", () => {
         unwritten: 0,
         mediaCount: enough,
         photoCount: 0,
+        sizeConfirmed: true,
       }),
     ).toBe("needPhotos");
   });
@@ -145,6 +181,7 @@ describe("nextBookStep", () => {
         unwritten: 0,
         mediaCount: enough,
         photoCount: 1,
+        sizeConfirmed: true,
       }),
     ).toBe("needPhotos");
   });
@@ -157,6 +194,7 @@ describe("nextBookStep", () => {
         unwritten: 0,
         mediaCount: enough * 4,
         photoCount: enough - 1,
+        sizeConfirmed: true,
       }),
     ).toBe("needPhotos");
   });
