@@ -10,6 +10,7 @@ import {
 } from "@/lib/book/layouts";
 import {
   MAX_PHOTO_PAGES,
+  captionIndexForPhotos,
   planPages,
   reconcilePlan,
   type PlannablePhoto,
@@ -120,6 +121,9 @@ export function paginateBook(
       plan?.map((page) => page.photos.length),
     );
 
+    // A line is printed once, on the page its photographs ended up on.
+    const usedCaptions = new Set<number>();
+
     for (let index = 0; index < counts.length; index += 1) {
       const slice = body.splice(0, counts[index]!);
       // A chapter is only as long as its photographs: a page with none left
@@ -152,10 +156,14 @@ export function paginateBook(
           : slice;
 
       const pageNotes = notesForPage(notes[index], layoutNoteCount(layoutId));
-      // The line written for this page when the chapter was written. Printed
-      // only where the page's layout keeps room for words, and only where
-      // the owner has not written something of their own.
-      const caption = plan?.[index]?.caption;
+      // The line written about these photographs when the chapter was written
+      // — found by the photographs themselves, not by the page's position,
+      // which the grouping is free to change underneath it. Printed only where
+      // the page's layout keeps room for words, and only where the owner has
+      // not written something of their own.
+      const captionAt = captionIndexForPhotos(plan, slice, usedCaptions);
+      if (captionAt !== null) usedCaptions.add(captionAt);
+      const caption = captionAt === null ? undefined : plan?.[captionAt]?.caption;
 
       push({
         id: pageId,

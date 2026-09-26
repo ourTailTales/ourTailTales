@@ -30,6 +30,12 @@ describe("redactUrl", () => {
     expect(
       redactUrl("https://ourtailtales.com/checkout?order=abc-123&t=ordertoken"),
     ).toBe("https://ourtailtales.com/checkout?order=abc-123&t=redacted");
+    // The checkout is a page per step now, and the token rides on every one.
+    for (const step of ["address", "shipping", "payment"]) {
+      expect(
+        redactUrl(`https://ourtailtales.com/checkout/${step}?order=abc&t=ordertoken`),
+      ).toBe(`https://ourtailtales.com/checkout/${step}?order=abc&t=redacted`);
+    }
   });
 });
 

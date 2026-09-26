@@ -8,7 +8,9 @@ import { CustomCoverPanel } from "@/components/editor/CustomCoverPanel";
 import { CoverStylePicker } from "@/components/studio/CoverStylePicker";
 import { LayoutPicker } from "@/components/studio/LayoutPicker";
 import { NamePositionPicker } from "@/components/studio/controls/NamePositionPicker";
+import { PageVideos } from "@/components/studio/controls/PageVideos";
 import { PhotoPicker } from "@/components/studio/controls/PhotoPicker";
+import { Tabs } from "@/components/studio/controls/Tabs";
 import {
   COVER_FONTS,
   DEFAULT_COVER_FONT,
@@ -720,23 +722,20 @@ function PhotoPagePanel({
 
   const active = page.photoIds[slotIndex];
 
-  return (
-    <Panel title={slide.label} hint="Pick a layout, write on the page, or swap any photo on it.">
-      {layoutField}
-      {notesField}
-
+  const photosTab = (
+    <>
       <Field
         label={onPage.length === 1 ? "Photo on this page" : "Photos on this page"}
         note="Taking one out takes it out of the album, and the book closes up around it."
       >
-        <ol className="flex flex-wrap gap-2">
+        <ol className="grid grid-cols-[repeat(auto-fill,minmax(80px,1fr))] gap-2">
           {onPage.map((photo, index) => (
             <li key={photo.id} className="relative">
               <button
                 type="button"
                 onClick={() => setSlotIndex(index)}
                 aria-pressed={index === slotIndex}
-                className={`block size-14 overflow-hidden rounded-md ring-1 transition-all ${
+                className={`block aspect-square w-full overflow-hidden rounded-md ring-1 transition-all ${
                   index === slotIndex
                     ? "ring-2 ring-periwinkle"
                     : "ring-page-ink/10 hover:ring-periwinkle/60"
@@ -778,6 +777,46 @@ function PhotoPagePanel({
           emptyLabel="Every photo from this part of the album is already in the book."
         />
       </Field>
+    </>
+  );
+
+  return (
+    <Panel title={slide.label}>
+      {/* One page can be given four different things, and stacked in a column
+          the one being looked for was always below the fold. The labels are
+          also the answer to "what can I do to this page?". */}
+      <Tabs
+        label={`${slide.label} tools`}
+        tabs={[
+          {
+            id: "layout",
+            label: "Layout",
+            content: () =>
+              layoutField ?? (
+                <p className="text-xs leading-5 text-page-ink-faint">
+                  This page takes its layout from the book.
+                </p>
+              ),
+          },
+          { id: "photos", label: "Photos", content: () => photosTab },
+          {
+            id: "words",
+            label: "Words",
+            content: () =>
+              notesField ?? (
+                <p className="text-xs leading-5 text-page-ink-faint">
+                  This layout has no room for words. Choose one with a caption
+                  in Layout, and what you write appears beside the photograph.
+                </p>
+              ),
+          },
+          {
+            id: "videos",
+            label: "Videos",
+            content: () => <PageVideos pageId={page.id} />,
+          },
+        ]}
+      />
     </Panel>
   );
 }

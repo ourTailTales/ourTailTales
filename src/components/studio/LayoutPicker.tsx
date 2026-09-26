@@ -64,7 +64,7 @@ export function LayoutPicker({
 
   return (
     <div className="flex flex-col gap-4">
-      <div role="radiogroup" aria-label="Page layout" className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+      <div role="radiogroup" aria-label="Page layout" className="grid grid-cols-[repeat(auto-fill,minmax(80px,1fr))] gap-2">
         <button
           type="button"
           role="radio"
@@ -103,7 +103,7 @@ export function LayoutPicker({
             room for a line or two of your own
           </span>
         </p>
-        <div role="radiogroup" aria-label="Page layout with words" className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+        <div role="radiogroup" aria-label="Page layout with words" className="grid grid-cols-[repeat(auto-fill,minmax(80px,1fr))] gap-2">
           {groups[1]!.previews.map(({ layout, page }) => (
             <LayoutOption
               key={layout.id}

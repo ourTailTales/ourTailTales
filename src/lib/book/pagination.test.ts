@@ -5,6 +5,7 @@ import {
   isPhotoLayout,
   layoutNoteCount,
   layoutPhotoCount,
+  layoutsForCount,
 } from "@/lib/book/layouts";
 import {
   applyPageLayout,
@@ -422,5 +423,77 @@ describe("words written on a page", () => {
   it("refuses a third note on a page", () => {
     const written = applyPageNote(chapter, 0, 2, "One too many.");
     expect(written.pageNotes).toBeUndefined();
+  });
+});
+
+describe("the line printed on a page", () => {
+  const photos = new Map(
+    ["hero", "b1", "b2", "b3", "b4"].map((id) => [
+      id,
+      { orientation: "landscape" as const },
+    ]),
+  );
+  const meta: BookMeta = {
+    petName: "Jordi",
+    birthYear: "",
+    deathYear: "",
+    dedication: "",
+    coverPhotoId: "hero",
+  };
+
+  /** A chapter whose model-written plan gave each page its own line. */
+  const chapterWith = (pageLayouts?: (string | null)[]): Chapter =>
+    ({
+      id: "c1",
+      index: 0,
+      photoIds: ["hero", "b1", "b2", "b3", "b4"],
+      candidateIds: [],
+      startAt: null,
+      endAt: null,
+      title: "Big Wide World",
+      dateLabel: "",
+      blurb: "",
+      places: [],
+      heroPhotoId: "hero",
+      aiStatus: "done",
+      pagePlan: [
+        { photos: ["b1", "b2"], caption: "The long slow middle of winter" },
+        { photos: ["b3"], caption: "Right up close" },
+        { photos: ["b4"], caption: "Back at the lake by June" },
+      ],
+      ...(pageLayouts ? { pageLayouts } : {}),
+    }) as Chapter;
+
+  const photoPages = (chapter: Chapter) =>
+    paginateBook(meta, [chapter], photos).filter((page) => page.kind === "photos");
+
+  it("is the line written for the photographs on it", () => {
+    const pages = photoPages(chapterWith());
+    expect(pages.map((page) => page.photoIds)).toEqual([["b1", "b2"], ["b3"], ["b4"]]);
+    expect(pages.map((page) => page.caption)).toEqual([
+      "The long slow middle of winter",
+      "Right up close",
+      "Back at the lake by June",
+    ]);
+  });
+
+  it("follows its photographs when a chosen layout regroups them", () => {
+    // Three to the first page, so the plan's first two pages are now one and
+    // everything after shifts up. Indexed by position, page two would print
+    // "Right up close" — the line written about b3, which is on page one now —
+    // over a photograph it was never about.
+    const threeUp = layoutsForCount(3)[0]!;
+    const pages = photoPages(chapterWith([threeUp]));
+
+    expect(pages.map((page) => page.photoIds)).toEqual([["b1", "b2", "b3"], ["b4"]]);
+    expect(pages[0]?.caption).toBe("The long slow middle of winter");
+    expect(pages[1]?.caption).toBe("Back at the lake by June");
+    expect(pages.map((page) => page.caption)).not.toContain("Right up close");
+  });
+
+  it("never prints the same line twice", () => {
+    const pages = photoPages(chapterWith([layoutsForCount(3)[0]!]));
+    const lines = pages.map((page) => page.caption).filter(Boolean);
+    expect(new Set(lines).size).toBe(lines.length);
   });
 });

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { buildStoryPrompt, soundsLikeACaption, storySystemPrompt } from "@/lib/ai/prompt";
+import {
+  buildStoryPrompt,
+  mentionsTheCamera,
+  soundsLikeACaption,
+  storySystemPrompt,
+} from "@/lib/ai/prompt";
 import type { StoryRequest } from "@/types/story";
 
 function chapterOf(overrides: Partial<StoryRequest> = {}): StoryRequest {
@@ -147,5 +152,46 @@ describe("cohesion and the shape of the story", () => {
 
   it("says nothing about position when it is not known", () => {
     expect(buildStoryPrompt(chapterOf())).not.toContain("This is period");
+  });
+});
+
+describe("copy that is about the photograph, not the pet", () => {
+  it("catches the line that was printed in a real book", () => {
+    expect(mentionsTheCamera("Right up close to the lens")).toBe(true);
+    expect(soundsLikeACaption("Right up close to the lens")).toBe(true);
+  });
+
+  it("catches the composition words the old list let through", () => {
+    for (const line of [
+      "A red collar against every strange background",
+      "Posing on the back step",
+      "A close-up in the kitchen",
+      "The same backdrop all summer",
+    ]) {
+      expect(mentionsTheCamera(line)).toBe(true);
+    }
+  });
+
+  it("leaves a line about the animal alone", () => {
+    for (const line of [
+      "Nose first, as usual",
+      "The long slow middle of winter",
+      "Back at the lake by June",
+      "First week in the new house",
+      "Asleep under the door frame again",
+    ]) {
+      expect(mentionsTheCamera(line)).toBe(false);
+    }
+  });
+
+  it("asks for one occasion rather than the pattern across them all", () => {
+    const prompt = storySystemPrompt({ stillHere: true });
+    expect(prompt).toContain("Write one occasion, never the pattern across all of them");
+    // The blurb that prompted the rule, quoted as the thing never to write.
+    expect(prompt).toContain("Everything demanded immediate investigation");
+  });
+
+  it("tells the caption writer that the camera is off limits, by name", () => {
+    expect(storySystemPrompt()).toContain("Right up close to the lens");
   });
 });
