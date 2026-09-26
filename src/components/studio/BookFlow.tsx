@@ -2,11 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 
+import { BookSizeStep } from "@/components/studio/BookSizeStep";
 import { BookStudio } from "@/components/studio/BookStudio";
 import { FinishBook } from "@/components/studio/FinishBook";
 import { PetIntake } from "@/components/studio/PetIntake";
 import { UploadMedia } from "@/components/editor/UploadMedia";
 import { nextBookStep } from "@/lib/book/progress";
+import { albumChapterRange } from "@/lib/photo/cluster";
 import { filesFromDataTransfer } from "@/lib/photo/process";
 import { bookSpec } from "@/lib/pricing";
 import { track } from "@/lib/analytics";
@@ -64,6 +66,10 @@ export function BookFlow({
   const processingError = useOurTailTalesStore((state) => state.processingError);
   const chapters = useOurTailTalesStore((state) => state.chapters);
   const chapterCount = useOurTailTalesStore((state) => state.chapterCount);
+  const sizeConfirmed = useOurTailTalesStore((state) => state.sizeConfirmed);
+  const confirmChapterCount = useOurTailTalesStore(
+    (state) => state.confirmChapterCount,
+  );
   const leadEmail = useOurTailTalesStore((state) => state.leadEmail);
   const setLeadEmail = useOurTailTalesStore((state) => state.setLeadEmail);
   const confirmBookSize = useOurTailTalesStore((state) => state.confirmBookSize);
@@ -72,6 +78,11 @@ export function BookFlow({
   const removeAlbumVideo = useOurTailTalesStore((state) => state.removeAlbumVideo);
 
   const summary = useMemo(() => summarizeAlbum(photos), [photos]);
+  // Read from the album itself rather than from something recorded when it was
+  // last processed: a draft restored at the album step has photographs but no
+  // record, and would otherwise be offered a five-chapter book whatever it
+  // holds.
+  const chapterRange = useMemo(() => albumChapterRange(photos), [photos]);
   const mediaCount = summary.placeable + albumVideos.length;
 
   /**
@@ -101,6 +112,7 @@ export function BookFlow({
     unwritten,
     mediaCount,
     photoCount: summary.placeable,
+    sizeConfirmed,
   });
   const shortOfPhotos = step === "needPhotos";
 
@@ -232,7 +244,18 @@ export function BookFlow({
       onDrop={handleDrop}
     >
       <div className="mx-auto w-full max-w-[90rem] px-5 py-6 sm:px-8 sm:py-8">
-        {showIntake ? (
+        {step === "size" ? (
+          <BookSizeStep
+            recommended={Math.min(
+              Math.max(chapterCount, chapterRange.least),
+              chapterRange.available,
+            )}
+            available={chapterRange.available}
+            petName={petName}
+            photoCount={summary.placeable}
+            onConfirm={confirmChapterCount}
+          />
+        ) : showIntake ? (
           <>
             <PetIntake onDone={() => setIntakeDone(true)} confirmed={intakeDone} />
             {intakeDone ? (

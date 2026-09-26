@@ -5,6 +5,7 @@ import {
 } from "@/lib/photo/dedupe";
 import {
   BASE_CHAPTERS,
+  DEFAULT_CHAPTER_CAP,
   MIN_PHOTOS_PER_CHAPTER,
   PHOTOS_PER_CHAPTER_TARGET,
   maxSupportedChapters,
@@ -98,12 +99,40 @@ export const SEAM_DAYS = 14;
  * all — no EXIF, nothing — has no seams to find and comes out at the base.
  */
 export function chaptersForAlbum(photos: PhotoAsset[]): number {
+  return albumChapterRange(photos).recommended;
+}
+
+export type ChapterRange = {
+  /** What the book is proposed at, and what the price is quoted from. */
+  recommended: number;
+  /** Everything the album has periods for, if the customer wants it all. */
+  available: number;
+  /** The fewest this album can be made into, which is the base book. */
+  least: number;
+};
+
+/**
+ * How long this album's book should be, and how long it could be.
+ *
+ * Two numbers rather than one, because they answer different questions. The
+ * album's periods decide what is *available*; `DEFAULT_CHAPTER_CAP` decides
+ * what is *proposed*, because a two-hundred-outing camera roll has fifty
+ * chapters in it and quoting $274 unasked is an ambush rather than an offer.
+ * Past the cap the longer book is offered in words and taken deliberately.
+ */
+export function albumChapterRange(photos: PhotoAsset[]): ChapterRange {
   const ordered = selectablePhotos(photos).sort(compareChronologically);
   const supported = maxSupportedChapters(ordered.length);
-  if (ordered.length === 0) return BASE_CHAPTERS;
+  const base = { recommended: BASE_CHAPTERS, available: BASE_CHAPTERS, least: BASE_CHAPTERS };
+  if (ordered.length === 0) return base;
 
-  const runs = runsBetweenSeams(ordered);
-  return Math.min(Math.max(runs.length, BASE_CHAPTERS), supported);
+  const periods = runsBetweenSeams(ordered).length;
+  const available = Math.min(Math.max(periods, BASE_CHAPTERS), supported);
+  return {
+    recommended: Math.min(available, DEFAULT_CHAPTER_CAP),
+    available,
+    least: BASE_CHAPTERS,
+  };
 }
 
 /**

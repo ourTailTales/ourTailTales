@@ -6,6 +6,48 @@ import { MIN_PHOTOS_FOR_BOOK } from "@/lib/pricing";
 const enough = MIN_PHOTOS_FOR_BOOK;
 
 describe("nextBookStep", () => {
+  it("asks how long the book should be before building anything", () => {
+    // The step between an album and a book: nothing has been written yet,
+    // and what follows costs a model call per chapter at a price nobody has
+    // agreed to.
+    expect(
+      nextBookStep({
+        funnelState: "album_ready",
+        chapterCount: 0,
+        unwritten: 0,
+        mediaCount: enough,
+        photoCount: enough,
+        sizeConfirmed: false,
+      }),
+    ).toBe("size");
+  });
+
+  it("starts nothing while the customer is still looking at the price", () => {
+    expect(
+      nextBookStep({
+        funnelState: "configure",
+        chapterCount: 0,
+        unwritten: 0,
+        mediaCount: enough,
+        photoCount: enough,
+        sizeConfirmed: false,
+      }),
+    ).toBe("wait");
+  });
+
+  it("asks for photos before it asks for a length", () => {
+    expect(
+      nextBookStep({
+        funnelState: "album_ready",
+        chapterCount: 0,
+        unwritten: 0,
+        mediaCount: enough - 1,
+        photoCount: enough - 1,
+        sizeConfirmed: false,
+      }),
+    ).toBe("needPhotos");
+  });
+
   it("groups the album into chapters once enough photos have arrived", () => {
     expect(
       nextBookStep({
@@ -14,6 +56,7 @@ describe("nextBookStep", () => {
         unwritten: 0,
         mediaCount: enough,
         photoCount: enough,
+        sizeConfirmed: true,
       }),
     ).toBe("build");
   });
@@ -26,6 +69,7 @@ describe("nextBookStep", () => {
         unwritten: 0,
         mediaCount: enough - 1,
         photoCount: enough - 1,
+        sizeConfirmed: true,
       }),
     ).toBe("needPhotos");
   });
@@ -38,6 +82,7 @@ describe("nextBookStep", () => {
         unwritten: 5,
         mediaCount: enough,
         photoCount: enough,
+        sizeConfirmed: true,
       }),
     ).toBe("write");
   });
@@ -52,6 +97,7 @@ describe("nextBookStep", () => {
         unwritten: 3,
         mediaCount: enough,
         photoCount: enough,
+        sizeConfirmed: true,
       }),
     ).toBe("write");
   });
@@ -64,6 +110,7 @@ describe("nextBookStep", () => {
         unwritten: 0,
         mediaCount: enough,
         photoCount: enough,
+        sizeConfirmed: true,
       }),
     ).toBe("open");
   });
@@ -76,6 +123,7 @@ describe("nextBookStep", () => {
         unwritten: 1,
         mediaCount: enough,
         photoCount: enough,
+        sizeConfirmed: true,
       }),
     ).toBe("write");
   });
@@ -89,6 +137,7 @@ describe("nextBookStep", () => {
           unwritten: 5,
           mediaCount: enough,
           photoCount: enough,
+          sizeConfirmed: true,
         }),
       ).toBe("wait");
     }
@@ -103,6 +152,7 @@ describe("nextBookStep", () => {
           unwritten: 0,
           mediaCount: enough,
           photoCount: enough,
+          sizeConfirmed: true,
         }),
       ).toBe("wait");
     }
@@ -116,6 +166,7 @@ describe("nextBookStep", () => {
         unwritten: 0,
         mediaCount: 0,
         photoCount: enough,
+        sizeConfirmed: true,
       }),
     ).toBe("wait");
   });
@@ -130,6 +181,7 @@ describe("nextBookStep", () => {
         unwritten: 0,
         mediaCount: enough,
         photoCount: 0,
+        sizeConfirmed: true,
       }),
     ).toBe("needPhotos");
   });
@@ -145,6 +197,7 @@ describe("nextBookStep", () => {
         unwritten: 0,
         mediaCount: enough,
         photoCount: 1,
+        sizeConfirmed: true,
       }),
     ).toBe("needPhotos");
   });
@@ -157,6 +210,7 @@ describe("nextBookStep", () => {
         unwritten: 0,
         mediaCount: enough * 4,
         photoCount: enough - 1,
+        sizeConfirmed: true,
       }),
     ).toBe("needPhotos");
   });

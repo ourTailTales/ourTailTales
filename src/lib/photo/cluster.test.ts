@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { SEAM_DAYS, chaptersForAlbum, proposeChapters } from "@/lib/photo/cluster";
+import {
+  SEAM_DAYS,
+  albumChapterRange,
+  chaptersForAlbum,
+  proposeChapters,
+} from "@/lib/photo/cluster";
 import {
   BASE_CHAPTERS,
+  DEFAULT_CHAPTER_CAP,
   MAX_CHAPTERS,
   MIN_PHOTOS_PER_CHAPTER,
   maxSupportedChapters,
@@ -58,6 +64,32 @@ describe("how many chapters an album comes to", () => {
     expect(chaptersForAlbum(album)).toBe(12);
   });
 
+  it("proposes no more than the default cap, and says what is there", () => {
+    // Thirty outings: thirty periods the album really has, but a book is not
+    // quoted at thirty chapters unless somebody asks for it.
+    const album = albumOf(Array.from({ length: 30 }, () => 8));
+    const range = albumChapterRange(album);
+
+    expect(range.available).toBe(30);
+    expect(range.recommended).toBe(DEFAULT_CHAPTER_CAP);
+    expect(range.least).toBe(BASE_CHAPTERS);
+    expect(chaptersForAlbum(album)).toBe(DEFAULT_CHAPTER_CAP);
+  });
+
+  it("proposes everything when the album is under the cap", () => {
+    const album = albumOf(Array.from({ length: 8 }, () => 8));
+    const range = albumChapterRange(album);
+    expect(range.available).toBe(8);
+    expect(range.recommended).toBe(8);
+  });
+
+  it("never offers more than the printer binds", () => {
+    // Four hundred outings is four hundred periods; fifty is the cap, and
+    // three thousand two hundred photographs can fill it.
+    const album = albumOf(Array.from({ length: 400 }, () => 8));
+    expect(albumChapterRange(album).available).toBe(MAX_CHAPTERS);
+  });
+
   it("never goes below the base book", () => {
     // One long summer, photographed daily: one period, but the smallest book
     // this shop sells is five chapters.
@@ -70,18 +102,20 @@ describe("how many chapters an album comes to", () => {
     // one chapter of sixty: runs are gathered until there are enough for a
     // chapter, which is ten chapters of six.
     const album = albumOf(Array.from({ length: 30 }, () => 2));
-    const count = chaptersForAlbum(album);
+    const count = albumChapterRange(album).available;
     expect(count).toBe(10);
     expect(count).toBeLessThanOrEqual(maxSupportedChapters(album.length));
     expect(count).toBeLessThanOrEqual(MAX_CHAPTERS);
     expect(album.length / count).toBeGreaterThanOrEqual(MIN_PHOTOS_PER_CHAPTER);
   });
 
-  it("never asks for more chapters than the photographs can fill", () => {
+  it("never offers more chapters than the photographs can fill", () => {
     // A hundred outings of one photograph: a hundred periods, a hundred
     // photographs, and at five to a chapter twenty is all they fill.
     const album = albumOf(Array.from({ length: 100 }, () => 1));
-    expect(chaptersForAlbum(album)).toBe(maxSupportedChapters(album.length));
+    expect(albumChapterRange(album).available).toBe(
+      maxSupportedChapters(album.length),
+    );
   });
 
   it("does not make a chapter out of one stray afternoon", () => {
