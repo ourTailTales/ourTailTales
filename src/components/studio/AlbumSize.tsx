@@ -5,8 +5,6 @@ import { useMemo, useState } from "react";
 import { track } from "@/lib/analytics";
 import {
   CHAPTER_TIERS,
-  MAX_STORY_PAGES_PER_CHAPTER,
-  MIN_STORY_PAGES_PER_CHAPTER,
   bookPrice,
   chaptersForSpan,
   chaptersForTier,
@@ -77,7 +75,7 @@ export function AlbumSize() {
           : `Your photos run from the first to the last across ${years === 1 ? "about a year" : `about ${years} years`}, so we have picked the length to match. Change it if it is not the book you had in mind.`}
       </p>
 
-      <ul className="mt-6 grid gap-3">
+      <ul className="mt-6 grid grid-cols-3 gap-3">
         {CHAPTER_TIERS.map((tier) => (
           <TierChoice
             key={tier.id}
@@ -138,12 +136,6 @@ function TierChoice({
   onPick: () => void;
 }) {
   const chapters = chaptersForTier(tier, { wantedChapters, usablePhotoCount });
-  const range =
-    tier.toChapter >= 50
-      ? `${tier.fromChapter} chapters and up`
-      : tier.fromChapter === 1
-        ? `Up to ${tier.toChapter} chapters`
-        : `${tier.fromChapter}–${tier.toChapter} chapters`;
   const photoRange = photoRangeForTier(tier);
 
   return (
@@ -153,45 +145,36 @@ function TierChoice({
         onClick={onPick}
         disabled={!available}
         aria-pressed={selected}
-        className={`flex w-full flex-col gap-1 rounded-2xl border p-4 text-left transition-colors sm:flex-row sm:items-center sm:gap-4 ${
+        className={`flex w-full flex-col items-center gap-1 rounded-2xl border p-4 text-center transition-colors ${
           selected
             ? "border-periwinkle bg-periwinkle-wash/40"
             : "border-page-line bg-white hover:border-periwinkle/50"
         } ${available ? "" : "cursor-not-allowed opacity-55"}`}
       >
-        <span className="min-w-0 flex-1">
-          <span className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-            <span className="font-display text-lg font-bold text-page-ink">
-              {tier.name}
-            </span>
-            <span className="text-xs text-page-ink-faint">{range}</span>
-            {recommended && available ? (
-              <span className="rounded-full bg-periwinkle/15 px-2 py-0.5 text-[0.7rem] font-semibold text-periwinkle-deep">
-                Fits your album
-              </span>
-            ) : null}
+        <span className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
+          <span className="font-display text-lg font-bold text-page-ink">
+            {tier.name}
           </span>
-          <span className="mt-1 block text-sm leading-6 text-page-ink-soft">
-            {available
-              ? tier.blurb
-              : `Needs ${photosForTier(tier)} photos — you have ${usablePhotoCount}.`}
-          </span>
-          <span className="mt-1 block text-xs text-page-ink-faint">
-            {MIN_STORY_PAGES_PER_CHAPTER}&ndash;{MAX_STORY_PAGES_PER_CHAPTER} printed pages a chapter
-          </span>
-        </span>
-
-        <span className="shrink-0 text-left sm:text-right">
-          <span className="block font-display text-xl font-bold text-page-ink">
-            {photoRange.min}&ndash;{photoRange.max}
-          </span>
-          <span className="block text-xs text-page-ink-faint">photos, total</span>
-          {available ? (
-            <span className="mt-1 block text-xs text-page-ink-soft">
-              {chapters} {chapters === 1 ? "chapter" : "chapters"} for your album
+          {recommended && available ? (
+            <span className="rounded-full bg-periwinkle/15 px-2 py-0.5 text-[0.7rem] font-semibold text-periwinkle-deep">
+              Fits your album
             </span>
           ) : null}
         </span>
+        {!available ? (
+          <span className="mt-1 block text-sm leading-6 text-page-ink-soft">
+            Needs {photosForTier(tier)} photos — you have {usablePhotoCount}.
+          </span>
+        ) : null}
+        <span className="mt-1 block font-display text-xl font-bold text-page-ink">
+          {photoRange.min}&ndash;{photoRange.max}
+        </span>
+        <span className="block text-xs text-page-ink-faint">photos, total</span>
+        {available ? (
+          <span className="mt-1 block text-xs text-page-ink-soft">
+            {chapters} {chapters === 1 ? "chapter" : "chapters"} for your album
+          </span>
+        ) : null}
       </button>
     </li>
   );
