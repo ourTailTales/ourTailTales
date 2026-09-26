@@ -8,6 +8,7 @@ import {
   layoutsForCount,
 } from "@/lib/book/layouts";
 import {
+  addPhotosToPage,
   applyPageLayout,
   applyPageNote,
   chapterPageNotes,
@@ -495,5 +496,112 @@ describe("the line printed on a page", () => {
     const pages = photoPages(chapterWith([layoutsForCount(3)[0]!]));
     const lines = pages.map((page) => page.caption).filter(Boolean);
     expect(new Set(lines).size).toBe(lines.length);
+  });
+});
+
+describe("adding photographs to the page you are looking at", () => {
+  const chapterOf = (overrides: Partial<Chapter> = {}): Chapter =>
+    ({
+      id: "c1",
+      index: 0,
+      photoIds: ["hero", "a", "b"],
+      candidateIds: ["hero", "a", "b"],
+      startAt: null,
+      endAt: null,
+      title: "A chapter",
+      dateLabel: "",
+      blurb: "",
+      places: [],
+      heroPhotoId: "hero",
+      aiStatus: "done",
+      ...overrides,
+    }) as Chapter;
+
+  it("puts them on that page and grows its layout to fit", () => {
+    const twoUp = layoutsForCount(2).find((id) => layoutNoteCount(id) === 0)!;
+    const result = addPhotosToPage(
+      chapterOf({ pageLayouts: [twoUp] }),
+      0,
+      ["new1"],
+      { photoIds: ["a", "b"], layoutId: twoUp },
+    );
+
+    expect(result.placedHere).toBe(1);
+    expect(result.overflow).toBe(0);
+    expect(layoutPhotoCount(result.chapter.pageLayouts![0]!)).toBe(3);
+    // Behind the photographs already on the page, not at the end of the book.
+    expect(result.chapter.photoIds).toEqual(["hero", "a", "b", "new1"]);
+  });
+
+  it("keeps the page's words when it grows", () => {
+    const captioned = layoutsForCount(2).find((id) => layoutNoteCount(id) > 0)!;
+    const result = addPhotosToPage(
+      chapterOf({ pageLayouts: [captioned] }),
+      0,
+      ["new1"],
+      { photoIds: ["a", "b"], layoutId: captioned },
+    );
+    expect(layoutNoteCount(result.chapter.pageLayouts![0]!)).toBeGreaterThan(0);
+    expect(layoutPhotoCount(result.chapter.pageLayouts![0]!)).toBe(3);
+  });
+
+  it("stops at six on a page of photographs alone", () => {
+    const sixUp = layoutsForCount(6)[0]!;
+    const full = ["a", "b", "c", "d", "e", "f"];
+    const result = addPhotosToPage(
+      chapterOf({ photoIds: ["hero", ...full], pageLayouts: [sixUp] }),
+      0,
+      ["new1", "new2"],
+      { photoIds: full, layoutId: sixUp },
+    );
+    expect(result.placedHere).toBe(0);
+    expect(result.overflow).toBe(2);
+    // The page keeps the layout it had; the two go on to the next page, in
+    // order, right behind it.
+    expect(result.chapter.pageLayouts![0]).toBe(sixUp);
+    expect(result.chapter.photoIds.slice(-2)).toEqual(["new1", "new2"]);
+  });
+
+  it("stops at four once the page has words on it", () => {
+    const captioned = layoutsForCount(4).find((id) => layoutNoteCount(id) > 0)!;
+    const four = ["a", "b", "c", "d"];
+    const result = addPhotosToPage(
+      chapterOf({ photoIds: ["hero", ...four], pageLayouts: [captioned] }),
+      0,
+      ["new1"],
+      { photoIds: four, layoutId: captioned },
+    );
+    expect(result.placedHere).toBe(0);
+    expect(result.overflow).toBe(1);
+  });
+
+  it("fills the room there is and overflows the rest", () => {
+    const twoUp = layoutsForCount(2).find((id) => layoutNoteCount(id) === 0)!;
+    const result = addPhotosToPage(
+      chapterOf({ pageLayouts: [twoUp] }),
+      0,
+      ["n1", "n2", "n3", "n4", "n5", "n6"],
+      { photoIds: ["a", "b"], layoutId: twoUp },
+    );
+    expect(result.placedHere).toBe(4);
+    expect(result.overflow).toBe(2);
+    expect(layoutPhotoCount(result.chapter.pageLayouts![0]!)).toBe(6);
+  });
+
+  it("makes them swappable, which an album photograph never was", () => {
+    const result = addPhotosToPage(chapterOf(), 0, ["new1"], {
+      photoIds: ["a", "b"],
+      layoutId: null,
+    });
+    expect(result.chapter.candidateIds).toContain("new1");
+  });
+
+  it("ignores a photograph the chapter already has", () => {
+    const result = addPhotosToPage(chapterOf(), 0, ["a"], {
+      photoIds: ["a", "b"],
+      layoutId: null,
+    });
+    expect(result.placedHere).toBe(0);
+    expect(result.chapter).toEqual(chapterOf());
   });
 });

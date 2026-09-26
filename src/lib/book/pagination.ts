@@ -4,8 +4,10 @@ import {
   assignToSlots,
   chooseLayout,
   isPhotoLayout,
+  layoutForCount,
   layoutNoteCount,
   layoutPhotoCount,
+  maxPhotosOnPage,
   seededUnit,
 } from "@/lib/book/layouts";
 import {
@@ -482,6 +484,73 @@ export function maxPhotosForPage(chapter: Chapter, pageIndex: number): number {
 }
 
 /**
+ * Puts new photographs onto one of a chapter's pages.
+ *
+ * What somebody means by adding a photograph while looking at a page is that
+ * it belongs on *that* page. Before this, an upload from the editor joined the
+ * album and nothing else: it was not in the chapter, not on the page, and not
+ * even offered as a swap, because the chapter's candidates were settled when
+ * it was written.
+ *
+ * So the page grows to hold it. A page of pictures alone takes up to six, a
+ * page that also keeps room for words up to four — the catalogue's own limits,
+ * the same in every design — and the layout is replaced with one of the new
+ * size that keeps the page's mind about words. Anything past that ceiling is
+ * not crammed in: it stays in the chapter, in order, right behind the page it
+ * was meant for, and pagination deals it onto the pages that follow, which is
+ * where the customer is then sent.
+ */
+export function addPhotosToPage(
+  chapter: Chapter,
+  pageIndex: number,
+  incoming: readonly string[],
+  page: { photoIds: readonly string[]; layoutId: PhotoLayoutId | null },
+): { chapter: Chapter; placedHere: number; overflow: number } {
+  const fresh = incoming.filter(
+    (id) => id && !chapter.photoIds.includes(id),
+  );
+  if (fresh.length === 0 || pageIndex < 0) {
+    return { chapter, placedHere: 0, overflow: 0 };
+  }
+
+  // Behind the last photograph already on the page, so the new ones read as
+  // having joined that page rather than the end of the chapter.
+  const last = page.photoIds.at(-1);
+  const at = last ? chapter.photoIds.indexOf(last) + 1 : chapter.photoIds.length;
+  const photoIds = [...chapter.photoIds];
+  photoIds.splice(at < 1 ? photoIds.length : at, 0, ...fresh);
+
+  const withWords = layoutNoteCount(page.layoutId) > 0;
+  const ceiling = maxPhotosOnPage(withWords);
+  const placedHere = Math.max(
+    0,
+    Math.min(fresh.length, ceiling - page.photoIds.length),
+  );
+
+  const chosen = chapterPageLayouts(chapter);
+  if (placedHere > 0 && pageIndex < chosen.length) {
+    const grown = layoutForCount(page.photoIds.length + placedHere, withWords);
+    if (grown) chosen[pageIndex] = grown;
+  }
+
+  return {
+    chapter: {
+      ...chapter,
+      photoIds,
+      // Added to the chapter's candidates as well, or a photograph put on a
+      // page could never afterwards be swapped for another.
+      candidateIds: [
+        ...chapter.candidateIds,
+        ...fresh.filter((id) => !chapter.candidateIds.includes(id)),
+      ],
+      pageLayouts: withoutTrailingDefaults(chosen),
+    },
+    placedHere,
+    overflow: fresh.length - placedHere,
+  };
+}
+
+/**
  * Gives one of a chapter's photo pages a layout (or hands it back to the
  * book, with `null`), and makes the chapter's photos fit.
  *
@@ -532,14 +601,20 @@ export function applyPageLayout(
   const heroAt = hero ? chapter.photoIds.indexOf(hero) : -1;
   if (hero && heroAt !== -1) photoIds.splice(Math.min(heroAt, photoIds.length), 0, hero);
 
-  // Trailing "let the book decide" entries carry no information.
-  while (chosen.length > 0 && chosen.at(-1) === null) chosen.pop();
-
   return {
     ...chapter,
     photoIds,
-    pageLayouts: chosen.length > 0 ? chosen : undefined,
+    pageLayouts: withoutTrailingDefaults(chosen),
   };
+}
+
+/** Trailing "let the book decide" entries carry no information. */
+function withoutTrailingDefaults(
+  layouts: (PhotoLayoutId | null)[],
+): (PhotoLayoutId | null)[] | undefined {
+  const kept = [...layouts];
+  while (kept.length > 0 && kept.at(-1) === null) kept.pop();
+  return kept.length > 0 ? kept : undefined;
 }
 
 export const CLOSING_LINE = "Always part of the story.";

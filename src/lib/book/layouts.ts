@@ -161,6 +161,39 @@ export function layoutPhotoCount(id: PhotoLayoutId): number {
   return photoLayoutSpec(id).photoCount;
 }
 
+/**
+ * The most photographs one page will hold.
+ *
+ * Read from the catalogue rather than stated twice: six on a page of pictures
+ * alone, four once the page also keeps room for words, because that is what
+ * the twenty-two layouts offer. Every design holds to the same numbers — a
+ * design decides what two side by side look like, never how many fit.
+ */
+export function maxPhotosOnPage(withWords: boolean): number {
+  return PHOTO_LAYOUTS.reduce(
+    (most, spec) =>
+      withWords === spec.noteCount > 0 ? Math.max(most, spec.photoCount) : most,
+    0,
+  );
+}
+
+/**
+ * A layout for this many photographs, keeping the page's own mind about words.
+ *
+ * Used when a page is given another photograph: the page should hold what it
+ * held plus the new one, and go on having room for words if it had room
+ * before. Falls back to any layout of that size when the page cannot keep both
+ * — five photographs and a caption is not a page this book offers.
+ */
+export function layoutForCount(
+  count: number,
+  withWords: boolean,
+): PhotoLayoutId | null {
+  const sized = PHOTO_LAYOUTS.filter((spec) => spec.photoCount === count);
+  const kept = sized.find((spec) => withWords === spec.noteCount > 0);
+  return (kept ?? sized[0])?.id ?? null;
+}
+
 export function layoutsForCount(count: number): PhotoLayoutId[] {
   const clamped = Math.min(Math.max(count, 1), MAX_PHOTOS_PER_PAGE);
   return PHOTO_LAYOUTS.filter((spec) => spec.photoCount === clamped).map((spec) => spec.id);

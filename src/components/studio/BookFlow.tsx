@@ -42,7 +42,7 @@ export function BookFlow({
   downloading,
   notice,
 }: {
-  onFiles: (files: File[]) => void;
+  onFiles: (files: File[], target?: { chapterId: string; pageIndex: number }) => void;
   onStartOver: () => void;
   onCreateStory: () => void;
   /** Gives up on the chapters still being written and opens what is done. */

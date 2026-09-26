@@ -5,13 +5,16 @@ import { create } from "zustand";
 import { proposeChapters } from "@/lib/photo/cluster";
 import { groupDuplicates, selectablePhotos } from "@/lib/photo/dedupe";
 import {
+  addPhotosToPage as placeOnPage,
   applyPageLayout,
   applyPageNote,
   hasDedication,
   paginateBook,
+  photoPageIndex,
   withoutEmptyDedication,
   type PhotoLookup,
 } from "@/lib/book/pagination";
+import { isPhotoLayout } from "@/lib/book/layouts";
 import { planFromIndexes } from "@/lib/book/page-plan";
 import { chapterBodyIds } from "@/lib/story/client";
 import * as assetStore from "@/lib/photo/assetStore";
@@ -70,6 +73,8 @@ type State = {
   videoAssets: VideoAsset[];
   placements: VideoMemoryPlacement[];
   videoNotice: string | null;
+  /** A page the editor should turn to, once it can. */
+  revealPageId: string | null;
   albumVideos: AlbumVideoPreview[];
   freePreviewReady: boolean;
   /** Shareable link to the banked free preview, once it has been uploaded. */
@@ -152,6 +157,21 @@ type Actions = {
     pageIndex: number,
     layoutId: PhotoLayoutId | null,
   ) => void;
+  /**
+   * Puts photographs that have just been added onto one of a chapter's pages,
+   * growing its layout to fit them and sending the rest to the pages after it.
+   */
+  addPhotosToPage: (
+    chapterId: string,
+    pageIndex: number,
+    photoIds: string[],
+  ) => void;
+  /**
+   * Asks the editor to turn to a page. Cleared by whoever turns to it, so a
+   * page that has just been made or just been filled can be shown without the
+   * editor and the panel inside it having to know about each other.
+   */
+  revealPage: (pageId: string | null) => void;
   /**
    * The owner's words for one of a chapter's photo pages. Empty text clears
    * the note and the page falls back to its own date.
@@ -244,6 +264,7 @@ const initialState: State = {
   videoAssets: [],
   placements: [],
   videoNotice: null,
+  revealPageId: null,
   albumVideos: [],
   freePreviewReady: false,
   saveStatus: "saved",
@@ -535,6 +556,37 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
         pages: paginateBook(state.meta, chapters, photoFactsOf(state.photos)),
       };
     }),
+
+  addPhotosToPage: (chapterId, pageIndex, photoIds) =>
+    set((state) => {
+      const page = state.pages.find(
+        (entry) =>
+          entry.chapterId === chapterId && photoPageIndex(entry) === pageIndex,
+      );
+      const target = state.chapters.find((entry) => entry.id === chapterId);
+      if (!target) return {};
+
+      const { chapter } = placeOnPage(target, pageIndex, photoIds, {
+        photoIds: page?.photoIds ?? [],
+        layoutId: isPhotoLayout(page?.layoutId) ? page.layoutId : null,
+      });
+      const chapters = state.chapters.map((entry) =>
+        entry.id === chapterId ? chapter : entry,
+      );
+      const pages = paginateBook(state.meta, chapters, photoFactsOf(state.photos));
+
+      // Wherever the last of them ended up is where the customer should be
+      // looking: the page they were on if it had room, and the page the book
+      // just made if it did not.
+      const landed = photoIds.at(-1);
+      const reveal = landed
+        ? (pages.find((entry) => entry.photoIds.includes(landed))?.id ?? null)
+        : null;
+
+      return { chapters, pages, revealPageId: reveal };
+    }),
+
+  revealPage: (pageId) => set({ revealPageId: pageId }),
 
   setPageNote: (chapterId, pageIndex, slot, text) =>
     set((state) => {

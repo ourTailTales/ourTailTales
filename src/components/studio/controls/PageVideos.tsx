@@ -1,9 +1,10 @@
 "use client";
 
-import { Check, Film, Plus, Trash2 } from "lucide-react";
-import { useRef, useState } from "react";
+import { Check, Film, Plus, RefreshCw, Trash2, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 import { ConfirmDialog } from "@/components/video/ConfirmDialog";
+import { track } from "@/lib/analytics";
 import { placementsForAsset } from "@/lib/video-memory/count";
 import {
   ZERO_STATE_BODY,
@@ -12,6 +13,7 @@ import {
 } from "@/lib/video-memory/pack-meter";
 import { statusLabel } from "@/lib/video-memory/status";
 import { useVideoMemories } from "@/lib/video-memory/useVideoMemories";
+import type { VideoAsset } from "@/types/video-memory";
 
 /**
  * The videos whose codes are printed on this page.
@@ -28,7 +30,14 @@ import { useVideoMemories } from "@/lib/video-memory/useVideoMemories";
 export function PageVideos({ pageId }: { pageId: string }) {
   const videos = useVideoMemories();
   const [pendingPackAssetId, setPendingPackAssetId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<VideoAsset | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+
+  // The pack is offered here now, so this is where being seen is counted:
+  // once per opening of the tab, not once per video placed from it.
+  useEffect(() => {
+    track("video_memories_offer_viewed", {});
+  }, []);
 
   const { assets, placements, busy, meter, notice } = videos;
   const onThisPage = placements.filter((placement) => placement.pageId === pageId);
@@ -122,7 +131,7 @@ export function PageVideos({ pageId }: { pageId: string }) {
               const here = placedHere.has(asset.id);
               const elsewhere = placementsForAsset(placements, asset.id).length - (here ? 1 : 0);
               return (
-                <li key={asset.id}>
+                <li key={asset.id} className="relative">
                   <button
                     type="button"
                     disabled={busy}
@@ -166,6 +175,31 @@ export function PageVideos({ pageId }: { pageId: string }) {
                       </span>
                     </span>
                   </button>
+
+                  {/* On the tile, and never disabled by whatever else is in
+                      flight: a video stuck uploading or processing is exactly
+                      the one somebody wants rid of, and it was the only one
+                      that could not be. */}
+                  <button
+                    type="button"
+                    onClick={() => setDeleteTarget(asset)}
+                    aria-label={`Delete ${asset.title}`}
+                    className="absolute right-0.5 top-0.5 inline-flex size-6 items-center justify-center rounded-full bg-page-ink/70 text-white transition-colors hover:bg-red-600"
+                  >
+                    <X aria-hidden className="size-3" strokeWidth={3} />
+                  </button>
+
+                  {asset.status === "failed" ? (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void videos.retry(asset.id)}
+                      className="mt-1 inline-flex w-full items-center justify-center gap-1 text-[0.7rem] font-medium text-periwinkle-deep underline decoration-page-line underline-offset-2 disabled:opacity-50"
+                    >
+                      <RefreshCw aria-hidden className="size-3" />
+                      Try again
+                    </button>
+                  ) : null}
                 </li>
               );
             })}
@@ -195,6 +229,25 @@ export function PageVideos({ pageId }: { pageId: string }) {
           {busy ? "Working…" : "Add a video"}
         </button>
       </div>
+
+      {deleteTarget ? (
+        <ConfirmDialog
+          title="Delete this video?"
+          body={
+            placementsForAsset(placements, deleteTarget.id).length > 0
+              ? `This removes ${deleteTarget.title} from your library and takes its code off ${placementsForAsset(placements, deleteTarget.id).length === 1 ? "the page it is on" : "every page it is on"}.`
+              : `This removes ${deleteTarget.title} from your library. It is not on any page yet.`
+          }
+          confirm="Delete video"
+          danger
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => {
+            const assetId = deleteTarget.id;
+            setDeleteTarget(null);
+            void videos.removeAsset(assetId);
+          }}
+        />
+      ) : null}
 
       {pendingPackAssetId ? (
         <ConfirmDialog

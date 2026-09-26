@@ -19,7 +19,7 @@ import {
   defaultNameAnchor,
 } from "@/lib/book/coverLayouts";
 import { track } from "@/lib/analytics";
-import { layoutNoteCount } from "@/lib/book/layouts";
+import { layoutNoteCount, maxPhotosOnPage } from "@/lib/book/layouts";
 import {
   MAX_NOTE_LENGTH,
   chapterPageLayouts,
@@ -63,7 +63,7 @@ export function PageInspector({
   slide: StudioSlide;
   photos: PhotoAsset[];
   onRegenerate: (chapterId: string) => void;
-  onFiles: (files: File[]) => void;
+  onFiles: (files: File[], target?: { chapterId: string; pageIndex: number }) => void;
   processing: boolean;
   /** False for a reader with no account — the locked cover styles still show. */
   unlocked?: boolean;
@@ -132,7 +132,7 @@ function CoverPanel({
   onUnlock,
 }: {
   photos: PhotoAsset[];
-  onFiles: (files: File[]) => void;
+  onFiles: (files: File[], target?: { chapterId: string; pageIndex: number }) => void;
   processing: boolean;
   unlocked: boolean;
   onUnlock?: () => void;
@@ -593,7 +593,7 @@ function PhotoPagePanel({
 }: {
   slide: StudioSlide;
   photos: PhotoAsset[];
-  onFiles: (files: File[]) => void;
+  onFiles: (files: File[], target?: { chapterId: string; pageIndex: number }) => void;
   processing: boolean;
 }) {
   const meta = useOurTailTalesStore((state) => state.meta);
@@ -640,7 +640,14 @@ function PhotoPagePanel({
   const written = chapter && pageIndex !== null ? (chapterPageNotes(chapter)[pageIndex] ?? []) : [];
 
   const notesField =
-    chapter && pageIndex !== null && noteSlots > 0 ? (
+    chapter && pageIndex !== null && noteSlots === 0 ? (
+      <Field label="Words on this page">
+        <p className="text-xs leading-5 text-page-ink-faint">
+          This layout has no room for words. Choose one with a caption in
+          Layout, and what you write appears beside the photograph.
+        </p>
+      </Field>
+    ) : chapter && pageIndex !== null && noteSlots > 0 ? (
       <Field
         label={noteSlots === 1 ? "Words on this page" : "Words beside each photo"}
         note="Leave it empty and the page keeps the month the photos were taken."
@@ -693,10 +700,20 @@ function PhotoPagePanel({
 
   // One control, whether the page has photographs on it or has run out of
   // them: adding more is the answer to an empty page as much as to a full one.
+  //
+  // Photographs chosen here are for *this* page. They join the chapter behind
+  // whatever is already on it, the page's layout grows to hold them, and any
+  // that will not fit go onto a page of their own, which the editor then turns
+  // to. Videos are not offered: their codes are chosen in the Videos tab.
   const addMedia = (
     <AddMediaControl
       compact
-      onFiles={onFiles}
+      photosOnly
+      onFiles={(files) =>
+        chapter && pageIndex !== null
+          ? onFiles(files, { chapterId: chapter.id, pageIndex })
+          : onFiles(files)
+      }
       processing={processing}
       readyCount={photos.length}
       videoCount={0}
@@ -722,11 +739,15 @@ function PhotoPagePanel({
 
   const active = page.photoIds[slotIndex];
 
+  // Photographs and the words beside them are one tab: they are the same
+  // decision seen twice — which pictures are on this page, and what is written
+  // next to them — and splitting them put a tab between a caption and the
+  // photograph it belongs to.
   const photosTab = (
     <>
       <Field
         label={onPage.length === 1 ? "Photo on this page" : "Photos on this page"}
-        note="Taking one out takes it out of the album, and the book closes up around it."
+        note={`Adding one puts it on this page, up to ${maxPhotosOnPage(noteSlots > 0)}; taking one out takes it out of the album, and the book closes up around it.`}
       >
         <ol className="grid grid-cols-[repeat(auto-fill,minmax(80px,1fr))] gap-2">
           {onPage.map((photo, index) => (
@@ -777,6 +798,8 @@ function PhotoPagePanel({
           emptyLabel="Every photo from this part of the album is already in the book."
         />
       </Field>
+
+      {notesField}
     </>
   );
 
@@ -799,17 +822,6 @@ function PhotoPagePanel({
               ),
           },
           { id: "photos", label: "Photos", content: () => photosTab },
-          {
-            id: "words",
-            label: "Words",
-            content: () =>
-              notesField ?? (
-                <p className="text-xs leading-5 text-page-ink-faint">
-                  This layout has no room for words. Choose one with a caption
-                  in Layout, and what you write appears beside the photograph.
-                </p>
-              ),
-          },
           {
             id: "videos",
             label: "Videos",

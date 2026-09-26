@@ -255,9 +255,24 @@ export function useVideoMemories(): VideoMemories {
       (placementId) => run((active) => removePlacementFromPage(active, placementId)),
       [run],
     ),
+    // Not through `run`, which stands aside while anything else is in flight:
+    // a video that is still uploading keeps the library busy, and that is
+    // exactly the video somebody wants to be rid of.
     removeAsset: useCallback(
-      (assetId) => run((active) => deleteVideoMemory(active, assetId)),
-      [run],
+      async (assetId: string) => {
+        const active = draft;
+        if (!active) return;
+        setNotice(null);
+        try {
+          await deleteVideoMemory(active, assetId);
+          await refresh(active);
+        } catch (error) {
+          setNotice(
+            error instanceof Error ? error.message : STORAGE_UNAVAILABLE_MESSAGE,
+          );
+        }
+      },
+      [draft, refresh, setNotice],
     ),
     retry: useCallback(
       (assetId) => run((active) => retryVideoMemory(active, assetId)),
