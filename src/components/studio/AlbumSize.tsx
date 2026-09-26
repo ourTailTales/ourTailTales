@@ -4,15 +4,13 @@ import { useMemo, useState } from "react";
 
 import { track } from "@/lib/analytics";
 import {
-  BASE_PRICE,
   CHAPTER_TIERS,
   MAX_STORY_PAGES_PER_CHAPTER,
   MIN_STORY_PAGES_PER_CHAPTER,
-  PHOTOS_PER_CHAPTER_TARGET,
   bookPrice,
   chaptersForSpan,
   chaptersForTier,
-  formatUsd,
+  photoRangeForTier,
   photosForTier,
   recommendedTier,
   tierIsAvailable,
@@ -96,11 +94,7 @@ export function AlbumSize() {
 
       <div className="mt-6 flex flex-col items-center gap-3">
         <p className="text-sm text-page-ink-soft">
-          {chapters} {chapters === 1 ? "chapter" : "chapters"} ·{" "}
-          <span className="font-semibold text-page-ink">
-            {formatUsd(bookPrice(chapters))}
-          </span>{" "}
-          if you order the hardcover
+          {chapters} {chapters === 1 ? "chapter" : "chapters"}
         </p>
         <button
           type="button"
@@ -150,6 +144,7 @@ function TierChoice({
       : tier.fromChapter === 1
         ? `Up to ${tier.toChapter} chapters`
         : `${tier.fromChapter}–${tier.toChapter} chapters`;
+  const photoRange = photoRangeForTier(tier);
 
   return (
     <li>
@@ -182,26 +177,18 @@ function TierChoice({
               : `Needs ${photosForTier(tier)} photos — you have ${usablePhotoCount}.`}
           </span>
           <span className="mt-1 block text-xs text-page-ink-faint">
-            {PHOTOS_PER_CHAPTER_TARGET.min}&ndash;{PHOTOS_PER_CHAPTER_TARGET.max} photos and{" "}
             {MIN_STORY_PAGES_PER_CHAPTER}&ndash;{MAX_STORY_PAGES_PER_CHAPTER} printed pages a chapter
           </span>
         </span>
 
         <span className="shrink-0 text-left sm:text-right">
           <span className="block font-display text-xl font-bold text-page-ink">
-            {tier.ratePerChapter === 0
-              ? formatUsd(BASE_PRICE)
-              : `${formatUsd(tier.ratePerChapter)} a chapter`}
+            {photoRange.min}&ndash;{photoRange.max}
           </span>
-          <span className="block text-xs text-page-ink-faint">
-            {tier.ratePerChapter === 0
-              ? "the base price, all in"
-              : `past the first ${tier.fromChapter - 1}`}
-          </span>
+          <span className="block text-xs text-page-ink-faint">photos, total</span>
           {available ? (
             <span className="mt-1 block text-xs text-page-ink-soft">
-              {chapters} {chapters === 1 ? "chapter" : "chapters"} ·{" "}
-              {formatUsd(bookPrice(chapters))}
+              {chapters} {chapters === 1 ? "chapter" : "chapters"} for your album
             </span>
           ) : null}
         </span>

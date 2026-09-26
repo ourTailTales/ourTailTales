@@ -229,6 +229,21 @@ export function photosForTier(tier: ChapterTier): number {
   return Math.max(tier.fromChapter, BASE_CHAPTERS) * MIN_PHOTOS_PER_CHAPTER;
 }
 
+/**
+ * Total photographs a book in this band runs on, shortest to longest.
+ *
+ * Not per chapter — the whole book. The floor is `photosForTier`: the fewest
+ * chapters the band can be entered with, each at its own floor. The ceiling
+ * is the band's longest chapter count, each chapter filled to its target
+ * maximum.
+ */
+export function photoRangeForTier(tier: ChapterTier): { min: number; max: number } {
+  return {
+    min: photosForTier(tier),
+    max: tier.toChapter * PHOTOS_PER_CHAPTER_TARGET.max,
+  };
+}
+
 /** Whether an album of this many usable photographs can fill the band. */
 export function tierIsAvailable(tier: ChapterTier, usablePhotoCount: number): boolean {
   return maxSupportedChapters(usablePhotoCount) >= tier.fromChapter;

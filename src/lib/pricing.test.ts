@@ -13,6 +13,7 @@ import {
   bookPrice,
   chaptersForSpan,
   chaptersForTier,
+  photoRangeForTier,
   photosForTier,
   printCost,
   printMargin,
@@ -152,6 +153,13 @@ describe("how long a book the album wants to be", () => {
     expect(tierIsAvailable(chronicle!, photosForTier(chronicle!))).toBe(true);
     expect(tierIsAvailable(archive!, photosForTier(archive!) - 5)).toBe(false);
     expect(tierIsAvailable(archive!, photosForTier(archive!))).toBe(true);
+  });
+
+  it("quotes a band's total photos, shortest book to longest", () => {
+    const [keepsake, chronicle, archive] = CHAPTER_TIERS;
+    expect(photoRangeForTier(keepsake!)).toEqual({ min: 25, max: 150 });
+    expect(photoRangeForTier(chronicle!)).toEqual({ min: 30, max: 360 });
+    expect(photoRangeForTier(archive!)).toEqual({ min: 65, max: 1500 });
   });
 
   it("fits the wanted length to the band picked and the photos on hand", () => {
