@@ -29,7 +29,7 @@ export function PhotoPicker({
   }
 
   return (
-    <ol className="grid grid-cols-4 gap-2 sm:grid-cols-5">
+    <ol className="grid grid-cols-[repeat(auto-fill,minmax(80px,1fr))] gap-2">
       {photos.map((photo) => {
         const active = selectedId === photo.id;
         const url = getFullUrl(photo.id) ?? photo.thumbUrl;
