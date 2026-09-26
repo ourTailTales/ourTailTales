@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 
-import { proposeChapters } from "@/lib/photo/cluster";
+import { chaptersForAlbum, proposeChapters } from "@/lib/photo/cluster";
 import { groupDuplicates, selectablePhotos } from "@/lib/photo/dedupe";
 import {
   addPhotosToPage as placeOnPage,
@@ -25,7 +25,6 @@ import {
 } from "@/lib/photo/videoPreview";
 import {
   maxSupportedChapters,
-  recommendedChapters,
   BASE_CHAPTERS,
 } from "@/lib/pricing";
 import type {
@@ -356,10 +355,10 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
   finishProcessing: () =>
     set((state) => {
       const deduped = groupDuplicates(state.photos);
-      const usable = selectablePhotos(deduped).length;
       return {
         photos: deduped,
-        chapterCount: recommendedChapters(usable),
+        // How many periods the album is actually made of, not a fixed five.
+        chapterCount: chaptersForAlbum(deduped),
         progress: { ...state.progress, phase: "done" },
         funnelState: "album_ready",
       };

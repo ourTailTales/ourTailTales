@@ -52,8 +52,6 @@ export const MIN_PHOTOS_PER_CHAPTER = PHOTOS_PER_CHAPTER_TARGET.min;
 export const MIN_PHOTOS_FOR_BOOK =
   BASE_CHAPTERS * PHOTOS_PER_CHAPTER_TARGET.min;
 
-export const RECOMMENDED_CHAPTERS = BASE_CHAPTERS;
-
 export function bookPrice(chapterCount: number): number {
   const extra = Math.max(0, chapterCount - BASE_CHAPTERS);
   return round2(BASE_PRICE + extra * PRICE_PER_EXTRA_CHAPTER);
@@ -130,25 +128,12 @@ export function maxSupportedChapters(usablePhotoCount: number): number {
 }
 
 /**
- * Default slider position: five chapters when the album supports it.
- *
- * `MIN_PHOTOS_PER_CHAPTER` is the hard floor that keeps pages from being
- * padded; this is the softer density below which a chapter reads as thin, so a
- * sparse album opens on a shorter book instead of a stretched one.
+ * How many chapters an album comes to is `chaptersForAlbum` in
+ * `lib/photo/cluster`, which reads the album's own dates. It used to be a
+ * count guessed from the number of photographs here, and that guess could only
+ * ever return five: it asked for `min(5, photos / 15)` and then clamped the
+ * answer up to a floor of five.
  */
-const COMFORTABLE_PHOTOS_PER_CHAPTER = 15;
-
-export function recommendedChapters(usablePhotoCount: number): number {
-  const supported = maxSupportedChapters(usablePhotoCount);
-  const comfortable = Math.floor(
-    usablePhotoCount / COMFORTABLE_PHOTOS_PER_CHAPTER,
-  );
-  return clamp(
-    Math.min(RECOMMENDED_CHAPTERS, comfortable),
-    BASE_CHAPTERS,
-    supported,
-  );
-}
 
 export function formatUsd(amount: number): string {
   return new Intl.NumberFormat("en-US", {
