@@ -58,7 +58,7 @@ The voice we want:
  */
 const PAGE_PLAN_RULES = `You also lay out the chapter's pages and caption them.
 
-You are given the chapter's photographs in order, each with the day it was taken, roughly where, and which way it faces. Return "pages": a list of pages, each with the photo numbers on it and a short caption.
+You are given the chapter's photographs in order, numbered from 1, each with the day it was taken, roughly where, and which way it faces. Return "pages": a list of pages, each with the photo numbers on it — the same numbers, counting from 1 — and a short caption.
 
 How to group them:
 - Photographs share a page only when they belong together: taken the same day or within a few days, in the same place, plainly part of one occasion. Never put two unrelated photographs on a page to save space.
@@ -71,7 +71,7 @@ How to group them:
 The caption on each page:
 - Three to ten words, one line, in the same voice as the introduction. It sits under the date, in the owner's book, beside their photographs.
 - Say something about that page: the season it falls in, the place, where it comes in the chapter's story. "Back at the lake by June", "The long slow middle of winter", "First week in the new house".
-- Only what the dates, the seasons, the place and the story you just wrote actually support. You cannot see these photographs individually — never invent what one shows, never name a person, never claim an event.
+- Only what the dates, the seasons, the place and the story you just wrote actually support. You cannot see these photographs individually — never invent what one shows, never name a person, never claim an event. "Out into the sunny green yard" is a guess at a picture, and it was printed under a dog asleep on a wooden floor; "The first warm week of June" is the same page, told from what is actually known.
 - No full stop at the end unless the line is a sentence. Never a date alone: the date is already printed.
 - Never the camera, in any form: no photograph, picture, image, lens, close-up, "up close", posing, backdrop or background. "Right up close to the lens" is a line about a photograph; "Nose first, as usual" is a line about a dog.
 - Every page gets one, and no two pages in a chapter get the same line.`
@@ -147,7 +147,7 @@ function pageLayoutLines(chapter: StoryRequest): string {
       const facts = [photo.on ?? "date unknown", photo.place, photo.orientation]
         .filter(Boolean)
         .join(", ");
-      return `${photo.i}: ${facts}`;
+      return `Photograph ${photo.i}: ${facts}`;
     })
     .join("\n");
 
@@ -157,7 +157,7 @@ function pageLayoutLines(chapter: StoryRequest): string {
 
   return `
 
-Then lay these ${photos.length} photographs out as pages, and caption each page. ${range}
+Then lay these ${photos.length} photographs out as pages, and caption each page. Refer to them by the numbers below, which run from 1 to ${photos.length}. ${range}
 ${rows}`;
 }
 

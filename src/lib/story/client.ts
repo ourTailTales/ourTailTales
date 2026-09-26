@@ -119,7 +119,8 @@ function photoFacts(
   const taken = photo?.capturedAt ? new Date(photo.capturedAt) : null;
   const place = places[0];
   return {
-    i: index,
+    // Counting from one, as the prompt says and as a model reads a list.
+    i: index + 1,
     ...(taken && !Number.isNaN(taken.getTime())
       ? { on: taken.toISOString().slice(0, 10) }
       : {}),
