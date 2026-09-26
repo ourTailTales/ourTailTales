@@ -66,6 +66,12 @@ export function nextBookStep(book: {
     return "wait";
   }
 
+  // The customer is looking at what the book would be and what it would cost.
+  // Nothing may start from here: the next thing after this gate is chapters
+  // being written, one paid model call each, at a price they have not agreed
+  // to yet.
+  if (funnelState === "configure") return "wait";
+
   if (chapterCount === 0) {
     // Photographs, not media. Videos are part of the album and none of them
     // becomes a chapter, so counting them here was the gate letting through

@@ -5,6 +5,8 @@ import {
   BASE_PRICE,
   CHAPTER_TIERS,
   MAX_CHAPTERS,
+  FIXED_INTERIOR_PAGES,
+  MARGIN_FLOOR,
   MIN_PHOTOS_FOR_BOOK,
   MIN_PRINTABLE_INTERIOR_PAGES,
   PHOTOS_PER_CHAPTER_TARGET,
@@ -12,6 +14,8 @@ import {
   chaptersForSpan,
   chaptersForTier,
   photosForTier,
+  printCost,
+  printMargin,
   recommendedTier,
   tierIsAvailable,
   luluInteriorPages,
@@ -195,5 +199,58 @@ describe("the pages a book orders", () => {
     expect(orderedInteriorPages(MIN_PRINTABLE_INTERIOR_PAGES, 5)).toBe(
       MIN_PRINTABLE_INTERIOR_PAGES,
     );
+  });
+});
+
+describe("the print margin these rates leave", () => {
+  /**
+   * Lulu's print cost, from the four quotes in the pricing review: $2.148 a
+   * chapter marginal, $11.84 fixed, which reproduces all four to the cent.
+   *
+   * The rates are a product decision and this is the check on it. It does not
+   * assert that every length clears the floor, because at these rates not
+   * every length does — it pins where the line actually falls, so that moving
+   * a rate has to say what it did to the margin rather than passing silently.
+   */
+  it("clears the floor up to thirty-two chapters", () => {
+    for (let chapters = BASE_CHAPTERS; chapters <= 32; chapters += 1) {
+      expect(printMargin(chapters), `${chapters} chapters`).toBeGreaterThan(
+        MARGIN_FLOOR,
+      );
+    }
+  });
+
+  it("slides under it on the longest books, which is the open question", () => {
+    // Reachable only by choosing Archive on an album whose dates are wrong —
+    // the size step itself proposes a chapter per year of the album's span.
+    expect(printMargin(33)).toBeLessThan(MARGIN_FLOOR);
+    expect(printMargin(MAX_CHAPTERS)).toBeCloseTo(0.496, 3);
+    // Still well clear of printing at a loss, which is the line that matters
+    // most: the base and the early chapters carry the late ones.
+    expect(printMargin(MAX_CHAPTERS)).toBeGreaterThan(0.45);
+  });
+
+  it("reproduces the quoted print cost", () => {
+    expect(printCost(5)).toBeCloseTo(22.58, 2);
+    expect(printCost(MAX_CHAPTERS)).toBeCloseTo(119.24, 2);
+  });
+});
+
+describe("the estimate shown before a word is written", () => {
+  it("quotes the same price and pages the finished book is charged at", () => {
+    // The size step renders these two functions and nothing of its own, so
+    // this is the estimate: what it promises is what `prepareOrder` later
+    // writes onto the order row.
+    for (const [chapters, price] of [
+      [5, 49.99],
+      [6, 54.98],
+      [12, 84.92],
+      [13, 88.91],
+      [30, 156.74],
+      [50, 236.54],
+    ] as const) {
+      expect(bookPrice(chapters)).toBe(price);
+      expect(luluInteriorPages(chapters)).toBe(chapters * 10 + FIXED_INTERIOR_PAGES);
+    }
   });
 });

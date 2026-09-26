@@ -38,6 +38,18 @@ export const FIXED_INTERIOR_PAGES = 4;
 export const MAX_CHAPTERS = 50;
 
 /**
+ * The longest book offered without being asked for.
+ *
+ * `MAX_CHAPTERS` is what the printer will bind; this is what a customer is
+ * shown by default. An album of four thousand photographs across two hundred
+ * outings has fifty chapters' worth of periods in it, and quoting $274 to
+ * somebody who came for a $49.99 book — because their camera roll is long —
+ * is not an offer, it is an ambush. Past this, the longer book is offered
+ * explicitly and taken explicitly.
+ */
+export const DEFAULT_CHAPTER_CAP = 12;
+
+/**
  * Customer-selectable density: five to thirty photos per chapter.
  */
 export const PHOTOS_PER_CHAPTER_TARGET = { min: 5, max: 30 } as const;
@@ -79,6 +91,20 @@ export const BASE_PRICE = 49.99;
  * book runs `MIN_STORY_PAGES_PER_CHAPTER`–`MAX_STORY_PAGES_PER_CHAPTER` pages
  * and takes `PHOTOS_PER_CHAPTER_TARGET` photographs. The bands buy length,
  * not richness.
+ *
+ * ON PRINT MARGIN, because these rates were set as a product decision and the
+ * costing says something the rates do not. Lulu's print cost is linear at
+ * about $2.148 a chapter over $11.84 fixed, which reproduces the four quotes
+ * in the pricing review to the cent. Against that, these rates hold above a
+ * 51% margin to thirty-two chapters and slide under it after: 51.3% at
+ * thirty, 50.3% at forty, 49.6% at fifty. A book that long is not what the
+ * size step proposes — it offers a chapter per year of the album's span — but
+ * it is reachable, by picking Archive on an album whose dates are wrong.
+ * `MARGIN_FLOOR` and the test beside it pin exactly where the line falls, so
+ * moving a rate says what it did to the margin. Re-derive from current Lulu
+ * quotes before moving any of them, and check the whole book rather than one
+ * chapter: the marginal margin on a single chapter at $3.99 is 46%, which the
+ * base and the earlier chapters carry until they cannot.
  */
 export type ChapterTier = {
   id: "keepsake" | "chronicle" | "archive";
@@ -119,6 +145,26 @@ export const CHAPTER_TIERS: readonly ChapterTier[] = [
     blurb: "A long life at full length, nothing left in the folder.",
   },
 ] as const;
+
+/**
+ * The print margin the rates are meant to clear, as a fraction of price.
+ *
+ * Not enforced by the pricing functions — it is a floor the rates were
+ * checked against, and the test beside it says where they currently sit
+ * relative to it.
+ */
+export const MARGIN_FLOOR = 0.51;
+
+/** Lulu's print cost for a book of this many chapters, from the quotes. */
+export function printCost(chapterCount: number): number {
+  return round2(11.84 + 2.148 * chapterCount);
+}
+
+/** What a book of this length keeps, as a fraction of its price. */
+export function printMargin(chapterCount: number): number {
+  const price = bookPrice(chapterCount);
+  return (price - printCost(chapterCount)) / price;
+}
 
 /** How many of a book's chapters fall inside this band. */
 export function chaptersInTier(tier: ChapterTier, chapterCount: number): number {

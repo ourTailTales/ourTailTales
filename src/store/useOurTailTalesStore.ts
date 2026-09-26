@@ -66,9 +66,12 @@ type State = {
   chapterCount: number;
   /**
    * The customer has said how long a book they want, so the album may be
-   * grouped and written. Not persisted: a draft that got far enough to have
-   * chapters is past this, and one that did not should be asked again rather
-   * than have a size assumed for it.
+   * grouped and written. Until then nothing is, because every chapter is a
+   * paid model call at a price nobody has agreed to yet.
+   *
+   * Not persisted: a draft that got far enough to have chapters is past this,
+   * and one that did not should be asked again rather than have a size
+   * assumed for it.
    */
   sizeConfirmed: boolean;
   chapters: Chapter[];
@@ -407,6 +410,12 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
 
   goToConfigure: () => set({ funnelState: "configure" }),
 
+  /**
+   * The length the customer chose, and their agreement to what it costs.
+   *
+   * Separate from `confirmBookSize`, which does the work: this records the
+   * decision, and the flow acts on it. Nothing is written before it.
+   */
   chooseBookSize: (chapters) =>
     set((state) => {
       const supported = maxSupportedChapters(selectablePhotos(state.photos).length);

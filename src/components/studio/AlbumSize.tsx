@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 
+import { track } from "@/lib/analytics";
 import {
   BASE_PRICE,
   CHAPTER_TIERS,
@@ -103,7 +104,15 @@ export function AlbumSize() {
         </p>
         <button
           type="button"
-          onClick={() => chooseBookSize(chapters)}
+          onClick={() => {
+            track("book_size_chosen", {
+              chapters,
+              price: bookPrice(chapters),
+              tier: chosen.id,
+              recommended: chosen.id === recommended.id,
+            });
+            chooseBookSize(chapters);
+          }}
           className="inline-flex min-h-13 w-full max-w-sm items-center justify-center rounded-xl bg-periwinkle px-6 text-base font-semibold text-white shadow-lift transition-all duration-300 hover:bg-periwinkle-deep"
         >
           Confirm and write the book
