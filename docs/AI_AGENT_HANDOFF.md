@@ -37,7 +37,7 @@ Use this order when sources disagree:
 
 Important examples of superseded plans:
 
-- The original MVP brief described two base chapters at $49.99 and $10 per extra chapter. Current code uses five base chapters at $49.99 and $4.99 per extra chapter.
+- The original MVP brief described two base chapters at $49.99 and $10 per extra chapter. Current code prices by the chapter in three progressive bands (Keepsake $9.99 for chapters 1-9, Chronicle $7.99 for 10-24, Archive $5.99 for 25-50), with a five-chapter minimum, so the shortest book is $49.95.
 - Market reports modeled a $69.99 entry price and a $10 Video Memory add-on. Current code uses a different book ladder and $9.99 per Video Memory pack.
 - The original brief said no accounts. The current free-book flow uses Supabase Auth to save and privately reopen a generated preview.
 - The original brand PDF specified DM Serif Display. Current repository guidance and code use Merienda for display, Cormorant Garamond for cover titles, and Inter for UI/body copy.
@@ -269,8 +269,8 @@ The source of truth is `src/lib/pricing.ts`.
 | Story pages per chapter | 10 |
 | Fixed pages | 3: title, closing, imprint (4 budgeted, so the ordered count stays even) |
 | Base printed interior | 54 pages = 50 story + 3 fixed, padded to an even leaf count |
-| Base price | $49.99 before shipping/tax |
-| Extra chapter | $4.99 per additional 10-page chapter |
+| Base price | $49.95 before shipping/tax (5 chapters at the Keepsake rate) |
+| Chapter rates | Progressive bands: $9.99 for chapters 1-9, $7.99 for 10-24, $5.99 for 25-50 |
 | Maximum chapters | 50, pending physical-sample and operational validation |
 | Photo target | 5-30 photos per chapter |
 | Minimum creation gate | 25 usable photos/videos |
@@ -853,7 +853,7 @@ The next agent should surface these rather than silently choosing:
 
 - Is the free five-chapter preview the permanent acquisition model, or should users configure chapter count before generation?
 - Should account creation remain required to view the free result, or should it gate saving/order only?
-- Is the current $49.99 / five-chapter base economically viable at 54 printed pages?
+- Is the current $49.95 / five-chapter base economically viable at 54 printed pages?
 - Is 50 chapters a real sellable maximum or only a code cap?
 - Should videos count toward the 25-media creation threshold while Video Memories are disabled?
 - Should marketing remove Video Memory claims until the feature is operational?

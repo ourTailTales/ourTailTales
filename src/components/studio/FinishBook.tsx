@@ -110,6 +110,19 @@ export function FinishBook({
             }`}
             value={formatUsd(summary.bookPrice)}
           />
+          {/* Chapters are billed band by band, and a customer who cannot see
+              which band they landed in has to take the total on faith. */}
+          {summary.bookPriceLines.map((line) => (
+            <Row
+              key={line.tier.id}
+              label={`${line.tier.name} · ${line.chapters} ${
+                line.chapters === 1 ? "chapter" : "chapters"
+              } at ${formatUsd(line.ratePerChapter)} each`}
+              value={formatUsd(line.subtotal)}
+              muted
+              indented
+            />
+          ))}
           {summary.videoMemoryPackCount > 0 ? (
             <Row
               label={`Video Memories × ${summary.videoMemoryPackCount} ${
@@ -198,25 +211,32 @@ function Row({
   value,
   strong = false,
   muted = false,
+  indented = false,
 }: {
   label: string;
   value: string;
   strong?: boolean;
   muted?: boolean;
+  /** A band of the line above it, not a charge of its own. */
+  indented?: boolean;
 }) {
   return (
     <div className="flex items-baseline justify-between gap-4">
-      <dt className={strong ? "font-semibold text-ink" : "text-ink-soft"}>
+      <dt
+        className={`${strong ? "font-semibold text-ink" : "text-ink-soft"}${
+          indented ? " pl-4 text-xs text-ink-faint" : ""
+        }`}
+      >
         {label}
       </dt>
       <dd
-        className={
+        className={`${
           strong
             ? "font-display text-lg text-ink"
             : muted
               ? "text-ink-faint"
               : "text-ink"
-        }
+        }${indented ? " text-xs" : ""}`}
       >
         {value}
       </dd>

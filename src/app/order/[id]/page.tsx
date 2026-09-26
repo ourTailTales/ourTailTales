@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 import { BrandMark } from "@/components/BrandMark";
 import { readOrder, type OrderView } from "@/lib/order/read";
 import { mintOrderToken } from "@/lib/order/token";
-import { formatUsd } from "@/lib/pricing";
+import { formatUsd, storedPriceBreakdown } from "@/lib/pricing";
 import {
   VIDEO_MEMORIES_PROCESSING_CUSTOMER,
   VIDEO_MEMORIES_STUCK_CUSTOMER,
@@ -225,6 +225,16 @@ function OrderDetail({ order }: { order: OrderView }) {
 
       <dl className="mt-10 space-y-2.5 rounded-2xl border border-line bg-white p-6 text-sm shadow-lift">
         <Row label="Book" value={formatUsd(order.bookPrice)} />
+        {/* The bands the chapters were billed at, so the receipt explains its
+            own total rather than asserting one. */}
+        {storedPriceBreakdown(order.chapterCount, order.bookPrice).map((line) => (
+          <Row
+            key={line.tier.id}
+            label={`${line.tier.name} · ${line.chapters} × ${formatUsd(line.ratePerChapter)} a chapter`}
+            value={formatUsd(line.subtotal)}
+            indented
+          />
+        ))}
         {order.hasVideoMemories && (
           <Row
             label={`Video Memories × ${order.videoMemoryPackCount}`}
@@ -284,16 +294,27 @@ function Row({
   label,
   value,
   strong,
+  indented,
 }: {
   label: string;
   value: string;
   strong?: boolean;
+  /** A band of the line above it, not a charge of its own. */
+  indented?: boolean;
 }) {
   return (
     <div className="flex items-baseline justify-between gap-4">
-      <dt className={strong ? "font-medium text-ink" : "text-ink-soft"}>{label}</dt>
+      <dt
+        className={`${strong ? "font-medium text-ink" : "text-ink-soft"}${
+          indented ? " pl-4 text-xs text-ink-faint" : ""
+        }`}
+      >
+        {label}
+      </dt>
       <dd
-        className={strong ? "font-display text-lg text-ink" : "text-ink"}
+        className={`${strong ? "font-display text-lg text-ink" : "text-ink"}${
+          indented ? " text-xs text-ink-faint" : ""
+        }`}
       >
         {value}
       </dd>

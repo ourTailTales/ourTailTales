@@ -22,11 +22,7 @@ import {
   releaseAllVideoPosters,
   releaseVideoPoster,
 } from "@/lib/photo/videoPreview";
-import {
-  maxSupportedChapters,
-  recommendedChapters,
-  BASE_CHAPTERS,
-} from "@/lib/pricing";
+import { maxSupportedChapters, BASE_CHAPTERS } from "@/lib/pricing";
 import type {
   BookMeta,
   BookPage,
@@ -118,7 +114,6 @@ type Actions = {
 
   setMeta: (patch: Partial<BookMeta>) => void;
   goToConfigure: () => void;
-  setChapterCount: (count: number) => void;
   confirmBookSize: () => void;
 
   beginStoryGeneration: () => void;
@@ -357,7 +352,11 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
       const usable = selectablePhotos(deduped).length;
       return {
         photos: deduped,
-        chapterCount: recommendedChapters(usable),
+        // The preview is free, so there is nothing to save by writing a
+        // shorter book than the album can fill: it opens on the longest book
+        // these photographs support, and the price of that length is shown
+        // plainly when they go to order it.
+        chapterCount: maxSupportedChapters(usable),
         progress: { ...state.progress, phase: "done" },
         funnelState: "album_ready",
       };
@@ -385,14 +384,6 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
   setMeta: (patch) => set((state) => ({ meta: { ...state.meta, ...patch } })),
 
   goToConfigure: () => set({ funnelState: "configure" }),
-
-  setChapterCount: (count) =>
-    set((state) => {
-      const supported = maxSupportedChapters(
-        selectablePhotos(state.photos).length,
-      );
-      return { chapterCount: Math.min(Math.max(count, BASE_CHAPTERS), supported) };
-    }),
 
   confirmBookSize: () =>
     set((state) => {

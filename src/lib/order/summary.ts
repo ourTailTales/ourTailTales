@@ -1,4 +1,9 @@
-import { bookPrice, orderedInteriorPages } from "@/lib/pricing";
+import {
+  bookPrice,
+  orderedInteriorPages,
+  priceBreakdown,
+  type PriceLine,
+} from "@/lib/pricing";
 import { includedUniqueVideoCount } from "@/lib/video-memory/count";
 import { centsToUsd, videoMemoryQuote } from "@/lib/video-memory/pricing";
 import type { VideoMemoryPlacement } from "@/types/video-memory";
@@ -18,6 +23,8 @@ export type OrderSummary = {
   /** Pages that will actually be printed, blank leaves at the back included. */
   interiorPages: number;
   bookPrice: number;
+  /** The book's price band by band, so the invoice can show the rate charged. */
+  bookPriceLines: PriceLine[];
   /** Unique videos with at least one QR code in the book. */
   videoMemoryCount: number;
   videoMemoryPackCount: number;
@@ -40,6 +47,7 @@ export function orderSummary(args: {
     chapterCount: args.chapterCount,
     interiorPages: orderedInteriorPages(args.pageCount, args.chapterCount),
     bookPrice: book,
+    bookPriceLines: priceBreakdown(args.chapterCount),
     videoMemoryCount,
     videoMemoryPackCount: quote.packCount,
     videoMemoryPrice: memories,
