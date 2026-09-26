@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { mentionsTheCamera } from "@/lib/ai/prompt";
 import { readEnv } from "@/lib/env";
 import type {
   PetProfile,
@@ -94,7 +95,18 @@ export function parseStoryDraft(raw: string, providerId: string): StoryDraft {
       `The ${providerId} model returned an unexpected story shape.`,
     );
   }
-  return parsed.data;
+
+  // A line about the photograph rather than about the animal in it — "Right up
+  // close to the lens" — is dropped here, and the page keeps the month its
+  // photographs were taken instead. The blurb gets another attempt because a
+  // paragraph is worth one; a single line is not.
+  const pages = parsed.data.pages?.map((page) =>
+    page.caption && mentionsTheCamera(page.caption)
+      ? { photos: page.photos }
+      : page,
+  );
+
+  return pages ? { ...parsed.data, pages } : parsed.data;
 }
 
 const HEX = z.string().regex(/^#?[0-9a-fA-F]{6}$/).transform((value) =>

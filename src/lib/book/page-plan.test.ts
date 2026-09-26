@@ -4,6 +4,7 @@ import type { PlannedPage } from "@/types/book";
 import {
   MAX_PHOTO_PAGES,
   MIN_PHOTO_PAGES,
+  captionIndexForPhotos,
   planFromIndexes,
   planPages,
   reconcilePlan,
@@ -139,5 +140,47 @@ describe("a grouping kept while the chapter is edited", () => {
   it("is nothing at all when none of its photographs are left", () => {
     expect(reconcilePlan(plan, ["x", "y"])).toBeNull();
     expect(reconcilePlan(undefined, ["a"])).toBeNull();
+  });
+});
+
+describe("a line goes where its photographs went", () => {
+  const plan = [
+    { photos: ["a", "b"], caption: "The long slow middle of winter" },
+    { photos: ["c"], caption: "Right up close" },
+    { photos: ["d", "e"], caption: "Back at the lake by June" },
+  ];
+
+  it("finds the line written about this page's photographs", () => {
+    expect(captionIndexForPhotos(plan, ["c"], new Set())).toBe(1);
+    expect(captionIndexForPhotos(plan, ["d", "e"], new Set())).toBe(2);
+  });
+
+  it("follows the photographs when the grouping moved them", () => {
+    // The page that now holds "c" is the second printed page, but the line
+    // written for it is the plan's third. Indexing by position printed "Back
+    // at the lake by June" over the close-up.
+    expect(captionIndexForPhotos(plan, ["a", "b", "x"], new Set())).toBe(0);
+    expect(captionIndexForPhotos(plan, ["c"], new Set([0]))).toBe(1);
+  });
+
+  it("gives a split page's line to the half that kept most of it", () => {
+    const used = new Set<number>();
+    const first = captionIndexForPhotos(plan, ["d"], used);
+    expect(first).toBe(2);
+    used.add(first!);
+    // The other half has nothing left to claim, and keeps its date instead.
+    expect(captionIndexForPhotos(plan, ["e"], used)).toBeNull();
+  });
+
+  it("has no line for photographs the plan never saw", () => {
+    expect(captionIndexForPhotos(plan, ["new"], new Set())).toBeNull();
+    expect(captionIndexForPhotos(undefined, ["a"], new Set())).toBeNull();
+    expect(captionIndexForPhotos(plan, [], new Set())).toBeNull();
+  });
+
+  it("passes over a planned page that was given no line", () => {
+    const partial = [{ photos: ["a"] }, { photos: ["b"], caption: "A line" }];
+    expect(captionIndexForPhotos(partial, ["a"], new Set())).toBeNull();
+    expect(captionIndexForPhotos(partial, ["b"], new Set())).toBe(1);
   });
 });

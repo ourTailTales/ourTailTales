@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parsePetProfile } from "@/lib/ai/provider";
+import { parsePetProfile, parseStoryDraft } from "@/lib/ai/provider";
 
 const palette = {
   name: "Red collar, golden coat",
@@ -45,5 +45,35 @@ describe("parsePetProfile", () => {
 
   it("refuses something that is not JSON", () => {
     expect(() => parsePetProfile("not json", "test")).toThrow();
+  });
+});
+
+describe("parseStoryDraft", () => {
+  const draftWith = (captions: string[]) =>
+    JSON.stringify({
+      title: "Big Wide World",
+      dateLabel: "Summer 2026",
+      blurb: "The lawn was his, and he took it one roll at a time.",
+      pages: captions.map((caption, index) => ({ photos: [index], caption })),
+    });
+
+  it("drops a line about the photograph and keeps its page", () => {
+    const draft = parseStoryDraft(
+      draftWith(["Right up close to the lens", "Back at the lake by June"]),
+      "test",
+    );
+    // The page is still there, and still has its photograph: only the line
+    // goes, and the page falls back to the month it was taken.
+    expect(draft.pages).toHaveLength(2);
+    expect(draft.pages?.[0]).toEqual({ photos: [0] });
+    expect(draft.pages?.[1]?.caption).toBe("Back at the lake by June");
+  });
+
+  it("keeps a draft with no pages at all", () => {
+    const draft = parseStoryDraft(
+      JSON.stringify({ title: "T", dateLabel: "D", blurb: "B" }),
+      "test",
+    );
+    expect(draft.pages).toBeUndefined();
   });
 });

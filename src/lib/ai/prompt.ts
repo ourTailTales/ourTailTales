@@ -30,6 +30,7 @@ Write about the pet, never the pictures. Never use: photograph, photo, picture, 
 
 Tell one small story, not an inventory:
 - Find the one scene or idea this period is about, and build the paragraph on it with a clear through-line.
+- Write one occasion, never the pattern across all of them. Nothing that holds true of every scene at once: no "each new", "every", "any time", "always", "until finally". Those are a summary of a pile of pictures wearing the clothes of a story.
 - Use at most two concrete details you can actually see, and connect them (one leads to the other, or contrasts with it). Never list objects, poses, or places: no "X, Y, and Z".
 - You may name a feeling a scene plainly shows. Never invent what cannot be seen: no events off camera, no people's names, no backstory.
 - Mention a clothing item or collar only if it plausibly appears here. At most one place name, only if it helps.
@@ -40,6 +41,7 @@ Length: 25 to 40 words, two or three sentences. Title: 2 to 5 words, particular 
 Too flat — never write like these:
 - "These photographs trace Rocket's early days, capturing quiet moments of rest in his bed and at home. The camera also follows him outdoors…" (about the pictures, not the dog)
 - "Every bare floor called for a full-body sploot, paws kicked wide or chin hooked over a favorite green toy. Bedtime meant tucking under a striped fleece blanket beside his plush sidekick, resting up for sunny afternoons in the park in his red harness." (a list of descriptors, not a story)
+- "Everything demanded immediate investigation. Jordi greeted each giant new landmark with a happy grin, anchoring a bright red collar against every strange background until finally settling down on a bright beach towel." (the whole series summarised at once — "each", "every", "until finally" — and "against every strange background" is the composition of the pictures, which is still writing about the pictures)
 
 The voice we want:
 - "The Lawn Was His": "Spring meant one thing: the lawn. Rocket rolled until his red collar vanished into the grass, then collapsed in the one patch of sun by the fence, as if he'd earned it."
@@ -70,7 +72,8 @@ The caption on each page:
 - Three to ten words, one line, in the same voice as the introduction. It sits under the date, in the owner's book, beside their photographs.
 - Say something about that page: the season it falls in, the place, where it comes in the chapter's story. "Back at the lake by June", "The long slow middle of winter", "First week in the new house".
 - Only what the dates, the seasons, the place and the story you just wrote actually support. You cannot see these photographs individually — never invent what one shows, never name a person, never claim an event.
-- No full stop at the end unless the line is a sentence. Never a date alone: the date is already printed. Never mention photographs, pictures, or the camera.
+- No full stop at the end unless the line is a sentence. Never a date alone: the date is already printed.
+- Never the camera, in any form: no photograph, picture, image, lens, close-up, "up close", posing, backdrop or background. "Right up close to the lens" is a line about a photograph; "Nose first, as usual" is a line about a dog.
 - Every page gets one, and no two pages in a chapter get the same line.`
 
 const LIVING = `This pet is alive and the book celebrates a life still being lived. A little playfulness is welcome. Never imply they have died: no "will be missed", no "rest", no farewells, no "always remembered". The period described is in the past; the pet is not.`;
@@ -180,17 +183,51 @@ function storyPosition(chapter: StoryRequest): string | null {
 }
 
 /**
+ * Writing about the photograph rather than about the animal in it.
+ *
+ * Banning the obvious nouns only moved the habit somewhere else: the model
+ * reached for the language of composition instead — a lens, a close-up, a
+ * collar "against every strange background" — which is the same sentence with
+ * the giveaway word removed. These are the words that give it away.
+ */
+const CAMERA_WORDS = [
+  /\bphoto(graph)?s?\b/i,
+  /\bpictures?\b/i,
+  /\bimages?\b/i,
+  /\bcameras?\b/i,
+  /\blens(es)?\b/i,
+  /\bsnapshots?\b/i,
+  /\bclose[- ]ups?\b/i,
+  /\bup close\b/i,
+  /\bpos(e|ed|es|ing)\b/i,
+  /\bbackdrops?\b/i,
+  /\bbackgrounds?\b/i,
+  /\bcaptur(e|es|ed|ing)\b/i,
+];
+
+/**
  * Phrases the old prompt trained into the copy. If a draft still reaches for
  * one, it gets written again once.
  */
 const FLAT_PHRASES = [
+  ...CAMERA_WORDS,
   /\bthese (photo(graph)?s|pictures|images)\b/i,
-  /\bthe camera\b/i,
-  /\bphotographs?\b/i,
-  /\bcaptur(e|es|ed|ing)\b/i,
   /\bthis chapter\b/i,
 ];
 
 export function soundsLikeACaption(blurb: string): boolean {
   return FLAT_PHRASES.some((pattern) => pattern.test(blurb));
+}
+
+/**
+ * A page's line that is about the photograph rather than what is in it.
+ *
+ * Checked separately from the blurb because the remedy is different. A blurb
+ * is worth asking for again; a single line is not, and a page with no line
+ * falls back to the month its photographs were taken, which is a good page.
+ * So a line like this is dropped rather than retried — and a caption wrongly
+ * dropped costs that page its line, never the book its sense.
+ */
+export function mentionsTheCamera(line: string): boolean {
+  return CAMERA_WORDS.some((pattern) => pattern.test(line));
 }

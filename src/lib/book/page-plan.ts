@@ -189,6 +189,49 @@ function captionOf(caption: string | undefined): { caption?: string } {
 export const MAX_CAPTION_LENGTH = 120;
 
 /**
+ * Which planned page's line belongs to these photographs.
+ *
+ * The line and the photographs it was written about used to be joined by
+ * nothing but their position in the chapter: page three's caption went onto
+ * page three. But what lands on page three is decided afterwards, by the
+ * grouping — a layout the customer chose, a photograph added or taken out, a
+ * chapter trimmed to what the printer binds — and the moment that grouping
+ * differs from the plan the model wrote, every line after it is describing
+ * the wrong picture. In a printed book that is not a small mistake: the line
+ * under a close-up of a dog's face, "Right up close to the lens", printed
+ * beside a photograph of a man at a table.
+ *
+ * So a line goes where its photographs went. The planned page with the most
+ * of them in common wins, the earliest of them if two tie, and each line is
+ * used once — a planned page split in half gives its line to the half that
+ * kept most of it, and the other half keeps its date instead.
+ */
+export function captionIndexForPhotos(
+  plan: readonly PlannedPage[] | undefined,
+  photoIds: readonly string[],
+  used: ReadonlySet<number>,
+): number | null {
+  if (!plan || photoIds.length === 0) return null;
+  const wanted = new Set(photoIds);
+
+  let best: number | null = null;
+  let bestOverlap = 0;
+  plan.forEach((page, index) => {
+    if (used.has(index) || !page.caption) return;
+    const overlap = page.photos.reduce(
+      (count, id) => (wanted.has(id) ? count + 1 : count),
+      0,
+    );
+    if (overlap > bestOverlap) {
+      bestOverlap = overlap;
+      best = index;
+    }
+  });
+
+  return best;
+}
+
+/**
  * Brings a saved plan back in line with the chapter as it is now: photographs
  * that have left are removed, ones that have arrived join the page nearest
  * where they sit in the chapter, and the page count is brought inside its
