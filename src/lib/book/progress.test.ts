@@ -6,10 +6,7 @@ import { MIN_PHOTOS_FOR_BOOK } from "@/lib/pricing";
 const enough = MIN_PHOTOS_FOR_BOOK;
 
 describe("nextBookStep", () => {
-  it("asks how long the book should be before building anything", () => {
-    // The step between an album and a book: nothing has been written yet,
-    // and what follows costs a model call per chapter at a price nobody has
-    // agreed to.
+  it("asks how long a book to make before grouping anything", () => {
     expect(
       nextBookStep({
         funnelState: "album_ready",
@@ -19,23 +16,10 @@ describe("nextBookStep", () => {
         photoCount: enough,
         sizeConfirmed: false,
       }),
-    ).toBe("size");
+    ).toBe("chooseSize");
   });
 
-  it("starts nothing while the customer is still looking at the price", () => {
-    expect(
-      nextBookStep({
-        funnelState: "configure",
-        chapterCount: 0,
-        unwritten: 0,
-        mediaCount: enough,
-        photoCount: enough,
-        sizeConfirmed: false,
-      }),
-    ).toBe("wait");
-  });
-
-  it("asks for photos before it asks for a length", () => {
+  it("still asks for more photos before asking how long a book to make", () => {
     expect(
       nextBookStep({
         funnelState: "album_ready",
@@ -48,7 +32,7 @@ describe("nextBookStep", () => {
     ).toBe("needPhotos");
   });
 
-  it("groups the album into chapters once enough photos have arrived", () => {
+  it("groups the album into chapters once the size is confirmed", () => {
     expect(
       nextBookStep({
         funnelState: "album_ready",

@@ -17,9 +17,9 @@ import type { FunnelState } from "@/store/useOurTailTalesStore";
 export type BookStep =
   /** Something else is already working: photos being read, chapters being written. */
   | "wait"
-  /** Enough photos have arrived — ask how long the book should be. */
-  | "size"
-  /** The size is settled — group the photos into that many chapters. */
+  /** Enough photos have arrived, but how long a book to make is still theirs to say. */
+  | "chooseSize"
+  /** The size is settled — group the album into chapters. */
   | "build"
   /** Chapters exist with nothing written in them. */
   | "write"
@@ -43,7 +43,13 @@ export function nextBookStep(book: {
    * number that decides whether there is a book to build at all.
    */
   photoCount: number;
-  /** True once the customer has agreed to a length, and so to a price. */
+  /**
+   * The customer has said how long a book they want.
+   *
+   * Nothing is grouped or written before they have: chapters are the unit
+   * this is priced and billed in, and the album alone cannot tell a puppy's
+   * first eighteen months from a dog of sixteen years.
+   */
   sizeConfirmed: boolean;
 }): BookStep {
   const { funnelState, chapterCount, unwritten, mediaCount, photoCount, sizeConfirmed } =
@@ -78,10 +84,7 @@ export function nextBookStep(book: {
     // chapter needs, which is exactly the question being asked here.
     void mediaCount;
     if (photoCount < MIN_PHOTOS_FOR_BOOK) return "needPhotos";
-    // Asked before built. Grouping the photographs is free, but what follows
-    // it is not, and the length of the book is no longer a fixed five: it
-    // comes from the album, and so does the price.
-    return sizeConfirmed ? "build" : "size";
+    return sizeConfirmed ? "build" : "chooseSize";
   }
 
   return unwritten === 0 ? "open" : "write";

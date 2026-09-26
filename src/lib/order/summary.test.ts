@@ -33,8 +33,8 @@ describe("what the finished book costs before shipping", () => {
       placements: [],
     });
     // Rounded to the cent, which is what `bookPrice` promises and what raw
-    // floating-point addition of eight 9.99s does not give.
-    expect(summary.bookPrice).toBe(79.92);
+    // floating-point addition of 49.99 and three 4.99s does not give.
+    expect(summary.bookPrice).toBe(64.96);
     expect(summary.subtotal).toBe(summary.bookPrice);
   });
 
@@ -51,8 +51,8 @@ describe("what the finished book costs before shipping", () => {
         line.subtotal,
       ]),
     ).toEqual([
-      ["keepsake", 9, 89.91],
-      ["chronicle", 3, 23.97],
+      ["keepsake", 5, BASE_PRICE],
+      ["chronicle", 7, 34.93],
     ]);
     // What the customer is shown adds up to what they are charged.
     expect(

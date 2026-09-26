@@ -22,7 +22,12 @@ import {
   releaseAllVideoPosters,
   releaseVideoPoster,
 } from "@/lib/photo/videoPreview";
-import { maxSupportedChapters, BASE_CHAPTERS } from "@/lib/pricing";
+import {
+  chaptersForSpan,
+  maxSupportedChapters,
+  BASE_CHAPTERS,
+  MAX_CHAPTERS,
+} from "@/lib/pricing";
 import type {
   BookMeta,
   BookPage,
@@ -59,6 +64,16 @@ type State = {
   processingError: string | null;
   meta: BookMeta;
   chapterCount: number;
+  /**
+   * The customer has said how long a book they want, so the album may be
+   * grouped and written. Until then nothing is, because every chapter is a
+   * paid model call at a price nobody has agreed to yet.
+   *
+   * Not persisted: a draft that got far enough to have chapters is past this,
+   * and one that did not should be asked again rather than have a size
+   * assumed for it.
+   */
+  sizeConfirmed: boolean;
   chapters: Chapter[];
   pages: BookPage[];
   leadEmail: string | null;
@@ -114,6 +129,8 @@ type Actions = {
 
   setMeta: (patch: Partial<BookMeta>) => void;
   goToConfigure: () => void;
+  /** The customer has said how long a book they want. */
+  chooseBookSize: (chapters: number) => void;
   confirmBookSize: () => void;
 
   beginStoryGeneration: () => void;
@@ -273,6 +290,7 @@ const initialState: State = {
   processingError: null,
   meta: emptyMeta,
   chapterCount: BASE_CHAPTERS,
+  sizeConfirmed: false,
   chapters: [],
   pages: [],
   leadEmail: null,
@@ -349,14 +367,21 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
   finishProcessing: () =>
     set((state) => {
       const deduped = groupDuplicates(state.photos);
-      const usable = selectablePhotos(deduped).length;
+      const selectable = selectablePhotos(deduped);
+      const usable = selectable.length;
+      const dated = selectable
+        .map((photo) => photo.capturedAt)
+        .filter((value): value is number => value !== null && value !== undefined)
+        .sort((a, b) => a - b);
       return {
         photos: deduped,
-        // The preview is free, so there is nothing to save by writing a
-        // shorter book than the album can fill: it opens on the longest book
-        // these photographs support, and the price of that length is shown
-        // plainly when they go to order it.
-        chapterCount: maxSupportedChapters(usable),
+        // Where the size picker opens: a chapter for each year the album
+        // spans, held to what these photographs can actually fill. The
+        // customer confirms or changes it before anything is written.
+        chapterCount: Math.min(
+          chaptersForSpan(dated.at(0) ?? null, dated.at(-1) ?? null),
+          maxSupportedChapters(usable),
+        ),
         progress: { ...state.progress, phase: "done" },
         funnelState: "album_ready",
       };
@@ -384,6 +409,24 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
   setMeta: (patch) => set((state) => ({ meta: { ...state.meta, ...patch } })),
 
   goToConfigure: () => set({ funnelState: "configure" }),
+
+  /**
+   * The length the customer chose, and their agreement to what it costs.
+   *
+   * Separate from `confirmBookSize`, which does the work: this records the
+   * decision, and the flow acts on it. Nothing is written before it.
+   */
+  chooseBookSize: (chapters) =>
+    set((state) => {
+      const supported = maxSupportedChapters(selectablePhotos(state.photos).length);
+      return {
+        chapterCount: Math.min(
+          Math.max(Math.floor(chapters), BASE_CHAPTERS),
+          Math.min(supported, MAX_CHAPTERS),
+        ),
+        sizeConfirmed: true,
+      };
+    }),
 
   confirmBookSize: () =>
     set((state) => {
@@ -759,6 +802,8 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
       processingError: null,
       meta: restored.meta,
       chapterCount: restored.chapterCount,
+      // Chapters exist, so this album was sized and grouped long ago.
+      sizeConfirmed: restored.chapters.length > 0,
       chapters: restored.chapters,
       pages: withoutDedicationPages(restored.pages),
       leadEmail: restored.leadEmail,

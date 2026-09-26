@@ -115,9 +115,15 @@ export function FinishBook({
           {summary.bookPriceLines.map((line) => (
             <Row
               key={line.tier.id}
-              label={`${line.tier.name} · ${line.chapters} ${
-                line.chapters === 1 ? "chapter" : "chapters"
-              } at ${formatUsd(line.ratePerChapter)} each`}
+              label={
+                line.includedInBase
+                  ? `${line.tier.name} · ${line.chapters} ${
+                      line.chapters === 1 ? "chapter" : "chapters"
+                    }, included in the base price`
+                  : `${line.tier.name} · ${line.chapters} ${
+                      line.chapters === 1 ? "chapter" : "chapters"
+                    } at ${formatUsd(line.ratePerChapter)} each`
+              }
               value={formatUsd(line.subtotal)}
               muted
               indented
