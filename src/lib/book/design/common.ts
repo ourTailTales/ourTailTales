@@ -95,12 +95,6 @@ export function imprintTexts(
   ];
 }
 
-/** Dedication type size, stepping down for a long one. */
-export function dedicationType(text: string): { size: number; leading: number } {
-  const size = text.length > 180 ? 17 : 21;
-  return { size, leading: Math.round(size * 1.55) };
-}
-
 /** The page's hero photo, if it has one. */
 export function heroOf(page: BookPage): string | undefined {
   return page.photoIds[0];

@@ -38,7 +38,6 @@ function bookOf(chapterCount: number): {
     petName: "Biscuit",
     birthYear: "",
     deathYear: "",
-    dedication: "",
     coverPhotoId: "photo-0-0",
   };
   return { meta, chapters, pages: paginateBook(meta, chapters) };
@@ -112,7 +111,7 @@ describe("the free teaser", () => {
 });
 
 describe("the print interior", () => {
-  it("pads a book with no dedication back to the ordered page count", async () => {
+  it("pads a short book back to the ordered page count", async () => {
     const { meta, chapters, pages } = bookOf(5);
     expect(pages).toHaveLength(luluInteriorPages(5) - 1);
 

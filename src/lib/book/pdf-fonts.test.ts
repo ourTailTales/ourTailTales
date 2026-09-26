@@ -57,7 +57,6 @@ describe("the book's embedded fonts", () => {
       petName: "Biscuit",
       birthYear: "2015",
       deathYear: "2024",
-      dedication: "For Biscuit, always.",
       coverPhotoId: "photo-0-0",
     };
     const blob = await renderTeaserPdf({

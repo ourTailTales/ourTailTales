@@ -17,13 +17,13 @@ import {
   photoPageIndex,
   planChapterPages,
   sparePhotos,
-  withoutEmptyDedication,
+  withoutDedicationPages,
 } from "@/lib/book/pagination";
 import {
   MAX_STORY_PAGES_PER_CHAPTER,
   MIN_STORY_PAGES_PER_CHAPTER,
 } from "@/lib/pricing";
-import type { BookMeta, Chapter } from "@/types/book";
+import type { BookMeta, BookPage, Chapter } from "@/types/book";
 
 describe("automatic book pagination", () => {
   it("creates a five-chapter, 54-page book with varied layouts and no QR data", () => {
@@ -48,7 +48,6 @@ describe("automatic book pagination", () => {
       petName: "Biscuit",
       birthYear: "",
       deathYear: "",
-      dedication: "For Biscuit.",
       coverPhotoId: "photo-0-0",
     };
     const orientations = new Map(
@@ -67,10 +66,10 @@ describe("automatic book pagination", () => {
         .map((page) => page.layoutId),
     );
 
-    expect(pages).toHaveLength(54);
+    expect(pages).toHaveLength(53);
     expect(photoLayouts.size).toBeGreaterThan(1);
     expect(JSON.stringify(pages)).not.toContain("qr");
-    expect(pages[1]?.kind).toBe("dedication");
+    expect(pages[1]?.kind).toBe("chapter-opener");
   });
 
   const oneChapter: Chapter[] = [
@@ -93,32 +92,47 @@ describe("automatic book pagination", () => {
     petName: "Biscuit",
     birthYear: "",
     deathYear: "",
-    dedication: "",
     coverPhotoId: "a",
   };
 
-  it("leaves the dedication page out when there is no dedication", () => {
+  it("gives the book three fixed pages", () => {
     // One chapter of three photographs: the opener, a page for each of the
-    // other two, and the book's own pages, less the dedication.
+    // other two, and the book's own title, closing and imprint.
     const pages = paginateBook(baseMeta, oneChapter);
-    expect(pages.some((page) => page.kind === "dedication")).toBe(false);
-    expect(pages).toHaveLength(6);
+    expect(pages.map((page) => page.kind)).toEqual([
+      "title",
+      "chapter-opener",
+      "photos",
+      "photos",
+      "closing",
+      "imprint",
+    ]);
     expect(pages.map((page) => page.pageNumber)).toEqual(
       Array.from({ length: 6 }, (_, index) => index + 1),
     );
-
-    const withSpacesOnly = paginateBook({ ...baseMeta, dedication: "   " }, oneChapter);
-    expect(withSpacesOnly).toHaveLength(6);
-    expect(paginateBook({ ...baseMeta, dedication: "For Biscuit." }, oneChapter)).toHaveLength(7);
   });
 
-  it("drops a saved empty dedication page and renumbers", () => {
-    const saved = paginateBook({ ...baseMeta, dedication: "x" }, oneChapter);
-    const cleaned = withoutEmptyDedication(saved, baseMeta);
-    expect(cleaned).toHaveLength(saved.length - 1);
-    expect(cleaned.some((page) => page.kind === "dedication")).toBe(false);
-    expect(cleaned[1]?.pageNumber).toBe(2);
-    expect(withoutEmptyDedication(saved, { dedication: "x" })).toBe(saved);
+  it("drops a dedication page saved by an older book and renumbers", () => {
+    const pages = paginateBook(baseMeta, oneChapter);
+    // Shaped like a draft saved while the book still had a dedication page.
+    const saved = [
+      pages[0]!,
+      {
+        id: "page-dedication",
+        kind: "dedication" as unknown as BookPage["kind"],
+        pageNumber: 2,
+        layoutId: null,
+        photoIds: [],
+      },
+      ...pages.slice(1).map((page) => ({ ...page, pageNumber: page.pageNumber + 1 })),
+    ];
+
+    const cleaned = withoutDedicationPages(saved);
+    expect(cleaned).toHaveLength(pages.length);
+    expect(cleaned.map((page) => page.pageNumber)).toEqual(
+      pages.map((page) => page.pageNumber),
+    );
+    expect(withoutDedicationPages(pages)).toBe(pages);
   });
 });
 
@@ -140,7 +154,7 @@ describe("choosing a page's layout", () => {
       aiStatus: "done",
     };
   }
-  const meta: BookMeta = { petName: "Biscuit", birthYear: "", deathYear: "", dedication: "", coverPhotoId: "p0" };
+  const meta: BookMeta = { petName: "Biscuit", birthYear: "", deathYear: "", coverPhotoId: "p0" };
   const photoPages = (chapters: Chapter[]) =>
     paginateBook(meta, chapters).filter((page) => page.kind === "photos");
 
@@ -245,7 +259,6 @@ describe("a book that does not look machine-made", () => {
       petName: "Biscuit",
       birthYear: "",
       deathYear: "",
-      dedication: "For Biscuit.",
       coverPhotoId: "p-0-0",
     };
     const orientations = new Map(
@@ -291,8 +304,8 @@ describe("a book that does not look machine-made", () => {
     // Nothing is left out: every photograph the chapters hold is on a page.
     const placed = new Set(pages.flatMap((page) => page.photoIds));
     expect(placed.size).toBe(5 * 5);
-    // Five chapters of five pages, and the book's own four.
-    expect(pages).toHaveLength(5 * 5 + 4);
+    // Five chapters of five pages, and the book's own three.
+    expect(pages).toHaveLength(5 * 5 + 3);
   });
 
   it("keeps a chapter between three and ten pages", () => {
@@ -375,7 +388,6 @@ describe("words written on a page", () => {
     petName: "Biscuit",
     birthYear: "",
     deathYear: "",
-    dedication: "",
     coverPhotoId: "p0",
   };
 
@@ -438,7 +450,6 @@ describe("the line printed on a page", () => {
     petName: "Jordi",
     birthYear: "",
     deathYear: "",
-    dedication: "",
     coverPhotoId: "hero",
   };
 

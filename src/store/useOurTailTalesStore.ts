@@ -8,10 +8,9 @@ import {
   addPhotosToPage as placeOnPage,
   applyPageLayout,
   applyPageNote,
-  hasDedication,
   paginateBook,
   photoPageIndex,
-  withoutEmptyDedication,
+  withoutDedicationPages,
   type PhotoLookup,
 } from "@/lib/book/pagination";
 import { isPhotoLayout } from "@/lib/book/layouts";
@@ -269,7 +268,6 @@ const emptyMeta: BookMeta = {
   petName: "",
   birthYear: "",
   deathYear: "",
-  dedication: "",
   coverPhotoId: null,
 };
 
@@ -382,23 +380,9 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
       };
     }),
 
-  setMeta: (patch) =>
-    set((state) => {
-      const meta = { ...state.meta, ...patch };
-      // A dedication appearing or disappearing adds or removes its page. Any
-      // other edit leaves the page list alone, so layouts the customer chose
-      // are not re-dealt on every keystroke.
-      if (
-        state.pages.length === 0 ||
-        hasDedication(meta) === hasDedication(state.meta)
-      ) {
-        return { meta };
-      }
-      return {
-        meta,
-        pages: paginateBook(meta, state.chapters, photoFactsOf(state.photos)),
-      };
-    }),
+  // No edit here changes the page list, so layouts the customer chose are not
+  // re-dealt on every keystroke.
+  setMeta: (patch) => set((state) => ({ meta: { ...state.meta, ...patch } })),
 
   goToConfigure: () => set({ funnelState: "configure" }),
 
@@ -785,7 +769,7 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
       meta: restored.meta,
       chapterCount: restored.chapterCount,
       chapters: restored.chapters,
-      pages: withoutEmptyDedication(restored.pages, restored.meta),
+      pages: withoutDedicationPages(restored.pages),
       leadEmail: restored.leadEmail,
       albumVideos: restored.albumVideos,
       freePreviewReady: Boolean(restored.previewPdf),

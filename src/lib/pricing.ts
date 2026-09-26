@@ -29,7 +29,11 @@ export const STORY_PAGES_PER_CHAPTER = 10;
 export const MIN_STORY_PAGES_PER_CHAPTER = 3;
 export const MAX_STORY_PAGES_PER_CHAPTER = STORY_PAGES_PER_CHAPTER;
 
-/** Title, dedication, closing, imprint. Included at no extra charge. */
+/**
+ * Title, closing, imprint, plus one leaf of slack. Included at no extra
+ * charge. Four rather than three so the ceiling this feeds
+ * (`luluInteriorPages`) stays even — a leaf has two sides.
+ */
 export const FIXED_INTERIOR_PAGES = 4;
 
 /** Cap after physical-sample testing. 50 => 500 story / 504 Lulu pages. */

@@ -80,8 +80,6 @@ function labelFor(page: BookPage, chapterNumber: number | undefined): string {
   switch (page.kind) {
     case "title":
       return "Title";
-    case "dedication":
-      return "Dedication";
     case "chapter-opener":
       return chapterNumber ? `Chapter ${chapterNumber}` : "Chapter";
     case "closing":

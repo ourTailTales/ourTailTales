@@ -267,8 +267,8 @@ The source of truth is `src/lib/pricing.ts`.
 | Interior | Premium full color, 80# coated white |
 | Base chapters | 5 |
 | Story pages per chapter | 10 |
-| Fixed pages | 4: title, dedication, closing, imprint |
-| Base printed interior | 54 pages = 50 story + 4 fixed |
+| Fixed pages | 3: title, closing, imprint (4 budgeted, so the ordered count stays even) |
+| Base printed interior | 54 pages = 50 story + 3 fixed, padded to an even leaf count |
 | Base price | $49.99 before shipping/tax |
 | Extra chapter | $4.99 per additional 10-page chapter |
 | Maximum chapters | 50, pending physical-sample and operational validation |

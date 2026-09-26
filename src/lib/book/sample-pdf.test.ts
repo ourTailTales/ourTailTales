@@ -16,7 +16,6 @@ const meta: BookMeta = {
   petName: "Biscuit",
   birthYear: "",
   deathYear: "",
-  dedication: "",
   coverPhotoId: null,
   designId: "vintage",
 };
