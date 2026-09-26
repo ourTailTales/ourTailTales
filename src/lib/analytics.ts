@@ -18,6 +18,7 @@ export type FunnelEvent =
   | "free_book_opened"
   | "auth_gate_viewed"
   | "processing_complete"
+  | "book_size_chosen"
   | "book_size_confirmed"
   | "story_generated"
   | "book_created"

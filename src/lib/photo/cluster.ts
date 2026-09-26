@@ -4,8 +4,11 @@ import {
   selectablePhotos,
 } from "@/lib/photo/dedupe";
 import {
+  BASE_CHAPTERS,
+  DEFAULT_CHAPTER_CAP,
   MIN_PHOTOS_PER_CHAPTER,
   PHOTOS_PER_CHAPTER_TARGET,
+  maxSupportedChapters,
 } from "@/lib/pricing";
 import { photoFactsOf, planPages } from "@/lib/book/page-plan";
 import type { Chapter } from "@/types/book";
@@ -63,6 +66,115 @@ export function proposeChapters(
       aiStatus: "idle",
     };
   });
+}
+
+/**
+ * A gap long enough to be a different part of the animal's life.
+ *
+ * A fortnight with no pictures at all is not a quiet week in the same outing;
+ * it is the album moving on. Shorter than this and a chapter break falls in
+ * the middle of a holiday.
+ */
+export const SEAM_DAYS = 14;
+
+/**
+ * How many chapters this album is actually made of.
+ *
+ * Every book came out at exactly five chapters, whatever was dropped in: the
+ * recommendation asked for `min(5, photos / 15)` and was then clamped up to a
+ * floor of five, so the two bounds met at five and nothing in between could
+ * ever be returned. A hundred photographs spanning four years came out as five
+ * chapters of twenty, which is not the shape of those four years.
+ *
+ * The album says how many it holds. Consecutive photographs a fortnight or
+ * more apart are a seam — the camera stopped and started again — and the
+ * stretches between the seams are the periods this animal's life actually
+ * falls into. Stretches too thin to fill a chapter are folded into the one
+ * before them, so a single stray picture between two holidays does not become
+ * a chapter of its own.
+ *
+ * Then the bounds, which are the product's rather than the album's: never
+ * fewer than the base book, never more than the photographs can fill at five
+ * to a chapter, never more than the printer's cap. An album with no dates at
+ * all — no EXIF, nothing — has no seams to find and comes out at the base.
+ */
+export function chaptersForAlbum(photos: PhotoAsset[]): number {
+  return albumChapterRange(photos).recommended;
+}
+
+export type ChapterRange = {
+  /** What the book is proposed at, and what the price is quoted from. */
+  recommended: number;
+  /** Everything the album has periods for, if the customer wants it all. */
+  available: number;
+  /** The fewest this album can be made into, which is the base book. */
+  least: number;
+};
+
+/**
+ * How long this album's book should be, and how long it could be.
+ *
+ * Two numbers rather than one, because they answer different questions. The
+ * album's periods decide what is *available*; `DEFAULT_CHAPTER_CAP` decides
+ * what is *proposed*, because a two-hundred-outing camera roll has fifty
+ * chapters in it and quoting $274 unasked is an ambush rather than an offer.
+ * Past the cap the longer book is offered in words and taken deliberately.
+ */
+export function albumChapterRange(photos: PhotoAsset[]): ChapterRange {
+  const ordered = selectablePhotos(photos).sort(compareChronologically);
+  const supported = maxSupportedChapters(ordered.length);
+  const base = { recommended: BASE_CHAPTERS, available: BASE_CHAPTERS, least: BASE_CHAPTERS };
+  if (ordered.length === 0) return base;
+
+  const periods = runsBetweenSeams(ordered).length;
+  const available = Math.min(Math.max(periods, BASE_CHAPTERS), supported);
+  return {
+    recommended: Math.min(available, DEFAULT_CHAPTER_CAP),
+    available,
+    least: BASE_CHAPTERS,
+  };
+}
+
+/**
+ * The album split at its seams, with runs too thin to be a chapter folded
+ * back into the one before them.
+ */
+function runsBetweenSeams(ordered: PhotoAsset[]): number[] {
+  const runs: number[] = [];
+  let run = 0;
+
+  ordered.forEach((photo, index) => {
+    const previous = ordered[index - 1];
+    if (previous && daysBetween(previous, photo) >= SEAM_DAYS) {
+      runs.push(run);
+      run = 0;
+    }
+    run += 1;
+  });
+  if (run > 0) runs.push(run);
+
+  // Runs are gathered until there are enough photographs for a chapter, and
+  // then a new one is started. Folding every short run into the one before it
+  // instead would put a whole album of brief outings into a single chapter:
+  // thirty visits of two photographs are not one period, they are ten
+  // chapters of six.
+  const kept: number[] = [];
+  for (const size of runs) {
+    const open = kept.at(-1);
+    if (open !== undefined && open < MIN_PHOTOS_PER_CHAPTER) {
+      kept[kept.length - 1] = open + size;
+    } else {
+      kept.push(size);
+    }
+  }
+
+  // A last run still short of a chapter joins the one before it rather than
+  // printing a thin page at the end of the book.
+  if (kept.length > 1 && kept.at(-1)! < MIN_PHOTOS_PER_CHAPTER) {
+    const short = kept.pop()!;
+    kept[kept.length - 1] += short;
+  }
+  return kept;
 }
 
 /* -------------------------------- boundaries -------------------------------- */

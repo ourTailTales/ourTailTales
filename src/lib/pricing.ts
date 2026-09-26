@@ -36,6 +36,37 @@ export const FIXED_INTERIOR_PAGES = 4;
 export const MAX_CHAPTERS = 50;
 
 /**
+ * The longest book offered without being asked for.
+ *
+ * `MAX_CHAPTERS` is what the printer will bind; this is what a customer is
+ * shown by default. An album of four thousand photographs across two hundred
+ * outings has fifty chapters' worth of periods in it, and quoting $274 to
+ * somebody who came for a $49.99 book — because their camera roll is long —
+ * is not an offer, it is an ambush. Past this, the longer book is offered
+ * explicitly and taken explicitly.
+ */
+export const DEFAULT_CHAPTER_CAP = 12;
+
+/**
+ * Chapters past this one would carry `TOP_TIER_DISCOUNT_PER_CHAPTER`.
+ */
+export const TOP_TIER_FROM_CHAPTER = 30;
+
+/**
+ * A discount on the chapters of a very long book. Off.
+ *
+ * Here so that turning it on is a number rather than a rewrite — but the
+ * headroom is small, and a future edit should not set it without redoing the
+ * arithmetic. The basis, from the pricing review rather than from anything
+ * this repository can check: Lulu's print cost runs about $2.148 a chapter
+ * and is linear from five chapters to fifty, so the print margin holds at
+ * roughly 55-57% across the whole range at $4.99 a chapter. That leaves about
+ * 3-5% of real room — a $1 discount is most of it, a $2 discount is past it.
+ * Re-derive from current Lulu quotes before changing this.
+ */
+export const TOP_TIER_DISCOUNT_PER_CHAPTER = 0;
+
+/**
  * Customer-selectable density: five to thirty photos per chapter.
  */
 export const PHOTOS_PER_CHAPTER_TARGET = { min: 5, max: 30 } as const;
@@ -52,11 +83,40 @@ export const MIN_PHOTOS_PER_CHAPTER = PHOTOS_PER_CHAPTER_TARGET.min;
 export const MIN_PHOTOS_FOR_BOOK =
   BASE_CHAPTERS * PHOTOS_PER_CHAPTER_TARGET.min;
 
-export const RECOMMENDED_CHAPTERS = BASE_CHAPTERS;
-
 export function bookPrice(chapterCount: number): number {
   const extra = Math.max(0, chapterCount - BASE_CHAPTERS);
-  return round2(BASE_PRICE + extra * PRICE_PER_EXTRA_CHAPTER);
+  const discounted = Math.max(0, chapterCount - TOP_TIER_FROM_CHAPTER);
+  return round2(
+    BASE_PRICE +
+      extra * PRICE_PER_EXTRA_CHAPTER -
+      discounted * TOP_TIER_DISCOUNT_PER_CHAPTER,
+  );
+}
+
+export type BookTier = {
+  id: "keepsake" | "story" | "saga" | "life";
+  label: string;
+  /** The largest book this tier covers. */
+  upTo: number;
+};
+
+/**
+ * What to call a book of this length.
+ *
+ * Names for the customer's benefit only — nothing about the price, the
+ * printing or the writing changes at a boundary. A five-chapter book and a
+ * fifty-chapter book are the same product at different lengths, and the label
+ * is there so the length means something when it is quoted.
+ */
+const TIERS: readonly BookTier[] = [
+  { id: "keepsake", label: "Keepsake", upTo: BASE_CHAPTERS },
+  { id: "story", label: "Story", upTo: 15 },
+  { id: "saga", label: "Family Saga", upTo: 30 },
+  { id: "life", label: "Complete Life Story", upTo: MAX_CHAPTERS },
+];
+
+export function bookTier(chapterCount: number): BookTier {
+  return TIERS.find((tier) => chapterCount <= tier.upTo) ?? TIERS[TIERS.length - 1]!;
 }
 
 export function storyPages(chapterCount: number): number {
@@ -130,25 +190,12 @@ export function maxSupportedChapters(usablePhotoCount: number): number {
 }
 
 /**
- * Default slider position: five chapters when the album supports it.
- *
- * `MIN_PHOTOS_PER_CHAPTER` is the hard floor that keeps pages from being
- * padded; this is the softer density below which a chapter reads as thin, so a
- * sparse album opens on a shorter book instead of a stretched one.
+ * How many chapters an album comes to is `chaptersForAlbum` in
+ * `lib/photo/cluster`, which reads the album's own dates. It used to be a
+ * count guessed from the number of photographs here, and that guess could only
+ * ever return five: it asked for `min(5, photos / 15)` and then clamped the
+ * answer up to a floor of five.
  */
-const COMFORTABLE_PHOTOS_PER_CHAPTER = 15;
-
-export function recommendedChapters(usablePhotoCount: number): number {
-  const supported = maxSupportedChapters(usablePhotoCount);
-  const comfortable = Math.floor(
-    usablePhotoCount / COMFORTABLE_PHOTOS_PER_CHAPTER,
-  );
-  return clamp(
-    Math.min(RECOMMENDED_CHAPTERS, comfortable),
-    BASE_CHAPTERS,
-    supported,
-  );
-}
 
 export function formatUsd(amount: number): string {
   return new Intl.NumberFormat("en-US", {

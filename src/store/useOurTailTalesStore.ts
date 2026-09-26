@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 
-import { proposeChapters } from "@/lib/photo/cluster";
+import { albumChapterRange, proposeChapters } from "@/lib/photo/cluster";
 import { groupDuplicates, selectablePhotos } from "@/lib/photo/dedupe";
 import {
   addPhotosToPage as placeOnPage,
@@ -25,7 +25,6 @@ import {
 } from "@/lib/photo/videoPreview";
 import {
   maxSupportedChapters,
-  recommendedChapters,
   BASE_CHAPTERS,
 } from "@/lib/pricing";
 import type {
@@ -73,6 +72,11 @@ type State = {
   videoAssets: VideoAsset[];
   placements: VideoMemoryPlacement[];
   videoNotice: string | null;
+  /**
+   * True once a length — and so a price — has been agreed to. Until then no
+   * chapter is written, because each one is a paid model call.
+   */
+  sizeConfirmed: boolean;
   /** A page the editor should turn to, once it can. */
   revealPageId: string | null;
   albumVideos: AlbumVideoPreview[];
@@ -120,6 +124,8 @@ type Actions = {
   setMeta: (patch: Partial<BookMeta>) => void;
   goToConfigure: () => void;
   setChapterCount: (count: number) => void;
+  /** Settles the length, and with it the price, before anything is written. */
+  confirmChapterCount: (count: number) => void;
   confirmBookSize: () => void;
 
   beginStoryGeneration: () => void;
@@ -291,6 +297,7 @@ const initialState: State = {
   videoAssets: [],
   placements: [],
   videoNotice: null,
+  sizeConfirmed: false,
   revealPageId: null,
   albumVideos: [],
   freePreviewReady: false,
@@ -356,10 +363,13 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
   finishProcessing: () =>
     set((state) => {
       const deduped = groupDuplicates(state.photos);
-      const usable = selectablePhotos(deduped).length;
+      const range = albumChapterRange(deduped);
       return {
         photos: deduped,
-        chapterCount: recommendedChapters(usable),
+        // How many periods the album is actually made of, not a fixed five —
+        // and, when that is a great many, what is proposed rather than all of
+        // it. The customer settles it on the next screen.
+        chapterCount: range.recommended,
         progress: { ...state.progress, phase: "done" },
         funnelState: "album_ready",
       };
@@ -408,6 +418,23 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
         selectablePhotos(state.photos).length,
       );
       return { chapterCount: Math.min(Math.max(count, BASE_CHAPTERS), supported) };
+    }),
+
+  /**
+   * The length the customer chose, and their agreement to what it costs.
+   *
+   * Separate from `confirmBookSize`, which does the work: this records the
+   * decision, and the flow acts on it. Nothing is written before it.
+   */
+  confirmChapterCount: (count) =>
+    set((state) => {
+      const supported = maxSupportedChapters(
+        selectablePhotos(state.photos).length,
+      );
+      return {
+        chapterCount: Math.min(Math.max(count, BASE_CHAPTERS), supported),
+        sizeConfirmed: true,
+      };
     }),
 
   confirmBookSize: () =>

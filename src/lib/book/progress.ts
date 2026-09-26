@@ -17,7 +17,9 @@ import type { FunnelState } from "@/store/useOurTailTalesStore";
 export type BookStep =
   /** Something else is already working: photos being read, chapters being written. */
   | "wait"
-  /** Enough photos have arrived — group them into chapters. */
+  /** Enough photos have arrived — ask how long the book should be. */
+  | "size"
+  /** The size is settled — group the photos into that many chapters. */
   | "build"
   /** Chapters exist with nothing written in them. */
   | "write"
@@ -41,8 +43,11 @@ export function nextBookStep(book: {
    * number that decides whether there is a book to build at all.
    */
   photoCount: number;
+  /** True once the customer has agreed to a length, and so to a price. */
+  sizeConfirmed: boolean;
 }): BookStep {
-  const { funnelState, chapterCount, unwritten, mediaCount, photoCount } = book;
+  const { funnelState, chapterCount, unwritten, mediaCount, photoCount, sizeConfirmed } =
+    book;
 
   // Work already in flight, or a book already open. Nothing to decide.
   if (
@@ -55,6 +60,12 @@ export function nextBookStep(book: {
     return "wait";
   }
 
+  // The customer is looking at what the book would be and what it would cost.
+  // Nothing may start from here: the next thing after this gate is chapters
+  // being written, one paid model call each, at a price they have not agreed
+  // to yet.
+  if (funnelState === "configure") return "wait";
+
   if (chapterCount === 0) {
     // Photographs, not media. Videos are part of the album and none of them
     // becomes a chapter, so counting them here was the gate letting through
@@ -66,7 +77,11 @@ export function nextBookStep(book: {
     // `MIN_PHOTOS_FOR_BOOK` is five chapters times the five pictures a
     // chapter needs, which is exactly the question being asked here.
     void mediaCount;
-    return photoCount >= MIN_PHOTOS_FOR_BOOK ? "build" : "needPhotos";
+    if (photoCount < MIN_PHOTOS_FOR_BOOK) return "needPhotos";
+    // Asked before built. Grouping the photographs is free, but what follows
+    // it is not, and the length of the book is no longer a fixed five: it
+    // comes from the album, and so does the price.
+    return sizeConfirmed ? "build" : "size";
   }
 
   return unwritten === 0 ? "open" : "write";
