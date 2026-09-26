@@ -9,10 +9,10 @@ import {
   MIN_PRINTABLE_INTERIOR_PAGES,
   PHOTOS_PER_CHAPTER_TARGET,
   PRICE_PER_EXTRA_CHAPTER,
-  TOP_TIER_DISCOUNT_PER_CHAPTER,
-  TOP_TIER_FROM_CHAPTER,
   bookPrice,
   bookTier,
+  chapterRateSummary,
+  nextChapterPrice,
   luluInteriorPages,
   maxSupportedChapters,
   orderedInteriorPages,
@@ -80,33 +80,69 @@ describe("what a book of this length is called", () => {
     expect(bookTier(MAX_CHAPTERS + 10).label).toBe("Complete Life Story");
   });
 
-  it("is a name and nothing else — the price does not step at a boundary", () => {
-    for (const at of [BASE_CHAPTERS, 15, 30]) {
-      expect(bookPrice(at + 1) - bookPrice(at)).toBeCloseTo(
-        PRICE_PER_EXTRA_CHAPTER - TOP_TIER_DISCOUNT_PER_CHAPTER * (at >= 30 ? 1 : 0),
-        2,
-      );
-    }
+  it("names the tier whose rate the next chapter is charged at", () => {
+    expect(nextChapterPrice(BASE_CHAPTERS)).toBe(PRICE_PER_EXTRA_CHAPTER);
+    expect(nextChapterPrice(15)).toBe(4.49);
+    expect(nextChapterPrice(30)).toBe(4.29);
   });
 });
 
-describe("the long-book discount", () => {
-  it("is off, so every chapter past the base is the same price", () => {
-    expect(TOP_TIER_DISCOUNT_PER_CHAPTER).toBe(0);
-    expect(bookPrice(MAX_CHAPTERS)).toBeCloseTo(
-      BASE_PRICE + (MAX_CHAPTERS - BASE_CHAPTERS) * PRICE_PER_EXTRA_CHAPTER,
-      2,
-    );
+describe("what each chapter costs", () => {
+  it("charges the base book for the first five", () => {
+    expect(bookPrice(1)).toBe(BASE_PRICE);
+    expect(bookPrice(BASE_CHAPTERS)).toBe(BASE_PRICE);
   });
 
-  it("would only ever touch the chapters past its threshold", () => {
-    // The shape a future discount takes, checked without turning one on: a
-    // book at the threshold is unaffected however the constant is set.
-    expect(TOP_TIER_FROM_CHAPTER).toBe(30);
-    expect(bookPrice(TOP_TIER_FROM_CHAPTER)).toBeCloseTo(
-      BASE_PRICE + (TOP_TIER_FROM_CHAPTER - BASE_CHAPTERS) * PRICE_PER_EXTRA_CHAPTER,
-      2,
-    );
+  it("eases the rate off with length", () => {
+    // Six to fifteen at $4.99, sixteen to thirty at $4.49, the rest at $4.29.
+    expect(bookPrice(15)).toBe(99.89);
+    expect(bookPrice(30)).toBe(167.24);
+    expect(bookPrice(MAX_CHAPTERS)).toBe(253.04);
+  });
+
+  it("never reprices a chapter because a later one was added", () => {
+    // The thirty-first chapter costs $4.29; it does not move the thirty
+    // before it onto that rate.
+    expect(bookPrice(31) - bookPrice(30)).toBeCloseTo(4.29, 2);
+    expect(bookPrice(16) - bookPrice(15)).toBeCloseTo(4.49, 2);
+  });
+
+  it("always costs more for more, however the rates are set", () => {
+    for (let chapters = BASE_CHAPTERS; chapters < MAX_CHAPTERS; chapters += 1) {
+      expect(bookPrice(chapters + 1)).toBeGreaterThan(bookPrice(chapters));
+    }
+  });
+
+  it("describes its own rates rather than repeating them in copy", () => {
+    expect(chapterRateSummary()).toBe("$4.99 each to 15, then $4.49 each to 30, then $4.29 beyond 30");
+  });
+});
+
+describe("the floor these rates were set against", () => {
+  /**
+   * Lulu's print cost, from the four quotes in the pricing review: $2.148 a
+   * chapter marginal, $11.84 fixed, which reproduces all four to the cent.
+   * Here rather than in the app because it is an input to a decision, not
+   * something the app computes with — but it belongs in the tests, because
+   * it is what stops a future edit from quietly pricing below cost.
+   */
+  const printCost = (chapters: number) => 11.84 + 2.148 * chapters;
+  const FLOOR = 0.51;
+
+  it("keeps every book above a 51% print margin", () => {
+    for (let chapters = BASE_CHAPTERS; chapters <= MAX_CHAPTERS; chapters += 1) {
+      const price = bookPrice(chapters);
+      const margin = (price - printCost(chapters)) / price;
+      expect(margin, `${chapters} chapters`).toBeGreaterThan(FLOOR);
+    }
+  });
+
+  it("holds at the longest book, which is where it binds", () => {
+    const price = bookPrice(MAX_CHAPTERS);
+    const margin = (price - printCost(MAX_CHAPTERS)) / price;
+    expect(margin).toBeGreaterThan(0.52);
+    // The rates first proposed — $3.99 and $2.99 — would have been 45.7%.
+    expect(margin).toBeLessThan(0.57);
   });
 });
 
@@ -115,21 +151,24 @@ describe("the estimate shown before a word is written", () => {
     // The screen renders these two functions and nothing of its own, so this
     // is the estimate: what it promises is what `prepareOrder` later writes
     // onto the order row.
-    for (const chapters of [5, 6, 12, 13, 30, 50]) {
-      expect(bookPrice(chapters)).toBe(
-        Math.round((BASE_PRICE + (chapters - BASE_CHAPTERS) * PRICE_PER_EXTRA_CHAPTER) * 100) /
-          100,
-      );
+    for (const [chapters, price] of [
+      [5, 49.99],
+      [6, 54.98],
+      [12, 84.92],
+      [15, 99.89],
+      [30, 167.24],
+      [50, 253.04],
+    ] as const) {
+      expect(bookPrice(chapters)).toBe(price);
       expect(luluInteriorPages(chapters)).toBe(chapters * 10 + FIXED_INTERIOR_PAGES);
     }
   });
 
-  it("moves by one chapter's price for each step of the stepper", () => {
+  it("moves by the next chapter's own rate at each step of the stepper", () => {
     let last = bookPrice(BASE_CHAPTERS);
     for (let chapters = BASE_CHAPTERS + 1; chapters <= MAX_CHAPTERS; chapters += 1) {
       const next = bookPrice(chapters);
-      expect(next).toBeGreaterThan(last);
-      expect(next - last).toBeCloseTo(PRICE_PER_EXTRA_CHAPTER, 2);
+      expect(next - last).toBeCloseTo(nextChapterPrice(chapters - 1), 2);
       last = next;
     }
   });

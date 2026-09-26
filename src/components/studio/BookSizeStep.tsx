@@ -9,6 +9,7 @@ import {
   DEFAULT_CHAPTER_CAP,
   bookPrice,
   bookTier,
+  chapterRateSummary,
   formatUsd,
   luluInteriorPages,
 } from "@/lib/pricing";
@@ -115,11 +116,12 @@ export function BookSizeStep({
           </Stepper>
         </div>
 
+        {/* The rates read out of the tier table rather than written here, so
+            the page cannot go on quoting a price that has moved. */}
         <p className="mt-3 text-xs leading-5 text-page-ink-faint">
           {formatUsd(bookPrice(BASE_CHAPTERS))} for the first {BASE_CHAPTERS}{" "}
-          chapters, then {formatUsd(bookPrice(BASE_CHAPTERS + 1) - bookPrice(BASE_CHAPTERS))}{" "}
-          each. Shipping is quoted at checkout, and nothing is charged until you
-          order a copy.
+          chapters, then {chapterRateSummary()}. Shipping is quoted at checkout,
+          and nothing is charged until you order a copy.
         </p>
 
         {/* The album's full length, offered rather than assumed. */}
