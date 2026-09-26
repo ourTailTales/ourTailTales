@@ -160,7 +160,7 @@ export function planFromIndexes(
 ): PlannedPage[] | null {
   if (!planned || planned.length === 0 || photoIds.length === 0) return null;
 
-  const offset = numberingOffset(planned);
+  const offset = numberingOffset(planned, photoIds.length);
   const used = new Set<number>();
   const pages: PlannedPage[] = [];
   for (const group of planned) {
@@ -192,20 +192,31 @@ export function planFromIndexes(
  * base must not silently shift the whole chapter by one.
  *
  * Two things settle it outright: a zero can only be zero-based, and a number
- * as high as the count can only be one-based. With neither — a chapter whose
- * first photograph the model left out — the prompt's own numbering decides.
+ * as high as the count can only be one-based. The second is checked first and
+ * wins outright when both appear — a single stray zero (the model slipping on
+ * one group while numbering the rest correctly from one, or a group it wrote
+ * as covering "photo 0" it never should have) must not silently shift every
+ * other, unambiguous group in the chapter to the wrong photograph. With
+ * neither signal present — a chapter whose first photograph the model left
+ * out entirely — the prompt's own numbering decides.
  */
 function numberingOffset(
   planned: readonly { photos?: readonly number[] }[],
+  photoCount: number,
 ): number {
   const numbers = planned
     .flatMap((group) => group.photos ?? [])
     .filter((value) => Number.isInteger(value) && value >= 0);
   if (numbers.length === 0) return 0;
-  // A zero can only be zero-based. Everything else is one-based: either
-  // decisively — a number as high as the count is past the end of a zero-based
-  // list — or by the prompt's own numbering, which is what was asked for.
-  return numbers.includes(0) ? 0 : 1;
+  // A number as high as the count is past the end of a zero-based list, so it
+  // can only be one-based — checked first because it is decisive evidence,
+  // and one stray zero elsewhere must not outweigh it.
+  if (numbers.includes(photoCount)) return 1;
+  // A zero can only be zero-based.
+  if (numbers.includes(0)) return 0;
+  // Neither signal fired: the prompt's own numbering, which is what was asked
+  // for.
+  return 1;
 }
 
 /** A caption the model wrote, trimmed — or nothing, rather than an empty line. */
