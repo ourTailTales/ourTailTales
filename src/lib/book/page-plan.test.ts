@@ -184,3 +184,56 @@ describe("a line goes where its photographs went", () => {
     expect(captionIndexForPhotos(partial, ["b"], new Set())).toBe(1);
   });
 });
+
+describe("whichever way the model numbered the photographs", () => {
+  const ids = ["p0", "p1", "p2", "p3"];
+
+  it("reads a plan that counts from one, which is what the prompt asks for", () => {
+    const pages = planFromIndexes(ids, [
+      { photos: [1, 2], caption: "Out into the sunny green yard" },
+      { photos: [3], caption: "Back indoors" },
+      { photos: [4], caption: "The last of it" },
+    ]);
+
+    // Read as zero-based — which is what this used to do — the first line
+    // would have landed on p1 and p2: the caption written about the first
+    // photograph printed under the second. That is the page of a dog indoors
+    // captioned "Out into the sunny green yard".
+    expect(pages).toEqual([
+      { photos: ["p0", "p1"], caption: "Out into the sunny green yard" },
+      { photos: ["p2"], caption: "Back indoors" },
+      { photos: ["p3"], caption: "The last of it" },
+    ]);
+  });
+
+  it("still reads a plan that counts from zero", () => {
+    const pages = planFromIndexes(ids, [
+      { photos: [0, 1], caption: "First" },
+      { photos: [2, 3], caption: "Second" },
+    ]);
+    expect(pages).toEqual([
+      { photos: ["p0", "p1"], caption: "First" },
+      { photos: ["p2", "p3"], caption: "Second" },
+    ]);
+  });
+
+  it("treats a plan that skips the first photograph as counting from one", () => {
+    // No zero and no number as high as the count: nothing decides it but the
+    // numbering the prompt asked for, and the photograph left out comes back
+    // through the reconciliation rather than being lost.
+    const pages = planFromIndexes(ids, [{ photos: [2, 3], caption: "Only these" }]);
+    expect(photosOf(pages!).flat()).toHaveLength(4);
+    expect(pages!.some((page) => page.photos.includes("p1"))).toBe(true);
+    expect(pages!.some((page) => page.photos.includes("p2"))).toBe(true);
+  });
+
+  it("keeps every photograph whichever base came back", () => {
+    for (const planned of [
+      [{ photos: [1, 2] }, { photos: [3, 4] }],
+      [{ photos: [0, 1] }, { photos: [2, 3] }],
+    ]) {
+      const pages = planFromIndexes(ids, planned);
+      expect(photosOf(pages!).flat().sort()).toEqual([...ids].sort());
+    }
+  });
+});

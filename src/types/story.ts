@@ -47,7 +47,11 @@ export type StoryRequest = {
 };
 
 export type PhotoFacts = {
-  /** Position in the chapter, from 0 — what `pages` refers back to. */
+  /**
+   * Which photograph this is, counting from 1 — the number `pages` refers
+   * back to. One rather than zero because that is how a list reads and how a
+   * model counts; `planFromIndexes` works out which base came back regardless.
+   */
   i: number;
   /** The day it was taken, `YYYY-MM-DD`, when the file says. */
   on?: string;

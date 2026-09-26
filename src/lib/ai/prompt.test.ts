@@ -195,3 +195,11 @@ describe("copy that is about the photograph, not the pet", () => {
     expect(storySystemPrompt()).toContain("Right up close to the lens");
   });
 });
+
+describe("captioning a page the model cannot see", () => {
+  it("shows what guessing at a picture looks like, with the line that was printed", () => {
+    const prompt = storySystemPrompt();
+    expect(prompt).toContain("numbered from 1");
+    expect(prompt).toContain("Out into the sunny green yard");
+  });
+});

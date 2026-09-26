@@ -160,11 +160,13 @@ export function planFromIndexes(
 ): PlannedPage[] | null {
   if (!planned || planned.length === 0 || photoIds.length === 0) return null;
 
+  const offset = numberingOffset(planned);
   const used = new Set<number>();
   const pages: PlannedPage[] = [];
   for (const group of planned) {
     const photos: string[] = [];
-    for (const index of group.photos ?? []) {
+    for (const raw of group.photos ?? []) {
+      const index = raw - offset;
       if (!Number.isInteger(index) || index < 0 || index >= photoIds.length) continue;
       if (used.has(index)) continue;
       if (photos.length >= MAX_PHOTOS_PER_PAGE) break;
@@ -177,6 +179,33 @@ export function planFromIndexes(
 
   const missing = photoIds.filter((_, index) => !used.has(index));
   return reconcile(pages, [...photoIds], missing);
+}
+
+/**
+ * Whether the model counted the photographs from one or from zero.
+ *
+ * This is the difference between a line printed under the picture it was
+ * written about and a line printed under the next one along — a page of a dog
+ * indoors captioned "Out into the sunny green yard", because the yard was the
+ * photograph before it. The prompt now numbers them from one, which is how a
+ * list reads and how a model counts, but a model that answers in the other
+ * base must not silently shift the whole chapter by one.
+ *
+ * Two things settle it outright: a zero can only be zero-based, and a number
+ * as high as the count can only be one-based. With neither — a chapter whose
+ * first photograph the model left out — the prompt's own numbering decides.
+ */
+function numberingOffset(
+  planned: readonly { photos?: readonly number[] }[],
+): number {
+  const numbers = planned
+    .flatMap((group) => group.photos ?? [])
+    .filter((value) => Number.isInteger(value) && value >= 0);
+  if (numbers.length === 0) return 0;
+  // A zero can only be zero-based. Everything else is one-based: either
+  // decisively — a number as high as the count is past the end of a zero-based
+  // list — or by the prompt's own numbering, which is what was asked for.
+  return numbers.includes(0) ? 0 : 1;
 }
 
 /** A caption the model wrote, trimmed — or nothing, rather than an empty line. */
