@@ -50,9 +50,26 @@ export function AlbumSize() {
     [album.firstAt, album.lastAt, usablePhotoCount],
   );
 
-  const [picked, setPicked] = useState<ChapterTier["id"]>(recommended.id);
+  /**
+   * What they picked, once they pick something — and nothing until then.
+   *
+   * The answer used to be latched to the recommendation at the moment this
+   * first rendered, which was the moment the first batch of photographs
+   * finished reading. Every batch after that changed which band actually fits
+   * — a second folder can double the album — and the badge moved while the
+   * selection stayed where it was, so the book on offer was sized for an
+   * album the customer no longer had. Holding their choice and nothing else
+   * means the recommendation is free to follow the album right up until they
+   * disagree with it.
+   */
+  const [picked, setPicked] = useState<ChapterTier["id"] | null>(null);
+  // A band they picked and then dropped below the photographs for — by
+  // removing some, or by a batch that read fewer than it looked like — is not
+  // a band we can print, so the recommendation takes it back.
   const chosen =
-    CHAPTER_TIERS.find((tier) => tier.id === picked) ?? recommended;
+    CHAPTER_TIERS.find(
+      (tier) => tier.id === picked && tierIsAvailable(tier, usablePhotoCount),
+    ) ?? recommended;
   const chapters = chaptersForTier(chosen, { wantedChapters, usablePhotoCount });
 
   const name = petName.trim();

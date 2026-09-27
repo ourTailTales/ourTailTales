@@ -69,10 +69,28 @@ export type Chapter = {
  * about what that page holds, printed under the date wherever the page's
  * layout keeps room for words. Anything the owner writes themselves takes
  * its place; nothing overwrites what they wrote.
+ *
+ * A planned page is what the book is paginated from. Pages are not dealt out
+ * of the chapter's photo list and then captioned from a plan running beside
+ * it — the plan *is* the page list, so a line and the photographs it was
+ * written about cannot come apart on the way to the paper.
  */
 export type PlannedPage = {
   photos: string[];
   caption?: string;
+  /**
+   * The photographs the caption was written about, as they stood when it was
+   * written.
+   *
+   * The caption travels with this set rather than with the page it happens to
+   * sit on, because the page moves: a chosen layout takes more photographs
+   * than the plan gave it, one is swapped out, more arrive from an upload.
+   * Carrying the set means the book can always ask the only question that
+   * matters before printing a line — are these still the pictures it was
+   * written about? — instead of guessing from a page number. Absent on plans
+   * saved before it was kept, where the page's own photographs stand in.
+   */
+  captionFor?: string[];
 };
 
 /**

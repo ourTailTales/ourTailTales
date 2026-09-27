@@ -15,7 +15,6 @@ import {
   maxPhotosForPage,
   paginateBook,
   photoPageIndex,
-  planChapterPages,
   sparePhotos,
   withoutDedicationPages,
 } from "@/lib/book/pagination";
@@ -159,16 +158,20 @@ describe("choosing a page's layout", () => {
     paginateBook(meta, chapters).filter((page) => page.kind === "photos");
 
   it("gives a chosen page exactly the photos its layout holds", () => {
-    const plan = planChapterPages(20, [null, "six-grid", null, null, null, null, null, null, null]);
-    expect(plan.counts[1]).toBe(6);
-    expect(plan.counts.reduce((sum, count) => sum + count, 0)).toBe(20);
-    expect(plan.leftover).toBe(0);
+    const chosen = applyPageLayout(chapter(21), 1, "six-grid");
+    const pages = photoPages([chosen]);
+    expect(pages[1]!.layoutId).toBe("six-grid");
+    expect(pages[1]!.photoIds).toHaveLength(6);
+    // Every photograph the chapter has is still on a page, once.
+    const placed = pages.flatMap((page) => page.photoIds);
+    expect(new Set(placed).size).toBe(placed.length);
+    expect(placed.sort()).toEqual(chosen.photoIds.filter((id) => id !== "p0").sort());
   });
 
   it("keeps back photos for a chosen layout later in the chapter", () => {
-    const plan = planChapterPages(9, [null, null, null, null, null, null, null, null, "five-mosaic"]);
-    expect(plan.counts[8]).toBe(5);
-    expect(plan.counts.slice(0, 8).reduce((sum, count) => sum + count, 0)).toBe(4);
+    const chosen = applyPageLayout(chapter(10), 8, "five-mosaic");
+    const pages = photoPages([chosen]);
+    expect(pages.at(-1)!.photoIds).toHaveLength(5);
   });
 
   it("fills a bigger layout from the chapter's unused photos first", () => {
@@ -392,8 +395,11 @@ describe("words written on a page", () => {
   };
 
   it("carries the line the book wrote for a page onto that page", () => {
+    // A plan covers the chapter, the way the model's own does: every
+    // photograph after the opener is on one of its pages.
     const planned: Chapter = {
       ...chapter,
+      photoIds: ["p0", "p1", "p2", "p3"],
       pagePlan: [
         { photos: ["p1", "p2"], caption: "Back at the lake by June" },
         { photos: ["p3"], caption: "The long slow middle of winter" },
@@ -501,6 +507,41 @@ describe("the line printed on a page", () => {
     expect(pages[0]?.caption).toBe("The long slow middle of winter");
     expect(pages[1]?.caption).toBe("Back at the lake by June");
     expect(pages.map((page) => page.caption)).not.toContain("Right up close");
+  });
+
+  it("keeps the model's own grouping, however it grouped them", () => {
+    // The model grouped by what the photographs have in common, which is not
+    // always the order they were taken in. Dealing the chapter out in order
+    // and looking for a line afterwards printed "On the beach" over the two
+    // in the kitchen — the failure the whole plan exists to prevent.
+    const scattered = {
+      ...chapterWith(),
+      photoIds: ["hero", "b1", "b2", "b3", "b4"],
+      pagePlan: [
+        { photos: ["b1", "b4"], caption: "On the beach", captionFor: ["b1", "b4"] },
+        { photos: ["b2", "b3"], caption: "In the kitchen", captionFor: ["b2", "b3"] },
+      ],
+    } as Chapter;
+
+    const pages = photoPages(scattered);
+    expect(pages.map((page) => page.photoIds)).toEqual([["b1", "b4"], ["b2", "b3"]]);
+    expect(pages.map((page) => page.caption)).toEqual(["On the beach", "In the kitchen"]);
+  });
+
+  it("drops a line rather than print it over photographs it was not about", () => {
+    const diluted = {
+      ...chapterWith(),
+      pagePlan: [
+        { photos: ["b1"], caption: "Right up close", captionFor: ["b1"] },
+        { photos: ["b2", "b3", "b4"] },
+      ],
+    } as Chapter;
+    // A four-up on the first page swallows the other three photographs; the
+    // line was about one of them and stays off the page.
+    const fourUp = layoutsForCount(4)[0]!;
+    const pages = photoPages({ ...diluted, pageLayouts: [fourUp] } as Chapter);
+    expect(pages[0]!.photoIds).toHaveLength(4);
+    expect(pages[0]!.caption).toBeUndefined();
   });
 
   it("never prints the same line twice", () => {

@@ -1,6 +1,5 @@
 import {
   MAX_NOTES_PER_PAGE,
-  MAX_PHOTOS_PER_PAGE,
   assignToSlots,
   chooseLayout,
   isPhotoLayout,
@@ -8,13 +7,13 @@ import {
   layoutNoteCount,
   layoutPhotoCount,
   maxPhotosOnPage,
-  seededUnit,
 } from "@/lib/book/layouts";
 import {
   MAX_PHOTO_PAGES,
-  captionIndexForPhotos,
+  fitPlanToPages,
   planPages,
   reconcilePlan,
+  type ChapterLayout,
   type PlannablePhoto,
 } from "@/lib/book/page-plan";
 import type {
@@ -32,13 +31,6 @@ import type { Orientation } from "@/types/photo";
  * story pages, and a chapter is at most `MAX_STORY_PAGES_PER_CHAPTER` long.
  */
 export const PHOTO_PAGES_PER_CHAPTER = MAX_PHOTO_PAGES;
-
-/**
- * Photos a page takes when the book decides. Pages the customer chose a
- * layout for can hold up to `MAX_PHOTOS_PER_PAGE`; left to itself the book
- * stays a little calmer than that.
- */
-const AUTO_MAX_PHOTOS_PER_PAGE = 4;
 
 /**
  * What pagination needs to know about a photograph: which way it faces, and
@@ -104,19 +96,13 @@ export function paginateBook(
     const body = chapter.photoIds.filter((id) => id !== hero);
     const chosen = chapterPageLayouts(chapter);
     const notes = chapterPageNotes(chapter);
-    const plan = chapterPlan(chapter, body, photos);
-    const { counts } = planChapterPages(
-      body.length,
-      chosen,
-      chapter.id,
-      plan?.map((page) => page.photos.length),
-    );
+    // The chapter's pages, photographs and lines together. Nothing below
+    // regroups them: a page prints the group it was given, which is why the
+    // line on it can only ever be the one written about those photographs.
+    const { pages: planned } = layOutChapter(chapter, body, chosen, photos);
 
-    // A line is printed once, on the page its photographs ended up on.
-    const usedCaptions = new Set<number>();
-
-    for (let index = 0; index < counts.length; index += 1) {
-      const slice = body.splice(0, counts[index]!);
+    for (let index = 0; index < planned.length; index += 1) {
+      const slice = planned[index]!.photos;
       // A chapter is only as long as its photographs: a page with none left
       // for it is not printed at all.
       if (slice.length === 0) continue;
@@ -147,14 +133,11 @@ export function paginateBook(
           : slice;
 
       const pageNotes = notesForPage(notes[index], layoutNoteCount(layoutId));
-      // The line written about these photographs when the chapter was written
-      // — found by the photographs themselves, not by the page's position,
-      // which the grouping is free to change underneath it. Printed only where
-      // the page's layout keeps room for words, and only where the owner has
-      // not written something of their own.
-      const captionAt = captionIndexForPhotos(plan, slice, usedCaptions);
-      if (captionAt !== null) usedCaptions.add(captionAt);
-      const caption = captionAt === null ? undefined : plan?.[captionAt]?.caption;
+      // The line written about exactly these photographs when the chapter was
+      // written — it came off the same planned page they did. Printed only
+      // where the page's layout keeps room for words, and only where the owner
+      // has not written something of their own.
+      const caption = planned[index]!.caption;
 
       push({
         id: pageId,
@@ -188,60 +171,6 @@ export function paginateBook(
   });
 
   return pages;
-}
-
-/**
- * How many photos the next page takes.
- *
- * Deliberately not an even spread. Dealing the same three photographs onto
- * every page gives a chapter one layout repeated nine times, which is what
- * made the preview look machine-made; this varies the count by one either
- * way, seeded by the page so a book always deals itself the same way.
- *
- * The bounds are what keep it honest: never so many that the pages after it
- * cannot be filled, never so few that the chapter runs out of pages before it
- * runs out of photographs. Photos are never repeated to fill space.
- */
-function photosForPage(remaining: number, pagesLeft: number, seed: string): number {
-  if (remaining <= 0 || pagesLeft <= 0) return 0;
-  const even = remaining / pagesLeft;
-  const cap =
-    Math.ceil(even) > AUTO_MAX_PHOTOS_PER_PAGE ? MAX_PHOTOS_PER_PAGE : AUTO_MAX_PHOTOS_PER_PAGE;
-
-  // Enough that what is left still fits on the pages that are left, and few
-  // enough that each of those pages can still have one.
-  const floor = Math.max(1, remaining - (pagesLeft - 1) * cap);
-  const ceiling = Math.min(cap, remaining - (pagesLeft - 1));
-  // No room to vary: the chapter is as full as its pages can hold.
-  if (ceiling <= floor) return Math.max(1, Math.min(floor, cap, remaining));
-
-  // Roughly one page in seven is given a single photograph, whatever the
-  // chapter's average — a picture the size of the page is the best thing a
-  // photo book does, and an even spread never produces one.
-  const roll = seededUnit(seed);
-  const wanted =
-    roll < 0.14 ? 1 : Math.round(even) + (roll < 0.44 ? -1 : roll < 0.74 ? 1 : 0);
-  return Math.min(Math.max(wanted, floor), ceiling);
-}
-
-/**
- * How many pages a chapter's photographs are worth.
- *
- * Two to a page is the floor, so a chapter is never stretched into a run of
- * pages each holding a single photograph with nothing else on them — and a
- * chapter that cannot reach even one full page is one page long. Nine is the
- * most a chapter's story pages allow; past that the pages simply hold more.
- *
- * This is what decides the length of a book made from a small album: fifteen
- * photographs make three or four good pages, not nine thin ones and five
- * blank ones.
- */
-export const MIN_PHOTOS_PER_AUTO_PAGE = 2;
-
-function pagesWorthUsing(bodyPhotos: number): number {
-  if (bodyPhotos <= 0) return 0;
-  const byDensity = Math.floor(bodyPhotos / MIN_PHOTOS_PER_AUTO_PAGE);
-  return Math.min(PHOTO_PAGES_PER_CHAPTER, Math.max(1, byDensity));
 }
 
 /**
@@ -320,94 +249,40 @@ export function applyPageNote(
 }
 
 /**
- * How many photos each of a chapter's photo pages takes, in order.
- *
- * A page the customer chose a layout for takes exactly what that layout
- * holds, as long as the chapter has the photos. The rest of the chapter's
- * photos are spread over the other pages, leaving enough in reserve for any
- * chosen layout still to come. `leftover` counts photos no page had room for.
- */
-export function planChapterPages(
-  total: number,
-  chosen: readonly (PhotoLayoutId | null)[],
-  seed = "",
-  sizes?: readonly number[],
-): { counts: number[]; leftover: number } {
-  const counts: number[] = [];
-  let remaining = total;
-
-  // How long the chapter runs: the pages its own grouping asks for, and any
-  // page after them that the customer claimed with a layout of their own.
-  const lastChosen = chosen.reduce((last, id, index) => (id ? index : last), -1);
-  const planned = sizes && sizes.length > 0 ? sizes.length : pagesWorthUsing(total);
-  const pages = Math.min(PHOTO_PAGES_PER_CHAPTER, Math.max(1, planned, lastChosen + 1));
-
-  for (let index = 0; index < pages; index += 1) {
-    const wanted = chosen[index];
-    if (wanted) {
-      const take = Math.min(layoutPhotoCount(wanted), remaining);
-      counts.push(take);
-      remaining -= take;
-      continue;
-    }
-
-    let reserved = 0;
-    let freePages = 0;
-    for (let later = index; later < pages; later += 1) {
-      const laterWanted = chosen[later];
-      if (laterWanted) {
-        if (later > index) reserved += layoutPhotoCount(laterWanted);
-      } else {
-        freePages += 1;
-      }
-    }
-
-    const available = Math.max(0, remaining - reserved);
-    const target = sizes?.[index];
-    const take =
-      target === undefined
-        ? photosForPage(available, freePages, `${seed}:${index}`)
-        : // The grouping decided this page; it only gives way where the
-          // photographs it counted on have been claimed by a chosen layout
-          // or have left the chapter.
-          Math.min(
-            Math.max(target, 1),
-            Math.max(1, available - (freePages - 1)),
-            MAX_PHOTOS_PER_PAGE,
-            Math.max(available, 0),
-          );
-    counts.push(take);
-    remaining -= take;
-  }
-
-  // Whatever the grouping could not place — photographs that arrived after
-  // it was made — joins the last page with room rather than falling out of
-  // the book. A page the customer chose a layout for is left exactly as they
-  // asked for it.
-  for (let index = counts.length - 1; index >= 0 && remaining > 0; index -= 1) {
-    if (chosen[index]) continue;
-    const taken = Math.min(MAX_PHOTOS_PER_PAGE - counts[index]!, remaining);
-    counts[index] += taken;
-    remaining -= taken;
-  }
-
-  return { counts, leftover: remaining };
-}
-
-/**
  * The chapter's pages as they were planned, brought in line with the
  * photographs it holds now — or a fresh grouping for a chapter saved before
  * the book kept one.
  */
 function chapterPlan(
-  chapter: Chapter,
+  chapter: Pick<Chapter, "pagePlan">,
   body: readonly string[],
   photos: PhotoLookup,
-): PlannedPage[] | undefined {
+): PlannedPage[] {
   const kept = reconcilePlan(chapter.pagePlan, body);
   if (kept) return kept;
-  if (body.length === 0) return undefined;
+  if (body.length === 0) return [];
   return planPages(body.map((id) => plannable(id, photos)));
+}
+
+/**
+ * How a chapter's photographs actually fall on its pages.
+ *
+ * The one place that answers it, so the editor and the printed book can never
+ * hold different opinions about which photographs share a page — and
+ * therefore about which line belongs on it.
+ */
+function layOutChapter(
+  chapter: Pick<Chapter, "pagePlan">,
+  body: readonly string[],
+  chosen: readonly (PhotoLayoutId | null)[],
+  photos: PhotoLookup,
+): ChapterLayout {
+  return fitPlanToPages(chapterPlan(chapter, body, photos), capacitiesOf(chosen));
+}
+
+/** What each page must hold, for the pages whose owner chose a layout. */
+function capacitiesOf(chosen: readonly (PhotoLayoutId | null)[]): (number | null)[] {
+  return chosen.map((id) => (id ? layoutPhotoCount(id) : null));
 }
 
 function plannable(id: string, photos: PhotoLookup): PlannablePhoto {
@@ -562,38 +437,86 @@ export function applyPageLayout(
   chosen[pageIndex] = layoutId;
 
   const body = chapter.photoIds.filter((id) => id !== hero);
-  const { counts } = planChapterPages(
-    body.length,
-    before,
-    chapter.id,
-    reconcilePlan(chapter.pagePlan, body)?.map((page) => page.photos.length),
-  );
-  const start = counts.slice(0, pageIndex).reduce((sum, count) => sum + count, 0);
-  const current = counts[pageIndex] ?? 0;
+  // The chapter's grouping, read once and then edited — not read, edited, and
+  // read again from a photo list that has changed underneath it. Re-deriving
+  // it the second time is how a page that was about to gain four photographs
+  // ends up somewhere else in the chapter entirely.
+  const plan = chapterPlan(chapter, body, new Map()).map((page) => ({
+    ...page,
+    photos: [...page.photos],
+  }));
+  // Laid out exactly as the book lays it out, so what this reads off the page
+  // is what is actually on it.
+  const onPage =
+    fitPlanToPages(plan, capacitiesOf(before)).pages[pageIndex]?.photos ?? [];
 
   if (layoutId) {
-    const need = layoutPhotoCount(layoutId) - current;
+    const need = layoutPhotoCount(layoutId) - onPage.length;
     if (need > 0) {
-      const spares = nearestSpares(chapter, body.slice(start, start + current), pageIndex, need)
-        .filter((id) => id !== hero);
-      body.splice(start + current, 0, ...spares);
+      const spares = nearestSpares(chapter, onPage, pageIndex, need).filter(
+        (id) => id !== hero,
+      );
+      // Onto the page they were chosen for, in the grouping itself. Dropped
+      // into the chapter's photo list and left to be regrouped, they landed
+      // wherever the regrouping felt like putting them — which on a chapter
+      // already at its full length was a different page.
+      const target = plan[pageIndex];
+      if (target) target.photos.push(...spares);
+      else plan.push({ photos: [...spares] });
+      // Beside the page's own photographs in the chapter, so the book reads
+      // in the order the pages do.
+      const at = onPage.length > 0 ? body.indexOf(onPage.at(-1)!) + 1 : body.length;
+      body.splice(Math.max(0, Math.min(at, body.length)), 0, ...spares);
     }
   }
 
-  const plan = planChapterPages(
-    body.length,
-    chosen,
-    chapter.id,
-    reconcilePlan(chapter.pagePlan, body)?.map((page) => page.photos.length),
-  );
-  const photoIds = plan.leftover > 0 ? body.slice(0, body.length - plan.leftover) : body;
+  return settleChapter(chapter, plan, body, chosen, chapterPageNotes(chapter), hero);
+}
+
+/**
+ * Writes a chapter's pages back onto it: the grouping, the layouts chosen for
+ * it, the words written on it, and the photographs that are actually placed.
+ *
+ * The grouping is kept rather than thrown away and guessed at again, and that
+ * is the point. A chapter whose grouping is re-derived on every edit has no
+ * stable pages at all: add four photographs and the whole chapter regroups
+ * around them, which moves every line onto photographs it was not written
+ * about and moves every chosen layout onto a page its owner never picked it
+ * for. Kept, the grouping only ever changes where this edit changed it, and
+ * a line stays with its own photographs because they stay together.
+ *
+ * Pages left with nothing on them are dropped, and the layouts and notes are
+ * dropped with them in the same pass — they are all indexed by page, so they
+ * have to be cut in step or a page inherits the layout meant for another.
+ */
+function settleChapter(
+  chapter: Chapter,
+  plan: readonly PlannedPage[],
+  body: readonly string[],
+  chosen: readonly (PhotoLayoutId | null)[],
+  notes: readonly ((string | null)[] | null)[],
+  hero: string | null,
+): Chapter {
+  const laid = fitPlanToPages(plan, capacitiesOf(chosen));
+  const kept = laid.pages
+    .map((page, index) => ({
+      page,
+      layout: chosen[index] ?? null,
+      note: notes[index] ?? null,
+    }))
+    .filter((entry) => entry.page.photos.length > 0);
+
+  const dropped = new Set(laid.leftover);
+  const photoIds = body.filter((id) => !dropped.has(id));
   const heroAt = hero ? chapter.photoIds.indexOf(hero) : -1;
   if (hero && heroAt !== -1) photoIds.splice(Math.min(heroAt, photoIds.length), 0, hero);
 
   return {
     ...chapter,
     photoIds,
-    pageLayouts: withoutTrailingDefaults(chosen),
+    pagePlan: kept.map((entry) => entry.page),
+    pageLayouts: withoutTrailingDefaults(kept.map((entry) => entry.layout)),
+    pageNotes: withoutTrailingNotes(kept.map((entry) => entry.note)),
   };
 }
 
@@ -602,6 +525,15 @@ function withoutTrailingDefaults(
   layouts: (PhotoLayoutId | null)[],
 ): (PhotoLayoutId | null)[] | undefined {
   const kept = [...layouts];
+  while (kept.length > 0 && kept.at(-1) === null) kept.pop();
+  return kept.length > 0 ? kept : undefined;
+}
+
+/** The same, for pages nobody has written anything on. */
+function withoutTrailingNotes(
+  notes: ((string | null)[] | null)[],
+): ((string | null)[] | null)[] | undefined {
+  const kept = [...notes];
   while (kept.length > 0 && kept.at(-1) === null) kept.pop();
   return kept.length > 0 ? kept : undefined;
 }

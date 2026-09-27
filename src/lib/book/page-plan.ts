@@ -173,7 +173,7 @@ export function planFromIndexes(
       used.add(index);
       photos.push(photoIds[index]!);
     }
-    if (photos.length > 0) pages.push({ photos, ...captionOf(group.caption) });
+    if (photos.length > 0) pages.push({ photos, ...withCaption(group, photos) });
   }
   if (pages.length === 0) return null;
 
@@ -219,67 +219,156 @@ function numberingOffset(
   return 1;
 }
 
-/** A caption the model wrote, trimmed — or nothing, rather than an empty line. */
-function captionOf(caption: string | undefined): { caption?: string } {
-  const text = caption?.trim();
-  return text ? { caption: text.slice(0, MAX_CAPTION_LENGTH) } : {};
+/**
+ * A caption the model wrote, trimmed, together with the photographs it was
+ * written about — or nothing, rather than an empty line.
+ *
+ * The two are only ever set together, which is what keeps a line from
+ * outliving the pictures it describes: anything downstream that has the
+ * caption also has the evidence for whether it still belongs.
+ */
+function withCaption(
+  page: { caption?: string; captionFor?: readonly string[] },
+  photos: readonly string[],
+): Pick<PlannedPage, "caption" | "captionFor"> {
+  const text = page.caption?.trim();
+  if (!text) return {};
+  // Plans saved before the set was kept anchor on the page as it was stored,
+  // which is the same thing one version of the book ago.
+  const written = page.captionFor?.length ? page.captionFor : photos;
+  return { caption: text.slice(0, MAX_CAPTION_LENGTH), captionFor: [...written] };
 }
 
 /** The most a written-for-you caption may run to. Past this it is a paragraph. */
 export const MAX_CAPTION_LENGTH = 120;
 
 /**
- * Which planned page's line belongs to these photographs.
+ * A chapter's pages, ready to print: the photographs on each one and the line
+ * that belongs with them.
  *
- * The line and the photographs it was written about used to be joined by
- * nothing but their position in the chapter: page three's caption went onto
- * page three. But what lands on page three is decided afterwards, by the
- * grouping — a layout the customer chose, a photograph added or taken out, a
- * chapter trimmed to what the printer binds — and the moment that grouping
- * differs from the plan the model wrote, every line after it is describing
- * the wrong picture. In a printed book that is not a small mistake: the line
- * under a close-up of a dog's face, "Right up close to the lens", printed
- * beside a photograph of a man at a table.
- *
- * So a line goes where its photographs went. The planned page with the most
- * of them in common wins, the earliest of them if two tie, and each line is
- * used once — a planned page split in half gives its line to the half that
- * kept most of it, and the other half keeps its date instead.
- *
- * "The most in common" only counts when it is most of *this* page too — over
- * half its photographs, not just however many happen to overlap. Without
- * that, one stray photograph a page shares with some other planned group can
- * hand a four-photograph page a line written for a single, unrelated
- * afternoon: the caption reads true of the one photograph it has in common
- * and false of the other three sitting beside it. A page mostly its own
- * photographs keeps no line at all sooner than borrow one that fits a
- * quarter of it.
+ * `leftover` is what no page had room for — photographs that arrived after
+ * the plan was made and could not be fitted into the pages a chapter may
+ * have. They stay in the album; they are simply not on a page.
  */
-export function captionIndexForPhotos(
-  plan: readonly PlannedPage[] | undefined,
-  photoIds: readonly string[],
-  used: ReadonlySet<number>,
-): number | null {
-  if (!plan || photoIds.length === 0) return null;
-  const wanted = new Set(photoIds);
-  const majority = photoIds.length / 2;
+export type ChapterLayout = {
+  pages: PlannedPage[];
+  leftover: string[];
+};
 
-  let best: number | null = null;
-  let bestOverlap = 0;
-  plan.forEach((page, index) => {
-    if (used.has(index) || !page.caption) return;
-    const overlap = page.photos.reduce(
-      (count, id) => (wanted.has(id) ? count + 1 : count),
-      0,
-    );
-    if (overlap <= majority) return;
-    if (overlap > bestOverlap) {
-      bestOverlap = overlap;
-      best = index;
+/**
+ * Brings a chapter's plan in line with the layouts its owner chose.
+ *
+ * This is the whole of how a chapter is dealt onto pages, and it is dealt
+ * from the plan itself: page one *is* the plan's first group, photographs and
+ * line together. The book used to do it the other way round — count how many
+ * photographs each page should hold, slice that many off the chapter's list,
+ * then go looking through the plan for a line that might suit them. Two
+ * groupings, agreeing only by arithmetic, and the moment they disagreed the
+ * book printed "Watching from the cushions in March" under three photographs
+ * of a dog on a lawn with a football. Nothing here can produce that, because
+ * there is only ever one grouping.
+ *
+ * `capacities` is the one thing that moves photographs between pages: a page
+ * whose owner chose a layout holds exactly what that layout has room for, no
+ * more and no fewer. Photographs it sheds go to the front of the next page,
+ * ones it needs come from the front of the next page that has any, and a line
+ * left standing over a page that is no longer mostly its own photographs is
+ * dropped rather than printed over the wrong picture.
+ */
+export function fitPlanToPages(
+  plan: readonly PlannedPage[],
+  capacities: readonly (number | null)[] = [],
+): ChapterLayout {
+  const pages: PlannedPage[] = plan.map((page) => ({ ...page, photos: [...page.photos] }));
+  const leftover: string[] = [];
+
+  // A page claimed by a chosen layout exists even where the plan never
+  // reached it, or the chapter would have nowhere to honour the choice.
+  const lastChosen = capacities.reduce<number>(
+    (last, size, index) => (size ? index : last),
+    -1,
+  );
+  while (pages.length <= lastChosen && pages.length < MAX_PHOTO_PAGES) {
+    pages.push({ photos: [] });
+  }
+
+  /**
+   * A photograph the page before it could not keep. Onto the next page, or
+   * onto a new one — and once the chapter has every page it is allowed, out
+   * of the book: there is nowhere left that is not the page it just left.
+   */
+  const pushDown = (target: number, id: string): void => {
+    const next = pages[target];
+    if (next) {
+      next.photos.unshift(id);
+      return;
     }
-  });
+    if (pages.length < MAX_PHOTO_PAGES) {
+      pages.push({ photos: [id] });
+      return;
+    }
+    leftover.unshift(id);
+  };
 
-  return best;
+  // Forwards, once: a page is filled from the pages after it, then sheds
+  // whatever it cannot hold onto the page after it, which the next turn of
+  // the loop settles in turn. Nothing ever moves backwards, so a page already
+  // passed is never reopened and the pass cannot cycle.
+  for (let index = 0; index < pages.length; index += 1) {
+    const page = pages[index]!;
+    const wanted = capacities[index];
+    const room = wanted ? Math.min(wanted, MAX_PHOTOS_PER_PAGE) : MAX_PHOTOS_PER_PAGE;
+    if (wanted) {
+      while (page.photos.length < room) {
+        const from = pages.find((other, at) => at > index && other.photos.length > 0);
+        if (!from) break;
+        page.photos.push(from.photos.shift()!);
+      }
+      // Nothing left after it. A page its owner claimed is honoured out of
+      // the pages before it — nearest first, so the photographs that join it
+      // are the ones it already sat next to — rather than quietly handed back
+      // a layout they did not ask for. Pages they chose themselves are left
+      // alone: one choice does not overrule another.
+      for (let at = index - 1; at >= 0 && page.photos.length < room; at -= 1) {
+        if (capacities[at]) continue;
+        const donor = pages[at]!;
+        while (donor.photos.length > 0 && page.photos.length < room) {
+          page.photos.unshift(donor.photos.pop()!);
+        }
+      }
+    }
+    while (page.photos.length > room) pushDown(index + 1, page.photos.pop()!);
+  }
+
+  return {
+    pages: pages.map((page) => ({
+      photos: page.photos,
+      ...(captionBelongsOn(page)
+        ? { caption: page.caption, captionFor: page.captionFor }
+        : {}),
+    })),
+    leftover,
+  };
+}
+
+/**
+ * Whether a page's line is still about the page.
+ *
+ * Most of the page has to be photographs the line was written about, and most
+ * of what it was written about has to be on the page. Either half alone lets
+ * a real mistake through: one photograph in common hands a page of four a
+ * line about a single unrelated afternoon, and a six-photograph page cut down
+ * to one keeps a line about all six. A page that cannot pass keeps no line at
+ * all and prints its date instead, which is always true.
+ */
+export function captionBelongsOn(page: PlannedPage): boolean {
+  if (!page.caption?.trim() || page.photos.length === 0) return false;
+  const written = page.captionFor?.length ? page.captionFor : page.photos;
+  const shared = page.photos.reduce(
+    (count, id) => (written.includes(id) ? count + 1 : count),
+    0,
+  );
+  return shared * 2 > page.photos.length && shared * 2 > written.length;
 }
 
 /**
@@ -305,7 +394,13 @@ export function reconcilePlan(
     const kept = (page.photos ?? []).filter((id) => present.has(id) && !seen.has(id));
     for (const id of kept) seen.add(id);
     if (kept.length > 0) {
-      pages.push({ photos: kept.slice(0, MAX_PHOTOS_PER_PAGE), ...captionOf(page.caption) });
+      // Anchored on the page as it was stored, not on what survived the
+      // filter: a line written about four photographs is still a line about
+      // four photographs after two of them leave the chapter.
+      pages.push({
+        photos: kept.slice(0, MAX_PHOTOS_PER_PAGE),
+        ...withCaption(page, page.photos ?? []),
+      });
     }
   }
   if (pages.length === 0) return null;
@@ -365,11 +460,13 @@ function reconcile(
     if (bestSize === Infinity) break;
     const left = pages[bestAt]!;
     const right = pages[bestAt + 1]!;
+    // The surviving line is the first one written: a merged page says one
+    // thing, not two. It keeps its own photographs with it, so a merge that
+    // buries them under a second group's is caught before it is printed.
+    const keeper = left.caption ? left : right;
     pages.splice(bestAt, 2, {
       photos: [...left.photos, ...right.photos],
-      // The surviving line is the first one written: a merged page says one
-      // thing, not two.
-      ...captionOf(left.caption ?? right.caption),
+      ...withCaption(keeper, keeper.photos),
     });
   }
 

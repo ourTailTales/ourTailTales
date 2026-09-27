@@ -12,6 +12,7 @@ import { filesFromDataTransfer } from "@/lib/photo/process";
 import { bookSpec } from "@/lib/pricing";
 import { track } from "@/lib/analytics";
 import {
+  describeWait,
   secondsRemaining,
   summarizeAlbum,
   useOurTailTalesStore,
@@ -111,11 +112,31 @@ export function BookFlow({
   // still be in front of them while they answer it.
   const choosingSize = step === "chooseSize";
 
-  // Nothing to build with yet, whether that is because nothing has arrived
-  // or because what arrived wasn't enough. Either way the answer is the same
-  // album step, not a hand-off to a screen that only repeats the "add at
-  // least N" line already sitting under the drop target.
-  const atStart = (funnelState === "idle" && mediaCount === 0) || shortOfPhotos;
+  /**
+   * Still on the album step.
+   *
+   * Nothing to build with yet, whether that is because nothing has arrived,
+   * because what arrived wasn't enough, or because it is still being read.
+   * Reading used to take the screen: a full-page spinner replaced the upload
+   * step for as long as it ran, so the album half in, the address half typed
+   * and the question of how long a book to make all vanished and came back
+   * changed. It happens on their own machine and needs nothing from them, so
+   * it is a bar under the drop target instead (`UploadMedia`) and the step
+   * stays put. The waiting screen is kept for the part that really is a wait
+   * with nothing to look at — the chapters being sorted and written — which
+   * only begins once the size is agreed.
+   *
+   * A failed read still goes to the waiting screen, which is the only place
+   * that explains it and offers a way out.
+   */
+  const building = sizeConfirmed || chapters.length > 0;
+  const atStart =
+    !building &&
+    !processingError &&
+    (shortOfPhotos ||
+      funnelState === "idle" ||
+      funnelState === "processing" ||
+      funnelState === "album_ready");
   const showIntake = atStart || choosingSize;
 
   /**
@@ -399,14 +420,6 @@ export function BookFlow({
  * steps: from the customer's side this is a single wait, and cutting it into
  * named stages only makes it feel longer than it is.
  */
-/** "two minutes", "40 seconds" — the shape of a wait, not a stopwatch. */
-function describeWait(seconds: number): string {
-  if (seconds < 20) return "a few seconds";
-  if (seconds < 90) return `${Math.round(seconds / 10) * 10} seconds`;
-  const minutes = Math.round(seconds / 60);
-  return minutes === 1 ? "a minute" : `${minutes} minutes`;
-}
-
 function Waiting({
   funnelState,
   mediaCount,

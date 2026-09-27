@@ -4,7 +4,8 @@ import type { PlannedPage } from "@/types/book";
 import {
   MAX_PHOTO_PAGES,
   MIN_PHOTO_PAGES,
-  captionIndexForPhotos,
+  captionBelongsOn,
+  fitPlanToPages,
   planFromIndexes,
   planPages,
   reconcilePlan,
@@ -83,7 +84,8 @@ describe("a grouping the model sent back", () => {
         { photos: [3, 4], caption: "  " },
       ]),
     ).toEqual([
-      { photos: ["a", "b"], caption: "The first morning." },
+      // The line comes back knowing which photographs it was written about.
+      { photos: ["a", "b"], caption: "The first morning.", captionFor: ["a", "b"] },
       { photos: ["c"] },
       { photos: ["d", "e"] },
     ]);
@@ -116,7 +118,7 @@ describe("a grouping kept while the chapter is edited", () => {
 
   it("drops a photograph that has left the chapter, and keeps the line", () => {
     expect(reconcilePlan(plan, ["a", "b", "d", "e"])).toEqual([
-      { photos: ["a", "b"], caption: "Two of them." },
+      { photos: ["a", "b"], caption: "Two of them.", captionFor: ["a", "b"] },
       { photos: ["d", "e"] },
     ]);
   });
@@ -143,54 +145,108 @@ describe("a grouping kept while the chapter is edited", () => {
   });
 });
 
-describe("a line goes where its photographs went", () => {
-  const plan = [
-    { photos: ["a", "b"], caption: "The long slow middle of winter" },
-    { photos: ["c"], caption: "Right up close" },
-    { photos: ["d", "e"], caption: "Back at the lake by June" },
+describe("a line never leaves its photographs", () => {
+  const plan: PlannedPage[] = [
+    { photos: ["a", "b"], caption: "The long slow middle of winter", captionFor: ["a", "b"] },
+    { photos: ["c"], caption: "Right up close", captionFor: ["c"] },
+    { photos: ["d", "e"], caption: "Back at the lake by June", captionFor: ["d", "e"] },
   ];
 
-  it("finds the line written about this page's photographs", () => {
-    expect(captionIndexForPhotos(plan, ["c"], new Set())).toBe(1);
-    expect(captionIndexForPhotos(plan, ["d", "e"], new Set())).toBe(2);
+  it("prints every line on the page it was written for, left alone", () => {
+    const { pages, leftover } = fitPlanToPages(plan);
+    expect(photosOf(pages)).toEqual([["a", "b"], ["c"], ["d", "e"]]);
+    expect(pages.map((page) => page.caption)).toEqual([
+      "The long slow middle of winter",
+      "Right up close",
+      "Back at the lake by June",
+    ]);
+    expect(leftover).toEqual([]);
   });
 
-  it("follows the photographs when the grouping moved them", () => {
-    // The page that now holds "c" is the second printed page, but the line
-    // written for it is the plan's third. Indexing by position printed "Back
-    // at the lake by June" over the close-up.
-    expect(captionIndexForPhotos(plan, ["a", "b", "x"], new Set())).toBe(0);
-    expect(captionIndexForPhotos(plan, ["c"], new Set([0]))).toBe(1);
+  it("carries a line onto a chosen layout that swallowed its page", () => {
+    // Three to the first page, so the plan's first two pages become one.
+    // Counting pages instead would print "Right up close" — the line about
+    // "c", which is on page one now — over "d" and "e".
+    const { pages } = fitPlanToPages(plan, [3]);
+    expect(photosOf(pages)).toEqual([["a", "b", "c"], [], ["d", "e"]]);
+    expect(pages[0]?.caption).toBe("The long slow middle of winter");
+    expect(pages[2]?.caption).toBe("Back at the lake by June");
+    expect(pages.map((page) => page.caption)).not.toContain("Right up close");
   });
 
-  it("gives a split page's line to the half that kept most of it", () => {
-    const used = new Set<number>();
-    const first = captionIndexForPhotos(plan, ["d"], used);
-    expect(first).toBe(2);
-    used.add(first!);
-    // The other half has nothing left to claim, and keeps its date instead.
-    expect(captionIndexForPhotos(plan, ["e"], used)).toBeNull();
-  });
-
-  it("has no line for photographs the plan never saw", () => {
-    expect(captionIndexForPhotos(plan, ["new"], new Set())).toBeNull();
-    expect(captionIndexForPhotos(undefined, ["a"], new Set())).toBeNull();
-    expect(captionIndexForPhotos(plan, [], new Set())).toBeNull();
-  });
-
-  it("passes over a planned page that was given no line", () => {
-    const partial = [{ photos: ["a"] }, { photos: ["b"], caption: "A line" }];
-    expect(captionIndexForPhotos(partial, ["a"], new Set())).toBeNull();
-    expect(captionIndexForPhotos(partial, ["b"], new Set())).toBe(1);
-  });
-
-  it("never hands a page a line for photographs that are only a minority of it", () => {
+  it("drops a line once the page is mostly other photographs", () => {
     // One stray shared photograph is not the same occasion as the other
-    // three: a page mostly of its own content keeps no line sooner than it
-    // borrows one true of a quarter of what is actually on it.
-    expect(captionIndexForPhotos(plan, ["c", "x", "y", "z"], new Set())).toBeNull();
-    // Once its photographs are the majority of the page, it wins again.
-    expect(captionIndexForPhotos(plan, ["d", "e", "x"], new Set())).toBe(2);
+    // three: a page keeps no line sooner than it prints one true of a
+    // quarter of what is on it.
+    expect(
+      captionBelongsOn({ photos: ["c", "x", "y", "z"], caption: "L", captionFor: ["c"] }),
+    ).toBe(false);
+    expect(
+      captionBelongsOn({ photos: ["d", "e", "x"], caption: "L", captionFor: ["d", "e"] }),
+    ).toBe(true);
+  });
+
+  it("drops a line once most of what it was written about has gone", () => {
+    // A line about six photographs, printed under the one that is left, is a
+    // line about five pictures that are not on the page.
+    const written = ["p1", "p2", "p3", "p4", "p5", "p6"];
+    expect(
+      captionBelongsOn({ photos: ["p1"], caption: "All six of them", captionFor: written }),
+    ).toBe(false);
+    expect(
+      captionBelongsOn({
+        photos: ["p1", "p2", "p3", "p4"],
+        caption: "All six",
+        captionFor: written,
+      }),
+    ).toBe(true);
+  });
+
+  it("has no line for a page that was given none, or has no photographs", () => {
+    expect(captionBelongsOn({ photos: ["a"] })).toBe(false);
+    expect(captionBelongsOn({ photos: [], caption: "A line", captionFor: [] })).toBe(false);
+    expect(captionBelongsOn({ photos: ["a"], caption: "   ", captionFor: ["a"] })).toBe(false);
+  });
+
+  it("falls back to the page's own photographs on a plan saved without the set", () => {
+    expect(captionBelongsOn({ photos: ["a", "b"], caption: "A line" })).toBe(true);
+  });
+
+  it("gives a chosen page exactly the photographs its layout holds", () => {
+    const wide: PlannedPage[] = [
+      { photos: ["a", "b", "c"] },
+      { photos: ["d", "e", "f"] },
+      { photos: ["g"] },
+    ];
+    const { pages, leftover } = fitPlanToPages(wide, [null, 1]);
+    expect(photosOf(pages)).toEqual([["a", "b", "c"], ["d"], ["e", "f", "g"]]);
+    expect(leftover).toEqual([]);
+  });
+
+  it("claims a page the plan never reached, and fills it from the pages before it", () => {
+    // Nothing after it to draw on, so a layout its owner chose is honoured
+    // out of what came before rather than quietly ignored.
+    const { pages } = fitPlanToPages([{ photos: ["a", "b", "c", "d"] }], [null, null, 2]);
+    expect(photosOf(pages)).toEqual([["a", "b"], [], ["c", "d"]]);
+  });
+
+  it("leaves a page its owner also chose alone when filling another", () => {
+    const { pages } = fitPlanToPages(
+      [{ photos: ["a"] }, { photos: ["b", "c"] }, { photos: ["d"] }],
+      [1, null, 3],
+    );
+    // Page one gives way; page zero keeps the single photograph asked for.
+    expect(photosOf(pages)).toEqual([["a"], [], ["b", "c", "d"]]);
+  });
+
+  it("leaves a photograph no page had room for out of the book", () => {
+    const full: PlannedPage[] = Array.from({ length: MAX_PHOTO_PAGES }, (_, index) => ({
+      photos: Array.from({ length: 6 }, (_u, slot) => `p${index}-${slot}`),
+    }));
+    const { pages, leftover } = fitPlanToPages(full, [1]);
+    expect(pages).toHaveLength(MAX_PHOTO_PAGES);
+    expect(pages[0]!.photos).toEqual(["p0-0"]);
+    expect(leftover).toHaveLength(5);
   });
 });
 
@@ -209,9 +265,13 @@ describe("whichever way the model numbered the photographs", () => {
     // photograph printed under the second. That is the page of a dog indoors
     // captioned "Out into the sunny green yard".
     expect(pages).toEqual([
-      { photos: ["p0", "p1"], caption: "Out into the sunny green yard" },
-      { photos: ["p2"], caption: "Back indoors" },
-      { photos: ["p3"], caption: "The last of it" },
+      {
+        photos: ["p0", "p1"],
+        caption: "Out into the sunny green yard",
+        captionFor: ["p0", "p1"],
+      },
+      { photos: ["p2"], caption: "Back indoors", captionFor: ["p2"] },
+      { photos: ["p3"], caption: "The last of it", captionFor: ["p3"] },
     ]);
   });
 
@@ -221,8 +281,8 @@ describe("whichever way the model numbered the photographs", () => {
       { photos: [2, 3], caption: "Second" },
     ]);
     expect(pages).toEqual([
-      { photos: ["p0", "p1"], caption: "First" },
-      { photos: ["p2", "p3"], caption: "Second" },
+      { photos: ["p0", "p1"], caption: "First", captionFor: ["p0", "p1"] },
+      { photos: ["p2", "p3"], caption: "Second", captionFor: ["p2", "p3"] },
     ]);
   });
 
@@ -261,9 +321,9 @@ describe("whichever way the model numbered the photographs", () => {
     ]);
 
     expect(pages).toEqual([
-      { photos: ["q0", "q1"], caption: "First" },
-      { photos: ["q2", "q3"], caption: "Middle" },
-      { photos: ["q4"], caption: "Last" },
+      { photos: ["q0", "q1"], caption: "First", captionFor: ["q0", "q1"] },
+      { photos: ["q2", "q3"], caption: "Middle", captionFor: ["q2", "q3"] },
+      { photos: ["q4"], caption: "Last", captionFor: ["q4"] },
     ]);
   });
 });

@@ -262,6 +262,14 @@ export function secondsRemaining(
   return Math.max(1, Math.round((elapsed / done) * left) / 1000);
 }
 
+/** "two minutes", "40 seconds" — the shape of a wait, not a stopwatch. */
+export function describeWait(seconds: number): string {
+  if (seconds < 20) return "a few seconds";
+  if (seconds < 90) return `${Math.round(seconds / 10) * 10} seconds`;
+  const minutes = Math.round(seconds / 60);
+  return minutes === 1 ? "a minute" : `${minutes} minutes`;
+}
+
 export function advanceBatchProgress(
   progress: ProcessingProgressState,
   count = 1,

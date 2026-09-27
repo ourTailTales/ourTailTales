@@ -6,7 +6,12 @@ import { useRef, useState, type ChangeEvent } from "react";
 import { MediaLibraryModal } from "@/components/editor/MediaLibraryModal";
 import { isLikelyMedia } from "@/lib/photo/process";
 import { MIN_PHOTOS_FOR_BOOK } from "@/lib/pricing";
-import type { AlbumVideoPreview } from "@/store/useOurTailTalesStore";
+import {
+  describeWait,
+  secondsRemaining,
+  useOurTailTalesStore,
+  type AlbumVideoPreview,
+} from "@/store/useOurTailTalesStore";
 import type { PhotoAsset } from "@/types/photo";
 
 /**
@@ -56,6 +61,10 @@ export function UploadMedia({
   const folderRef = useRef<HTMLInputElement>(null);
   const [draftEmail, setDraftEmail] = useState(email ?? "");
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const read = useOurTailTalesStore((state) => state.progress);
+  // Measured from what has actually been read so far, so an album of four
+  // thousand says four minutes and an album of thirty says a few seconds.
+  const left = processing ? secondsRemaining(read) : null;
 
   const totalMedia = photos.length + videos.length;
   const missing = Math.max(0, MIN_PHOTOS_FOR_BOOK - photoCount);
@@ -148,6 +157,10 @@ export function UploadMedia({
         </button>
       </div>
 
+      {processing && read.total > 0 ? (
+        <ReadingProgress processed={read.processed} total={read.total} left={left} />
+      ) : null}
+
       <label className="mx-auto mt-9 block max-w-sm">
         <span className="block text-sm font-medium text-page-ink">
           Where should we send the finished book?
@@ -199,6 +212,54 @@ export function UploadMedia({
           onClose={() => setLibraryOpen(false)}
         />
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * How far through the album we are, under the drop target it came from.
+ *
+ * Reading four thousand photographs takes minutes, and it used to take the
+ * whole screen with it: the upload step was replaced by a full-page spinner,
+ * so the album that was halfway in, the address half typed and the question
+ * of how long a book to make all disappeared behind it and came back when it
+ * was done. Nothing about reading files needs the screen — it happens on
+ * their own machine, in the background — so it is a bar under the button
+ * instead, and everything else stays where they left it.
+ */
+function ReadingProgress({
+  processed,
+  total,
+  left,
+}: {
+  processed: number;
+  total: number;
+  /** Seconds of reading left, once enough has been read to say. */
+  left: number | null;
+}) {
+  const done = total > 0 ? processed / total : 0;
+  return (
+    <div className="mt-4 flex w-full flex-col gap-2" role="status">
+      <div
+        className="h-1.5 w-full overflow-hidden rounded-full bg-page-line"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(done * 100)}
+      >
+        <span
+          className="block h-full rounded-full bg-periwinkle transition-[width] duration-300"
+          style={{ width: `${Math.max(3, Math.round(done * 100))}%` }}
+        />
+      </div>
+      <p className="text-xs leading-5 text-page-ink-soft">
+        Reading {processed.toLocaleString()} of {total.toLocaleString()}{" "}
+        {total === 1 ? "photo" : "photos"}
+        {left === null ? "" : ` · about ${describeWait(left)} left`}
+      </p>
+      <p className="text-xs leading-5 text-page-ink-faint">
+        This happens on your own device. Nothing is uploaded.
+      </p>
     </div>
   );
 }
