@@ -752,6 +752,13 @@ export function Funnel({
       chapters: state.chapterCount,
       price: bookSpec(state.chapterCount).price,
     });
+    // The teaser banked its draft id/secret to storage the moment the story
+    // was written, but that never reaches this session's live state on its
+    // own — only a page load re-reads storage. Without this, the clean-PDF
+    // button on the finish screen is missing until the customer refreshes.
+    if (!state.draftId || !state.draftSecret) {
+      useOurTailTalesStore.getState().hydrateDraft();
+    }
     router.push(withEmail("/create/finish"));
   }, [router, withEmail]);
 
