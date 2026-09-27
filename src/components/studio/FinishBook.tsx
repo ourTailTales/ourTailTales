@@ -5,7 +5,7 @@ import { useMemo } from "react";
 
 import { ClaimAndBuyDigital } from "@/components/ClaimAndBuyDigital";
 import { orderSummary } from "@/lib/order/summary";
-import { DIGITAL_PRICE, formatUsd } from "@/lib/pricing";
+import { digitalPriceFor, formatUsd } from "@/lib/pricing";
 import { placedMemoriesReadyForCheckout } from "@/lib/video-memory/checkout-ready";
 import { useOurTailTalesStore } from "@/store/useOurTailTalesStore";
 
@@ -66,6 +66,7 @@ export function FinishBook({
   // in front of the button, rather than left to come back as an error after
   // somebody has pressed it. Videos nobody placed can keep processing.
   const memoriesReady = placedMemoriesReadyForCheckout(placements, videoAssets);
+  const pdfPrice = digitalPriceFor(chapterCount);
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-5">
@@ -202,9 +203,9 @@ export function FinishBook({
             <ClaimAndBuyDigital
               draftId={draftId}
               secret={draftSecret}
-              price={DIGITAL_PRICE}
+              price={pdfPrice}
               knownEmail={leadEmail}
-              label={`${formatUsd(DIGITAL_PRICE)} · the clean PDF`}
+              label={`${formatUsd(pdfPrice)} · the clean PDF`}
               className="flex-1"
             />
           ) : null}

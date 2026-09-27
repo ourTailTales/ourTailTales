@@ -55,6 +55,13 @@ export type StoryRequest = {
   spotlight?: number[];
   /** How many pages this chapter's photographs may be spread over. */
   pageBudget?: { min: number; max: number };
+  /**
+   * Titles and page captions this book has already used, in chapters
+   * written before this one. Sent so a phrase that fit one period is not
+   * reached for again in the next — each chapter is written in its own
+   * call, with no other memory of what the rest of the book already said.
+   */
+  alreadyUsed?: { titles: string[]; captions: string[] };
 };
 
 export type PhotoFacts = {

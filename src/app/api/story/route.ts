@@ -83,6 +83,15 @@ const requestSchema = z.object({
       max: z.number().int().min(1).max(20),
     })
     .optional(),
+  // What the rest of the book already said, so this chapter is not the one
+  // that reaches for the same line again. Capped at what a fifty-chapter
+  // book could actually produce.
+  alreadyUsed: z
+    .object({
+      titles: z.array(z.string().max(80)).max(50),
+      captions: z.array(z.string().max(120)).max(500),
+    })
+    .optional(),
 });
 
 export async function POST(request: Request): Promise<Response> {

@@ -37,6 +37,8 @@ export async function generateChapterStory(
   context: StoryContext,
   signal?: AbortSignal,
   position?: { chapterNumber: number; chapterCount: number },
+  /** Titles and page captions other chapters of this same book have already used. */
+  alreadyUsed?: { titles: string[]; captions: string[] },
 ): Promise<{ story: StoryDraft; places: PlaceLabel[]; spotlightIds: string[] }> {
   const pagePhotos = chapterBodyIds(chapter);
   const { hero, notable } = pickSamples(chapter, pagePhotos, photos);
@@ -95,6 +97,9 @@ export async function generateChapterStory(
     photos: pagePhotos.map((id, index) => photoFacts(index, photos.get(id), places)),
     spotlight,
     pageBudget: { min: MIN_PHOTO_PAGES, max: MAX_PHOTO_PAGES },
+    ...(alreadyUsed && (alreadyUsed.titles.length > 0 || alreadyUsed.captions.length > 0)
+      ? { alreadyUsed }
+      : {}),
   };
 
   const response = await fetch("/api/story", {
