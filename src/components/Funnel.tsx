@@ -29,6 +29,7 @@ import { bankBook } from "@/lib/drafts/upload";
 import { generateChapterStory } from "@/lib/story/client";
 import { generatePetProfile } from "@/lib/story/profile";
 import { prepareOrder } from "@/lib/order/prepare";
+import { bookSpec } from "@/lib/pricing";
 import { placedMemoriesReadyForCheckout } from "@/lib/video-memory/checkout-ready";
 import { draftHeaders, loadStoredDraft } from "@/lib/video-memory/client";
 import { photoMapOf, useOurTailTalesStore } from "@/store/useOurTailTalesStore";
@@ -52,7 +53,28 @@ const STORY_TIMEOUT_MS = 90_000;
 /** The profile look is worth waiting a little for, not a lot. */
 const PROFILE_TIMEOUT_MS = 25_000;
 
-export function Funnel({ embedded = false }: { embedded?: boolean }) {
+/** Where the book is: still being edited, or being looked at before ordering. */
+export type FunnelStep = "edit" | "finish";
+
+/** The address the book already in memory was restored for, or null. */
+let hydratedFor: string | null = null;
+
+/**
+ * Whether this tab has already counted a look at the create flow.
+ *
+ * Finishing a book is a client-side navigation to another route, which mounts
+ * a second `Funnel`. Without this, going to the price list and back counted
+ * as two more people arriving at the editor.
+ */
+let viewTracked = false;
+
+export function Funnel({
+  embedded = false,
+  step = "edit",
+}: {
+  embedded?: boolean;
+  step?: FunnelStep;
+}) {
   const router = useRouter();
   const store = useOurTailTalesStore();
 
@@ -71,6 +93,8 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
   const unlocked = isAuthenticated || !authConfigured();
 
   useEffect(() => {
+    if (viewTracked) return;
+    viewTracked = true;
     track("create_page_viewed");
   }, []);
 
@@ -86,15 +110,25 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
   const emailParam = searchParams.get("email")?.trim() || null;
   const emailKey = emailParam ?? "";
   // Derived rather than set: the moment the address changes this is false
-  // again, without an effect having to remember to say so.
-  const localReady = loadedFor === emailKey;
+  // again, without an effect having to remember to say so. `hydratedFor`
+  // outlives the component, so a book restored on the editor route is ready
+  // on the first render of the one after it.
+  const localReady = loadedFor === emailKey || hydratedFor === emailKey;
 
   useEffect(() => {
+    // Already in memory for this person, and `localReady` says so without
+    // waiting. Restoring again would read the whole album back off disk over
+    // edits the autosave has not written yet — which is exactly what
+    // finishing a book does, since that is a client-side navigation to
+    // another route and so a second mount of this component.
+    if (hydratedFor === emailKey) return;
+
     let current = true;
     void useOurTailTalesStore
       .getState()
       .restoreLocalBook(emailParam)
       .finally(() => {
+        hydratedFor = emailKey;
         if (!current) return;
         // A restored book keeps the address it was saved under; a fresh one
         // takes the address that asked for it.
@@ -701,7 +735,40 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
     ? "That sign-in link did not work. It may have already been used or expired. You can sign in again from your book."
     : null;
 
-  const stage = !localReady ? (
+  /**
+   * Whichever address this page was asked for follows the customer between
+   * the two steps, so the editor and the price list read the same book.
+   */
+  const withEmail = useCallback(
+    (path: string): string =>
+      emailParam ? `${path}?email=${encodeURIComponent(emailParam)}` : path,
+    [emailParam],
+  );
+
+  const goFinish = useCallback(() => {
+    const state = useOurTailTalesStore.getState();
+    track("book_finished", {
+      chapters: state.chapterCount,
+      price: bookSpec(state.chapterCount).price,
+    });
+    router.push(withEmail("/create/finish"));
+  }, [router, withEmail]);
+
+  /**
+   * Nothing to finish.
+   *
+   * Somebody who types the address, reloads after starting over, or follows a
+   * stale link lands on a price list for a book that does not exist. There is
+   * exactly one thing they can do next, so it is done for them rather than
+   * shown to them as an empty screen.
+   */
+  const nothingToFinish = step === "finish" && localReady && store.pages.length === 0;
+  useEffect(() => {
+    if (!nothingToFinish) return;
+    router.replace(withEmail("/create"));
+  }, [nothingToFinish, router, withEmail]);
+
+  const stage = !localReady || nothingToFinish ? (
     <div className="flex min-h-[calc(100dvh-5rem)] items-center justify-center">
       <span
         className="size-10 animate-spin rounded-full border-[3px] border-periwinkle/25 border-t-periwinkle"
@@ -721,6 +788,9 @@ export function Funnel({ embedded = false }: { embedded?: boolean }) {
       onUnlock={handleUnlock}
       onDownload={() => void handleDownload()}
       onCheckout={() => void handleCheckout()}
+      finishing={step === "finish"}
+      onFinish={goFinish}
+      onKeepEditing={() => router.push(withEmail("/create"))}
       unlocked={unlocked}
       downloading={downloadingPdf}
       notice={notice ?? authErrorNotice}

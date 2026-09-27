@@ -41,6 +41,9 @@ export function BookFlow({
   onUnlock,
   onDownload,
   onCheckout,
+  finishing,
+  onFinish,
+  onKeepEditing,
   unlocked,
   downloading,
   notice,
@@ -54,6 +57,10 @@ export function BookFlow({
   onUnlock: () => void;
   onDownload: () => void;
   onCheckout: () => void;
+  /** Done editing, looking at what the book costs — the `/create/finish` route. */
+  finishing: boolean;
+  onFinish: () => void;
+  onKeepEditing: () => void;
   unlocked: boolean;
   downloading: boolean;
   notice?: string | null;
@@ -77,16 +84,6 @@ export function BookFlow({
   const summary = useMemo(() => summarizeAlbum(photos), [photos]);
   const mediaCount = summary.placeable + albumVideos.length;
 
-  /**
-   * Done editing, looking at what it costs.
-   *
-   * Not a funnel state, because the book is no different for being looked at:
-   * this is which screen is up, and a reload puts somebody back in the editor
-   * rather than in front of a checkout they may have walked away from. It also
-   * clears itself whenever the book leaves the editor — a new album, more
-   * photographs to process — since `reading` gates it.
-   */
-  const [finishing, setFinishing] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [dropping, setDropping] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -355,7 +352,7 @@ export function BookFlow({
               </p>
             ) : null}
             <FinishBook
-              onBack={() => setFinishing(false)}
+              onBack={onKeepEditing}
               onCheckout={onCheckout}
               onDownload={onDownload}
               downloading={downloading}
@@ -371,13 +368,7 @@ export function BookFlow({
               onFiles={onFiles}
               processing={processing}
               onDownload={onDownload}
-              onFinish={() => {
-                setFinishing(true);
-                track("book_finished", {
-                  chapters: chapterCount,
-                  price: bookSpec(chapterCount).price,
-                });
-              }}
+              onFinish={onFinish}
               downloading={downloading}
               notice={notice}
             />
