@@ -110,10 +110,15 @@ export function ClaimAndBuyDigital({
         return;
       }
 
-      // Restoring is cheap and safe to attempt even when this is already the
-      // right browser: it is how the local pages get into memory in the
-      // first place on a fresh tab, e.g. one opened straight from the email.
-      await useOurTailTalesStore.getState().restoreLocalBook(knownEmail);
+      // Only restore from local storage when the live store does not already
+      // have this book — on the editor's own finishing screen it always
+      // does. Restoring unconditionally would overwrite whatever is live in
+      // memory with the last *persisted* snapshot, which is exactly how a
+      // click here could silently roll back edits made since the last
+      // autosave, right before rendering the file that gets sold.
+      if (!bookIsLocallyAvailable()) {
+        await useOurTailTalesStore.getState().restoreLocalBook(knownEmail);
+      }
 
       if (!bookIsLocallyAvailable()) {
         setClaimableHere(false);

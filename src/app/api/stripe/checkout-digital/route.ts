@@ -3,6 +3,7 @@ import { resolveDraft } from "@/lib/drafts/resolve";
 import { bookUrl } from "@/lib/drafts/storage";
 import { routeError } from "@/lib/env";
 import { DIGITAL_PRICE } from "@/lib/pricing";
+import { LIMITS, enforceRateLimit } from "@/lib/rate-limit";
 import { stripeClient, toMinorUnits } from "@/lib/stripe";
 import { supabaseAdmin } from "@/lib/supabase/server";
 
@@ -20,6 +21,16 @@ export async function POST(request: Request): Promise<Response> {
     if (!draft || !secret) {
       return Response.json({ error: "Unknown book." }, { status: 401 });
     }
+
+    // Counted against the draft rather than the caller's address: the secret
+    // is what already gates this route, and a shared link necessarily hands
+    // that secret to whoever opens it.
+    const limited = await enforceRateLimit(
+      request,
+      LIMITS.checkoutDigital,
+      `draft:${draft.id}`,
+    );
+    if (limited) return limited;
 
     const { data: row } = await supabaseAdmin()
       .from("book_drafts")

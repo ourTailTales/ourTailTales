@@ -3,6 +3,7 @@ import { freezePrintFiles } from "@/lib/order/freeze-print-files";
 
 import { requireEnv, routeError } from "@/lib/env";
 import { sendDigitalPurchaseEmail, sendOrderConfirmationEmail } from "@/lib/email/send";
+import { previewExpiryFrom } from "@/lib/drafts/expiry";
 import { bookUrl } from "@/lib/drafts/storage";
 import { markNeedsReview, submitPaidOrderToLulu } from "@/lib/order/submit-print";
 import { alertOps } from "@/lib/ops/alert";
@@ -249,12 +250,6 @@ async function confirmByEmail(orderId: string): Promise<void> {
 }
 
 /**
- * Releases the clean PDF after a $4.99 digital purchase.
- *
- * This is the only place that grant happens. Clearing `expires_at` is what
- * makes the book permanent, so the Phase 4 sweep will no longer touch it.
- */
-/**
  * A refund or a dispute stops the book.
  *
  * Neither event was handled at all, so a refunded order carried on to the
@@ -281,9 +276,10 @@ async function moneyGoingBack(
   if (error) throw new Error(error.message);
 
   if (!order) {
-    // The $4.99 PDF goes through Checkout rather than a PaymentIntent we
-    // record, so there is nothing here to match it against. Worth saying out
-    // loud rather than passing over in silence.
+    if (await revokeDigitalAccess(paymentIntentId, kind)) return;
+
+    // Matched neither a hardcover order nor a digital purchase. Worth saying
+    // out loud rather than passing over in silence.
     await alertOps(`A ${kind} payment matched no order`, {
       paymentIntent: paymentIntentId,
       kind,
@@ -337,6 +333,58 @@ async function moneyGoingBack(
   });
 }
 
+/**
+ * The digital-purchase half of a refund or dispute.
+ *
+ * The $4.99 PDF has no `orders` row to match — it lives entirely on
+ * `book_drafts` — so before this it was never handled at all: refunding or
+ * disputing that charge took the money back and left the buyer permanently
+ * holding the clean file anyway. Matched by the PaymentIntent
+ * `grantDigitalAccess` recorded at purchase time. Returns whether a draft was
+ * found, so the caller only alerts on a payment that matched neither an
+ * order nor a draft.
+ */
+async function revokeDigitalAccess(
+  paymentIntentId: string,
+  kind: "refunded" | "disputed",
+): Promise<boolean> {
+  const supabase = supabaseAdmin();
+  const now = new Date();
+
+  const { data: draft, error } = await supabase
+    .from("book_drafts")
+    .update({
+      digital_purchased_at: null,
+      digital_stripe_payment_intent_id: null,
+      watermarked: true,
+      // A fresh window rather than an immediate cutoff: the nightly sweep
+      // already only reaps drafts whose `expires_at` has passed, so this
+      // just puts the draft back on that same clock instead of deleting its
+      // files out from under someone mid-dispute.
+      expires_at: previewExpiryFrom(now).toISOString(),
+      updated_at: now.toISOString(),
+    })
+    .eq("digital_stripe_payment_intent_id", paymentIntentId)
+    .select("id")
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!draft) return false;
+
+  await alertOps(`A digital PDF purchase was ${kind}`, {
+    draft: draft.id,
+    paymentIntent: paymentIntentId,
+    note: "Access to the clean PDF has been revoked.",
+  });
+  return true;
+}
+
+/**
+ * Releases the clean PDF after a $4.99 digital purchase.
+ *
+ * This is the only place that grant happens. Clearing `expires_at` is what
+ * makes the book permanent, so the Phase 4 sweep will no longer touch it.
+ */
 async function grantDigitalAccess(
   session: Stripe.Checkout.Session,
 ): Promise<void> {
@@ -347,12 +395,21 @@ async function grantDigitalAccess(
 
   const supabase = supabaseAdmin();
 
+  // So a later refund or dispute — matched by this same id — has something
+  // to revoke. Without it, a refunded digital purchase would keep its buyer's
+  // access forever: there would be nothing to look the draft up by.
+  const paymentIntentId =
+    typeof session.payment_intent === "string"
+      ? session.payment_intent
+      : (session.payment_intent?.id ?? null);
+
   // Conditional on not already being purchased, so a redelivered webhook
   // cannot re-grant or send a second confirmation.
   const { data: claimed, error } = await supabase
     .from("book_drafts")
     .update({
       digital_purchased_at: new Date().toISOString(),
+      digital_stripe_payment_intent_id: paymentIntentId,
       watermarked: false,
       expires_at: null,
       updated_at: new Date().toISOString(),
