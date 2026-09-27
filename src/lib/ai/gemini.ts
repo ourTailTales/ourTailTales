@@ -69,7 +69,7 @@ const RESPONSE_SCHEMA: Schema = {
           caption: {
             type: Type.STRING,
             description:
-              "Three to ten words about this page, in the chapter's voice. Only what the dates, the season, the place and the chapter's own story support — never a new detail about what a picture shows. No full stop needed.",
+              "Three to twelve words about this page, in the chapter's voice. On a page holding one of the attached photographs, a warm line about the animal in it. On every other page, only what the dates, the season, the place and the chapter's own story support — never a new detail about a picture you were not shown. No full stop needed.",
           },
         },
         required: ["photos", "caption"],

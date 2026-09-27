@@ -204,6 +204,34 @@ describe("a grouping the model sent back", () => {
     expect(planFromIndexes(ids, [])).toBeNull();
     expect(planFromIndexes([], [{ photos: [0] }])).toBeNull();
   });
+
+  it("marks the pages holding a photograph the writer was shown", () => {
+    const pages = planFromIndexes(
+      ids,
+      [
+        { photos: [1, 2], caption: "Ears up, entirely sure of himself" },
+        { photos: [3, 4], caption: "The long slow middle of winter" },
+      ],
+      ["b"],
+    )!;
+    expect(pages[0]!.spotlight).toBe(true);
+    expect(pages[1]!.spotlight).toBeUndefined();
+  });
+
+  it("never marks a page with no line to print", () => {
+    const pages = planFromIndexes(ids, [{ photos: [1, 2] }, { photos: [3, 4] }], ["b"])!;
+    expect(pages.every((page) => page.spotlight === undefined)).toBe(true);
+  });
+
+  it("keeps the mark while the page is still mostly its own photographs", () => {
+    const marked = planFromIndexes(
+      ids,
+      [{ photos: [1, 2, 3], caption: "Pretty even half asleep" }, { photos: [4] }],
+      ["c"],
+    )!;
+    const kept = reconcilePlan(marked, ["b", "c", "d", "e"]);
+    expect(kept![0]!.spotlight).toBe(true);
+  });
 });
 
 describe("a grouping kept while the chapter is edited", () => {

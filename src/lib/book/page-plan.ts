@@ -261,8 +261,11 @@ function kmBetween(a: PlannablePhoto, b: PlannablePhoto): number {
 export function planFromIndexes(
   photoIds: readonly string[],
   planned: readonly { photos?: readonly number[]; caption?: string }[] | undefined,
+  /** The photographs the writer was shown, so their pages can print its line. */
+  spotlightIds: readonly string[] = [],
 ): PlannedPage[] | null {
   if (!planned || planned.length === 0 || photoIds.length === 0) return null;
+  const shown = new Set(spotlightIds);
 
   const offset = numberingOffset(planned, photoIds.length);
   const used = new Set<number>();
@@ -277,7 +280,12 @@ export function planFromIndexes(
       used.add(index);
       photos.push(photoIds[index]!);
     }
-    if (photos.length > 0) pages.push({ photos, ...withCaption(group, photos) });
+    if (photos.length > 0) {
+      pages.push({
+        photos,
+        ...withCaption({ ...group, spotlight: photos.some((id) => shown.has(id)) }, photos),
+      });
+    }
   }
   if (pages.length === 0) return null;
 
@@ -332,15 +340,21 @@ function numberingOffset(
  * caption also has the evidence for whether it still belongs.
  */
 function withCaption(
-  page: { caption?: string; captionFor?: readonly string[] },
+  page: { caption?: string; captionFor?: readonly string[]; spotlight?: boolean },
   photos: readonly string[],
-): Pick<PlannedPage, "caption" | "captionFor"> {
+): Pick<PlannedPage, "caption" | "captionFor" | "spotlight"> {
   const text = page.caption?.trim();
   if (!text) return {};
   // Plans saved before the set was kept anchor on the page as it was stored,
   // which is the same thing one version of the book ago.
   const written = page.captionFor?.length ? page.captionFor : photos;
-  return { caption: text.slice(0, MAX_CAPTION_LENGTH), captionFor: [...written] };
+  return {
+    caption: text.slice(0, MAX_CAPTION_LENGTH),
+    captionFor: [...written],
+    // Only ever alongside the line it exists to get printed, so a page can
+    // never ask for room for words it does not have.
+    ...(page.spotlight ? { spotlight: true } : {}),
+  };
 }
 
 /** The most a written-for-you caption may run to. Past this it is a paragraph. */
@@ -448,7 +462,11 @@ export function fitPlanToPages(
     pages: pages.map((page) => ({
       photos: page.photos,
       ...(captionBelongsOn(page)
-        ? { caption: page.caption, captionFor: page.captionFor }
+        ? {
+            caption: page.caption,
+            captionFor: page.captionFor,
+            ...(page.spotlight ? { spotlight: true } : {}),
+          }
         : {}),
     })),
     leftover,

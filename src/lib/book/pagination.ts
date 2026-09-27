@@ -116,7 +116,14 @@ export function paginateBook(
           ? wanted
           : chooseLayout(
               slice.map((id) => photos.get(id)?.orientation ?? "landscape"),
-              { recent, seed: pageId, wantsWords: wantsWords(photoPages) },
+              {
+                recent,
+                seed: pageId,
+                // A page holding one of the photographs the writer actually
+                // saw carries a line about the animal rather than about the
+                // month, and asks for room to print it wherever it falls.
+                wantsWords: wantsWords(photoPages) || planned[index]!.spotlight === true,
+              },
             );
 
       recent.push(layoutId);
@@ -176,7 +183,8 @@ export function paginateBook(
 }
 
 /**
- * Pages the book means to give room for words: every other one.
+ * Pages the book means to give room for words: every other one, plus any
+ * page the chapter marked (see `PlannedPage.spotlight`).
  *
  * Every page has a line written for it when the chapter is written, so the
  * question is only how often a page's layout makes room to print it. Every

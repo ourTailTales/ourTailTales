@@ -37,20 +37,31 @@ export async function generateChapterStory(
   context: StoryContext,
   signal?: AbortSignal,
   position?: { chapterNumber: number; chapterCount: number },
-): Promise<{ story: StoryDraft; places: PlaceLabel[] }> {
+): Promise<{ story: StoryDraft; places: PlaceLabel[]; spotlightIds: string[] }> {
   const pagePhotos = chapterBodyIds(chapter);
-  const samples = pickSamples(chapter, photos);
+  const { hero, notable } = pickSamples(chapter, pagePhotos, photos);
   const places = await resolvePlaces(chapter, photos, signal);
 
   const thumbnails: string[] = [];
-  for (const photo of samples) {
+  const spotlight: number[] = [];
+  const spotlightIds: string[] = [];
+  // The opener leads, then the notable ones, and a picture that will not
+  // render is left out of both lists together — the numbers have to name
+  // photographs the model is really looking at, or a page gets a written
+  // line about a picture nobody showed it.
+  for (const photo of hero ? [hero, ...notable] : notable) {
     const file = assetStore.getFile(photo.id);
     if (!file) continue;
     try {
       thumbnails.push(await blobToDataUrl(await renderAiThumbnail(file)));
     } catch {
       // A single unreadable sample should not fail the chapter.
+      continue;
     }
+    const at = pagePhotos.indexOf(photo.id);
+    if (at === -1) continue;
+    spotlight.push(at + 1);
+    spotlightIds.push(photo.id);
   }
 
   const timestamps = chapter.candidateIds
@@ -82,6 +93,7 @@ export async function generateChapterStory(
     // how many pages that makes. Facts only — thirty thumbnails a chapter
     // would cost more than the whole book's writing does.
     photos: pagePhotos.map((id, index) => photoFacts(index, photos.get(id), places)),
+    spotlight,
     pageBudget: { min: MIN_PHOTO_PAGES, max: MAX_PHOTO_PAGES },
   };
 
@@ -98,7 +110,7 @@ export async function generateChapterStory(
   }
 
   const story = (await response.json()) as StoryDraft;
-  return { story, places };
+  return { story, places, spotlightIds };
 }
 
 /**
@@ -129,33 +141,48 @@ function photoFacts(
   };
 }
 
-/** Spreads samples across the chapter so the AI sees its whole span. */
+/**
+ * The pictures the model gets to look at: the opener, and the best of what
+ * comes after it.
+ *
+ * The rest of the chapter reaches the model as dates and places, which is all
+ * a page's line could be written from. These few are the exception, and which
+ * few it is now matters twice over — they are the evidence the introduction is
+ * built on, and they are the pages that get a line about the animal rather
+ * than about the calendar.
+ *
+ * So they are chosen rather than sampled. Evenly spaced slices of the chapter
+ * as before, so the whole span is seen, but the best photograph in each slice
+ * instead of whichever one the arithmetic landed on — the notable one, which
+ * is the only kind worth writing "pleased with himself" under.
+ */
 function pickSamples(
   chapter: Chapter,
+  body: readonly string[],
   photos: Map<string, PhotoAsset>,
-): PhotoAsset[] {
-  const available = chapter.photoIds
-    .map((id) => photos.get(id))
-    .filter((photo): photo is PhotoAsset => photo !== undefined);
-
+): { hero: PhotoAsset | undefined; notable: PhotoAsset[] } {
   // Same fallback the book itself uses to pick the opener (`chapterBodyIds`,
   // `paginateBook`): a chapter without an explicit hero opens on its first
   // photograph, and the model must be shown the same one it will be judged
   // against, not just whichever `heroPhotoId` happens to say.
   const heroId = chapter.heroPhotoId ?? chapter.photoIds[0] ?? null;
   const hero = heroId ? photos.get(heroId) : undefined;
-  const rest = available.filter((photo) => photo.id !== hero?.id);
+  const rest = body
+    .map((id) => photos.get(id))
+    .filter((photo): photo is PhotoAsset => photo !== undefined && photo.id !== hero?.id);
   const wanted = hero ? AI_SAMPLES - 1 : AI_SAMPLES;
+  if (rest.length <= wanted) return { hero, notable: rest };
 
-  // The opener's big photo leads: it is the one the introduction sits on.
-  const spread =
-    rest.length <= wanted
-      ? rest
-      : Array.from(
-          { length: wanted },
-          (_, index) => rest[Math.floor((index * rest.length) / wanted)]!,
-        );
-  return hero ? [hero, ...spread] : spread;
+  const notable: PhotoAsset[] = [];
+  for (let slice = 0; slice < wanted; slice += 1) {
+    const from = Math.floor((slice * rest.length) / wanted);
+    const to = Math.floor(((slice + 1) * rest.length) / wanted);
+    const best = rest
+      .slice(from, Math.max(to, from + 1))
+      .reduce((winner, photo) => (photo.qualityScore > winner.qualityScore ? photo : winner));
+    notable.push(best);
+  }
+  return { hero, notable };
 }
 
 async function resolvePlaces(

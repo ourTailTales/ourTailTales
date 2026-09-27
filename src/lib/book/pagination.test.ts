@@ -549,6 +549,27 @@ describe("the line printed on a page", () => {
     const lines = pages.map((page) => page.caption).filter(Boolean);
     expect(new Set(lines).size).toBe(lines.length);
   });
+
+  it("gives a page written about a photograph the writer saw room for its line", () => {
+    // Only every other page is given room for words, and a line worth
+    // reading losing that coin toss is the one case where it matters which.
+    const marked = {
+      ...chapterWith(),
+      pagePlan: [
+        { photos: ["b1"], caption: "Ears up, entirely sure of himself", spotlight: true },
+        { photos: ["b2"], caption: "The long slow middle of winter" },
+        { photos: ["b3"], caption: "Back at the lake by June" },
+        { photos: ["b4"], caption: "Pretty even half asleep", spotlight: true },
+      ],
+    } as Chapter;
+
+    const pages = photoPages(marked);
+    const roomFor = (index: number): boolean => isCaptionLayout(pages[index]!.layoutId);
+
+    expect(pages.map((page) => page.photoIds)).toEqual([["b1"], ["b2"], ["b3"], ["b4"]]);
+    expect(roomFor(0)).toBe(true);
+    expect(roomFor(3)).toBe(true);
+  });
 });
 
 describe("adding photographs to the page you are looking at", () => {

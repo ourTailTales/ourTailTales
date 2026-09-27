@@ -42,6 +42,17 @@ export type StoryRequest = {
    * cost of sending thirty images.
    */
   photos?: PhotoFacts[];
+  /**
+   * Which of those photographs the model is actually looking at: the numbers
+   * of the ones attached as `thumbnails` after the opening photograph.
+   *
+   * Everything else in `photos` is a date, a place and an orientation, so the
+   * line written for it can only ever be about the calendar. These few are
+   * pictures, and a page holding one gets a line about the animal in it —
+   * which is the difference between "The first warm week of June" and "Ears
+   * up, entirely certain of himself".
+   */
+  spotlight?: number[];
   /** How many pages this chapter's photographs may be spread over. */
   pageBudget?: { min: number; max: number };
 };

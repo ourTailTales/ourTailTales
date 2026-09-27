@@ -74,6 +74,9 @@ const requestSchema = z.object({
     )
     .max(60)
     .optional(),
+  // Which of those the attached pictures are. Capped at the thumbnails the
+  // route accepts; a number outside the chapter is ignored downstream.
+  spotlight: z.array(z.number().int().positive().max(200)).max(5).optional(),
   pageBudget: z
     .object({
       min: z.number().int().min(1).max(20),

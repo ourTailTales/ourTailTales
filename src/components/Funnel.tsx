@@ -401,7 +401,7 @@ export function Funnel({
         storyRun.current?.signal.addEventListener("abort", stopAll);
 
         try {
-          const { story, places } = await generateChapterStory(
+          const { story, places, spotlightIds } = await generateChapterStory(
             chapter,
             photoMap,
             context,
@@ -412,7 +412,7 @@ export function Funnel({
             },
           );
           actions.setChapterPlaces(chapterId, places);
-          actions.applyChapterStory(chapterId, story);
+          actions.applyChapterStory(chapterId, story, spotlightIds);
         } catch (error) {
           const stopped = storyRun.current?.signal.aborted === true;
           actions.setChapterAiStatus(

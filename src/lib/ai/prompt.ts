@@ -105,13 +105,21 @@ How to group them:
 - More pages of fewer photographs is the better book. Only crowd a page when the chapter has more photographs than the budget has pages.
 
 The caption on each page:
-- Three to ten words, one line, in the same voice as the introduction. It sits under the date, in the owner's book, beside their photographs.
+- Three to twelve words, one line, in the same voice as the introduction. It sits under the date, in the owner's book, beside their photographs.
 - Say something about that page: the season it falls in, the place, where it comes in the chapter's story. "Back at the lake by June", "The long slow middle of winter", "First week in the new house".
-- Only what the dates, the seasons, the place and the story you just wrote actually support. You cannot see these photographs individually — never invent what one shows, never name a person, never claim an event. "Out into the sunny green yard" is a guess at a picture, and it was printed under a dog asleep on a wooden floor; "The first warm week of June" is the same page, told from what is actually known.
+- Only what the dates, the seasons, the place and the story you just wrote actually support. For most of these photographs you have only those facts — never invent what one shows, never name a person, never claim an event. "Out into the sunny green yard" is a guess at a picture, and it was printed under a dog asleep on a wooden floor; "The first warm week of June" is the same page, told from what is actually known.
 - Plain nouns, not decorated ones, same as the introduction: "Right by the fireplace", not "Right by the brick fireplace" — naming the material adds nothing and is a guess about a photograph you cannot see.
 - No full stop at the end unless the line is a sentence. Never a date alone: the date is already printed.
 - Never the camera, in any form: no photograph, picture, image, lens, close-up, "up close", posing, backdrop or background. "Right up close to the lens" is a line about a photograph; "Nose first, as usual" is a line about a dog.
-- Every page gets one, and no two pages in a chapter get the same line.`
+- Every page gets one, and no two pages in a chapter get the same line.
+
+The few you are actually shown, which are the ones that matter most:
+Some of the numbered photographs are attached, and the prompt tells you which numbers they are. They were picked as the best in the chapter — the ones somebody stops on. A page holding one of them gets a different kind of line, and these are the lines the owner will remember the book for, so spend your effort here.
+- Write about the animal, not the calendar. How they look, what they are plainly doing, the bit of their character that shows in it. "Ears up, entirely sure of himself", "The good sit, held for one whole second", "Pretty even half asleep", "Caught mid-bounce, as usual".
+- Be warm and say the true thing out loud. Cute, handsome, pretty, ridiculous, soft, pleased with themselves, deeply unimpressed — whatever this one actually is. Affection is the point; a neutral description of a lovely photograph is a wasted line.
+- Let it belong to their life and not just to that second: the collar they lived in, the face they pulled at everybody, the spot that was theirs, the thing they always did. A line that could only be written about this animal is the one you want.
+- Still no camera, no people's names, no invented events, and never an inventory of what is in the picture ("brown dog on grass, facing left"). One warm observation, not a catalogue.
+- Never anything about their weight, their age or their health, and nothing teasing if this book is a memorial.`
 
 const LIVING = `This pet is alive and the book celebrates a life still being lived. A little playfulness is welcome. Never imply they have died: no "will be missed", no "rest", no farewells, no "always remembered". The period described is in the past; the pet is not.`;
 
@@ -230,10 +238,28 @@ function pageLayoutLines(chapter: StoryRequest): string {
     ? `Use between ${budget.min} and ${budget.max} pages — and no more pages than there are photographs.`
     : "";
 
+  const shown = (chapter.spotlight ?? []).filter(
+    (number) => Number.isInteger(number) && number >= 1 && number <= photos.length,
+  );
+  const seen =
+    shown.length === 0
+      ? ""
+      : `\n\nOf these, ${
+          shown.length === 1
+            ? `photograph ${shown[0]} is`
+            : `photographs ${shown.slice(0, -1).join(", ")} and ${shown.at(-1)} are`
+        } attached — ${
+          shown.length === 1 ? "it is" : "they are"
+        } the ones after the opening photograph, and the best of the chapter. Whichever pages ${
+          shown.length === 1 ? "it lands" : "they land"
+        } on get a caption about the animal in ${
+          shown.length === 1 ? "it" : "them"
+        } — warm, particular, theirs — as set out in the rules. Every other page keeps to the dates, the season and the place.`;
+
   return `
 
 Then lay these ${photos.length} photographs out as pages, and caption each page. Refer to them by the numbers below, which run from 1 to ${photos.length}. ${range}
-${rows}`;
+${rows}${seen}`;
 }
 
 /**

@@ -139,7 +139,12 @@ type Actions = {
     status: Chapter["aiStatus"],
     error?: string,
   ) => void;
-  applyChapterStory: (chapterId: string, story: StoryDraft) => void;
+  applyChapterStory: (
+    chapterId: string,
+    story: StoryDraft,
+    /** The photographs the writer was shown, so their pages print its line. */
+    spotlightIds?: string[],
+  ) => void;
   setChapterPlaces: (chapterId: string, places: PlaceLabel[]) => void;
   finishStoryGeneration: () => void;
 
@@ -468,14 +473,18 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
       ),
     })),
 
-  applyChapterStory: (chapterId, story) =>
+  applyChapterStory: (chapterId, story, spotlightIds = []) =>
     set((state) => {
       const chapters = state.chapters.map((chapter) => {
         if (chapter.id !== chapterId) return chapter;
         // The model laid the chapter's pages out and captioned them as well
         // as writing it. Anything unusable leaves the chapter with the
         // grouping it was created with, never without one.
-        const planned = planFromIndexes(chapterBodyIds(chapter), story.pages);
+        const planned = planFromIndexes(
+          chapterBodyIds(chapter),
+          story.pages,
+          spotlightIds,
+        );
         return {
           ...chapter,
           title: story.title || chapter.title,

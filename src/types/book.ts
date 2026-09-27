@@ -91,6 +91,16 @@ export type PlannedPage = {
    * saved before it was kept, where the page's own photographs stand in.
    */
   captionFor?: string[];
+  /**
+   * This page holds one of the few photographs the writer was actually shown,
+   * so its line is about the animal in it rather than about the month.
+   *
+   * It decides one thing: the page is given a layout that keeps room for
+   * words. Every page has a line written for it, but only some layouts print
+   * one, and a line worth reading — "Ears up, entirely sure of himself" —
+   * losing that coin toss is the one case where it matters which.
+   */
+  spotlight?: boolean;
 };
 
 /**
