@@ -75,6 +75,14 @@ export const LIMITS = {
    * their own first pages more than a handful of times.
    */
   sample: { name: "sample", limit: 5, windowSeconds: 60 * 10 },
+  /**
+   * Minting a Stripe Checkout Session for the digital PDF.
+   *
+   * Cheap for us, but it is still a live call against Stripe's API behind a
+   * draft secret that a shared link necessarily exposes to whoever holds it.
+   * Loose enough that a real customer retrying a declined card never notices.
+   */
+  checkoutDigital: { name: "checkout_digital", limit: 15, windowSeconds: 60 * 10 },
 } as const satisfies Record<string, RateLimit>;
 
 /**
