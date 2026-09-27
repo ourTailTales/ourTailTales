@@ -226,7 +226,22 @@ export function BookFlow({
     })();
   };
 
-  const reading = funnelState === "editing" || funnelState === "exporting";
+  // Adding photos from inside the editor runs the same `processing` /
+  // `album_ready` round trip the initial upload does, and an effect above
+  // carries `album_ready` straight back to `editing` once every chapter is
+  // still written. Gating the editor on `funnelState` alone unmounted it for
+  // that whole round trip — a full-screen "Reading your photos" interstitial
+  // over a book that was already open, for what is really just a few more
+  // photographs landing in the background. A book whose chapters are already
+  // all written is unmistakably mid-edit, not the first upload, so it stays
+  // on screen through the round trip; `AddMediaControl` shows the read
+  // progress inline instead.
+  const chaptersAlreadyWritten = chapters.length > 0 && unwritten === 0;
+  const reading =
+    funnelState === "editing" ||
+    funnelState === "exporting" ||
+    ((funnelState === "processing" || funnelState === "album_ready") &&
+      chaptersAlreadyWritten);
 
   return (
     // `book-editor-field` carries the light theme the whole app area runs on.

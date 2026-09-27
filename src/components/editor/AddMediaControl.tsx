@@ -5,6 +5,7 @@ import { useRef, type ChangeEvent } from "react";
 
 import { isLikelyMedia } from "@/lib/photo/process";
 import { MIN_PHOTOS_FOR_BOOK } from "@/lib/pricing";
+import { useOurTailTalesStore } from "@/store/useOurTailTalesStore";
 
 /**
  * Single "keep adding media" affordance for the editor. Sits under the
@@ -35,6 +36,7 @@ export function AddMediaControl({
 }) {
   const photosRef = useRef<HTMLInputElement>(null);
   const folderRef = useRef<HTMLInputElement>(null);
+  const readProgress = useOurTailTalesStore((state) => state.progress);
 
   const emit = (list: FileList | null): void => {
     const files = Array.from(list ?? []).filter(isLikelyMedia);
@@ -96,6 +98,24 @@ export function AddMediaControl({
           or choose a folder
         </button>
       </div>
+
+      {processing && readProgress.total > 0 ? (
+        <div className="flex w-full flex-col gap-1" role="status">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-line/60">
+            <div
+              className="h-full rounded-full bg-periwinkle transition-[width] duration-300"
+              style={{
+                width: `${Math.min(100, Math.round((readProgress.processed / readProgress.total) * 100))}%`,
+              }}
+            />
+          </div>
+          <p className="text-center text-xs leading-5 text-ink-soft">
+            Reading {readProgress.processed.toLocaleString()} of{" "}
+            {readProgress.total.toLocaleString()}{" "}
+            {readProgress.total === 1 ? "photo" : "photos"}
+          </p>
+        </div>
+      ) : null}
 
       {compact ? null : (
         <p className="text-center text-xs leading-5 text-ink-soft">
