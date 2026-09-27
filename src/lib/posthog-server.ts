@@ -11,8 +11,15 @@ export function getPostHogClient(): PostHog | null {
       const missing = token
         ? "NEXT_PUBLIC_POSTHOG_HOST"
         : "NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN";
-      throw new Error(
-        `${missing} variable required by PostHog is missing or un-configured, this causes events to be silently missed. This error stops appearing once ${missing} is configured`,
+      // Loud, but never a thrown error: this used to throw here, and every
+      // caller sits in front of business logic that has nothing to do with
+      // analytics. A payment webhook that crashes on a missing PostHog token
+      // stops a real, already-charged order dead — after it is marked paid,
+      // before it ever reaches the printer — with nothing in the order's own
+      // state to say why. Missing instrumentation must never be able to do
+      // that; it only ever gets to mean "this event was not recorded".
+      console.error(
+        `[ourTailTales] ${missing} variable required by PostHog is missing or un-configured — events are being silently missed. This stops appearing once ${missing} is configured.`,
       );
     }
     return null;
