@@ -4,6 +4,7 @@ import {
   BASE_CHAPTERS,
   BASE_PRICE,
   CHAPTER_TIERS,
+  DIGITAL_PRICE_RATE,
   MAX_CHAPTERS,
   FIXED_INTERIOR_PAGES,
   MARGIN_FLOOR,
@@ -13,6 +14,7 @@ import {
   bookPrice,
   chaptersForSpan,
   chaptersForTier,
+  digitalPriceFor,
   photoRangeForTier,
   photosForTier,
   printCost,
@@ -112,6 +114,28 @@ describe("book pricing", () => {
     expect(storedPriceBreakdown(15, bookPrice(15))).toHaveLength(3);
     // A price from before a rate change: the receipt shows the total alone.
     expect(storedPriceBreakdown(15, 999.99)).toEqual([]);
+  });
+});
+
+describe("the digital PDF's price", () => {
+  it("is 30% of the hardcover price for the same chapter count", () => {
+    expect(DIGITAL_PRICE_RATE).toBe(0.3);
+    expect(digitalPriceFor(5)).toBe(15);
+    expect(digitalPriceFor(6)).toBe(16.49);
+    expect(digitalPriceFor(12)).toBe(25.48);
+    expect(digitalPriceFor(13)).toBe(26.67);
+    expect(digitalPriceFor(MAX_CHAPTERS)).toBe(70.96);
+  });
+
+  it("grows with the book rather than staying flat", () => {
+    for (let chapters = BASE_CHAPTERS; chapters < MAX_CHAPTERS; chapters += 1) {
+      expect(digitalPriceFor(chapters + 1)).toBeGreaterThan(digitalPriceFor(chapters));
+    }
+  });
+
+  it("tracks bookPrice's own floor and ceiling", () => {
+    expect(digitalPriceFor(1)).toBe(digitalPriceFor(BASE_CHAPTERS));
+    expect(digitalPriceFor(MAX_CHAPTERS + 10)).toBe(digitalPriceFor(MAX_CHAPTERS));
   });
 });
 

@@ -10,7 +10,7 @@ import { BookViewAnalytics } from "@/components/create/BookViewAnalytics";
 import { UpgradeActions } from "./UpgradeActions";
 import { draftLeadEmail } from "@/lib/drafts/lead";
 import { loadDraftPreview, type DraftPreview } from "@/lib/drafts/preview";
-import { BASE_PRICE, DIGITAL_PRICE } from "@/lib/pricing";
+import { BASE_CHAPTERS, BASE_PRICE, digitalPriceFor } from "@/lib/pricing";
 import { createAuthServerClient } from "@/lib/supabase/auth-server";
 
 
@@ -307,7 +307,7 @@ function FreeBookPreview({
               <UpgradeActions
                 draftId={draft.draftId}
                 secret={secret}
-                digitalPrice={DIGITAL_PRICE}
+                digitalPrice={digitalPriceFor(draft.chapterCount ?? BASE_CHAPTERS)}
                 hardcoverPrice={BASE_PRICE}
                 knownEmail={knownEmail}
               />

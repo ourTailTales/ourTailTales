@@ -5,12 +5,6 @@
  * chosen chapter count only.
  */
 
-/**
- * The clean, unwatermarked PDF of the whole book. Authoritative here rather
- * than in the checkout route, so no browser-supplied amount is ever charged.
- */
-export const DIGITAL_PRICE = 4.99;
-
 /** The shortest book we will print: five chapters. */
 export const BASE_CHAPTERS = 5;
 export const STORY_PAGES_PER_CHAPTER = 10;
@@ -305,6 +299,22 @@ export function bookPrice(chapterCount: number): number {
     0,
   );
   return round2(BASE_PRICE + extra);
+}
+
+/** What the clean PDF costs, as a fraction of the hardcover price for the same book. */
+export const DIGITAL_PRICE_RATE = 0.3;
+
+/**
+ * The clean, unwatermarked PDF's price for a book this size — 30% of what
+ * the hardcover of the same book costs, so a fifty-chapter archive is not
+ * sold as a file for the same few dollars as a five-chapter keepsake.
+ *
+ * Authoritative here rather than in the checkout route, so no
+ * browser-supplied amount is ever charged; the route derives it the same
+ * way, from the draft's own stored chapter count.
+ */
+export function digitalPriceFor(chapterCount: number): number {
+  return round2(bookPrice(chapterCount) * DIGITAL_PRICE_RATE);
 }
 
 export function storyPages(chapterCount: number): number {

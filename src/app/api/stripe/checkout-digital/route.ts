@@ -2,17 +2,19 @@ import { draftSecretFromRequest } from "@/lib/drafts/token";
 import { resolveDraft } from "@/lib/drafts/resolve";
 import { bookUrl } from "@/lib/drafts/storage";
 import { routeError } from "@/lib/env";
-import { DIGITAL_PRICE } from "@/lib/pricing";
+import { BASE_CHAPTERS, digitalPriceFor } from "@/lib/pricing";
 import { LIMITS, enforceRateLimit } from "@/lib/rate-limit";
 import { stripeClient, toMinorUnits } from "@/lib/stripe";
 import { supabaseAdmin } from "@/lib/supabase/server";
 
 /**
- * Checkout for the $4.99 clean PDF.
+ * Checkout for the clean PDF — 30% of the hardcover price for this book's
+ * chapter count.
  *
- * The amount comes from `pricing.ts`, never from the request: the browser says
- * which book, not what it costs. Nothing is granted here either — the webhook
- * is still the only thing that records a payment.
+ * The amount comes from `pricing.ts` and the draft's own stored chapter
+ * count, never from the request: the browser says which book, not what it
+ * costs. Nothing is granted here either — the webhook is still the only
+ * thing that records a payment.
  */
 export async function POST(request: Request): Promise<Response> {
   try {
@@ -35,7 +37,7 @@ export async function POST(request: Request): Promise<Response> {
     const { data: row } = await supabaseAdmin()
       .from("book_drafts")
       .select(
-        "pet_name, pdf_storage_path, clean_pdf_storage_path, digital_purchased_at, expires_at",
+        "pet_name, pdf_storage_path, clean_pdf_storage_path, digital_purchased_at, expires_at, chapter_count",
       )
       .eq("id", draft.id)
       .maybeSingle();
@@ -84,6 +86,7 @@ export async function POST(request: Request): Promise<Response> {
     const petName = (row.pet_name ?? "").trim();
     const posthogDistinctId = request.headers.get("x-posthog-distinct-id");
     const returnUrl = bookUrl(draft.id, secret);
+    const price = digitalPriceFor(row.chapter_count ?? BASE_CHAPTERS);
 
     const session = await stripeClient().checkout.sessions.create({
       mode: "payment",
@@ -92,7 +95,7 @@ export async function POST(request: Request): Promise<Response> {
           quantity: 1,
           price_data: {
             currency: "usd",
-            unit_amount: toMinorUnits(DIGITAL_PRICE),
+            unit_amount: toMinorUnits(price),
             product_data: {
               name: petName ? `${petName}’s book (full PDF)` : "Your book (full PDF)",
               description:
