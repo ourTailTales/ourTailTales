@@ -65,15 +65,10 @@ export function AlbumSize() {
     >
       <h2
         id="album-size-heading"
-        className="font-display text-2xl leading-tight text-page-ink sm:text-3xl"
+        className="font-display text-center text-2xl leading-tight text-page-ink sm:text-3xl"
       >
         How much of {name ? `${name}’s` : "their"} story?
       </h2>
-      <p className="mt-2 text-sm leading-6 text-page-ink-soft">
-        {years === null
-          ? "We have picked a length from your album. Change it if it is not the book you had in mind."
-          : `Your photos run from the first to the last across ${years === 1 ? "about a year" : `about ${years} years`}, so we have picked the length to match. Change it if it is not the book you had in mind.`}
-      </p>
 
       <ul className="mt-6 grid grid-cols-3 gap-3">
         {CHAPTER_TIERS.map((tier) => (
@@ -91,9 +86,6 @@ export function AlbumSize() {
       </ul>
 
       <div className="mt-6 flex flex-col items-center gap-3">
-        <p className="text-sm text-page-ink-soft">
-          {chapters} {chapters === 1 ? "chapter" : "chapters"}
-        </p>
         <button
           type="button"
           onClick={() => {
@@ -163,16 +155,16 @@ function TierChoice({
         </span>
         {!available ? (
           <span className="mt-1 block text-sm leading-6 text-page-ink-soft">
-            Needs {photosForTier(tier)} photos — you have {usablePhotoCount}.
+            Needs {photosForTier(tier)} photos, you have {usablePhotoCount}.
           </span>
         ) : null}
         <span className="mt-1 block font-display text-xl font-bold text-page-ink">
           {photoRange.min}&ndash;{photoRange.max}
         </span>
-        <span className="block text-xs text-page-ink-faint">photos, total</span>
+        <span className="block text-xs text-page-ink-faint">photos total</span>
         {available ? (
           <span className="mt-1 block text-xs text-page-ink-soft">
-            {chapters} {chapters === 1 ? "chapter" : "chapters"} for your album
+            {chapters} {chapters === 1 ? "chapter" : "chapters"} for your book
           </span>
         ) : null}
       </button>
