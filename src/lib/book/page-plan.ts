@@ -245,6 +245,15 @@ export const MAX_CAPTION_LENGTH = 120;
  * of them in common wins, the earliest of them if two tie, and each line is
  * used once — a planned page split in half gives its line to the half that
  * kept most of it, and the other half keeps its date instead.
+ *
+ * "The most in common" only counts when it is most of *this* page too — over
+ * half its photographs, not just however many happen to overlap. Without
+ * that, one stray photograph a page shares with some other planned group can
+ * hand a four-photograph page a line written for a single, unrelated
+ * afternoon: the caption reads true of the one photograph it has in common
+ * and false of the other three sitting beside it. A page mostly its own
+ * photographs keeps no line at all sooner than borrow one that fits a
+ * quarter of it.
  */
 export function captionIndexForPhotos(
   plan: readonly PlannedPage[] | undefined,
@@ -253,6 +262,7 @@ export function captionIndexForPhotos(
 ): number | null {
   if (!plan || photoIds.length === 0) return null;
   const wanted = new Set(photoIds);
+  const majority = photoIds.length / 2;
 
   let best: number | null = null;
   let bestOverlap = 0;
@@ -262,6 +272,7 @@ export function captionIndexForPhotos(
       (count, id) => (wanted.has(id) ? count + 1 : count),
       0,
     );
+    if (overlap <= majority) return;
     if (overlap > bestOverlap) {
       bestOverlap = overlap;
       best = index;

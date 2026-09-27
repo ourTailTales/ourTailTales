@@ -183,6 +183,15 @@ describe("a line goes where its photographs went", () => {
     expect(captionIndexForPhotos(partial, ["a"], new Set())).toBeNull();
     expect(captionIndexForPhotos(partial, ["b"], new Set())).toBe(1);
   });
+
+  it("never hands a page a line for photographs that are only a minority of it", () => {
+    // One stray shared photograph is not the same occasion as the other
+    // three: a page mostly of its own content keeps no line sooner than it
+    // borrows one true of a quarter of what is actually on it.
+    expect(captionIndexForPhotos(plan, ["c", "x", "y", "z"], new Set())).toBeNull();
+    // Once its photographs are the majority of the page, it wins again.
+    expect(captionIndexForPhotos(plan, ["d", "e", "x"], new Set())).toBe(2);
+  });
 });
 
 describe("whichever way the model numbered the photographs", () => {
