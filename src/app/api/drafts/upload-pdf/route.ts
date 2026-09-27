@@ -3,7 +3,11 @@ import { z } from "zod";
 import { previewExpiryFrom } from "@/lib/drafts/expiry";
 import { resolveDraft } from "@/lib/drafts/resolve";
 import { routeError } from "@/lib/env";
-import { draftPdfPath, type DraftPdfKind } from "@/lib/drafts/storage";
+import {
+  draftIncomingPdfPath,
+  draftPdfPath,
+  type DraftPdfKind,
+} from "@/lib/drafts/storage";
 import { pdfPageCount } from "@/lib/book/pdf-pages";
 import { TEASER_PAGE_COUNT, TEASER_PDF_MAX_PAGES } from "@/lib/book/teaser";
 import { watermarkPdf } from "@/lib/book/watermark";
@@ -26,8 +30,8 @@ import { PREVIEW_BUCKET, supabaseAdmin } from "@/lib/supabase/server";
  *
  * ## Why the browser never uploads to a path we serve
  *
- * Every upload lands on one staging path, `incoming.pdf`, and nothing is ever
- * served from there. The files that are served — `teaser.pdf`, `preview.pdf`,
+ * Every upload lands on a staging path, and nothing is ever served from
+ * there. The files that are served — `teaser.pdf`, `preview.pdf`,
  * `clean.pdf` — are written by this route from those bytes, after it has
  * looked at them.
  *
@@ -41,8 +45,23 @@ import { PREVIEW_BUCKET, supabaseAdmin } from "@/lib/supabase/server";
  * has already been recorded as readable and unwatermarked, and every later
  * reader gets the full book for nothing.
  *
- * So the rule is: a client may overwrite the staging file as often as it
+ * So the rule is: a client may overwrite its staging file as often as it
  * likes, and it will never be the file anybody reads.
+ *
+ * ## Why staging is one path per `kind`, not one shared path
+ *
+ * A teaser is banked automatically, in the background, the moment the story
+ * is written. A full/clean bank only happens when a customer buys, and can
+ * run in the same browser at nearly the same time — the finishing screen and
+ * an emailed link opened in a second tab share a draft. A single shared
+ * staging path meant a teaser's bytes could land there *between* the full
+ * bank's own upload and its own finalize download, and get read as the whole
+ * book instead. The page-count guard below only rejects an upload of
+ * `TEASER_PAGE_COUNT` pages or fewer, and the teaser itself can run one page
+ * over that (cover, nine pages, a "there is more" notice), so it cleared the
+ * guard. Giving each kind its own staging slot makes that collision
+ * impossible regardless of timing, without weakening the guard that already
+ * exists for a genuinely short real book.
  */
 
 /**
@@ -73,6 +92,8 @@ const finalizeSchema = z.object({
   kind: bankKindSchema,
 });
 
+const signSchema = z.object({ kind: bankKindSchema });
+
 /** Step one: where should the browser put the bytes? */
 export async function POST(request: Request): Promise<Response> {
   try {
@@ -81,10 +102,12 @@ export async function POST(request: Request): Promise<Response> {
       return Response.json({ error: "Unknown draft." }, { status: 401 });
     }
 
-    // `kind` is still accepted in the body and deliberately ignored: which
-    // book this is only matters once we can see the bytes, and until then
-    // every upload goes to the same place.
-    const path = draftPdfPath(draft.id, "incoming");
+    // `kind` only picks which staging slot this upload gets — teaser and
+    // full never share one — not which final file it is trusted to become.
+    // That trust is still earned at finalize, from the bytes themselves.
+    const parsed = signSchema.safeParse(await request.json().catch(() => ({})));
+    const kind = parsed.success ? parsed.data.kind : "full";
+    const path = draftIncomingPdfPath(draft.id, kind);
     const { data, error } = await supabaseAdmin()
       .storage.from(PREVIEW_BUCKET)
       .createSignedUploadUrl(path, { upsert: true });
@@ -124,7 +147,7 @@ export async function PUT(request: Request): Promise<Response> {
 
     const supabase = supabaseAdmin();
     const teaser = parsed.data.kind === "teaser";
-    const stagingPath = draftPdfPath(draft.id, "incoming");
+    const stagingPath = draftIncomingPdfPath(draft.id, parsed.data.kind);
 
     const { data: uploaded, error: downloadError } = await supabase.storage
       .from(PREVIEW_BUCKET)
@@ -179,9 +202,7 @@ export async function PUT(request: Request): Promise<Response> {
       // The other half of the same check. `clean_pdf_storage_path` being set
       // is the only thing `checkout-digital` looks at before selling "the
       // complete book", so a teaser banked as the full book would put a
-      // ten-page file behind a $4.99 purchase. Two tabs on one lead email
-      // share a draft and a staging path, so this is reachable by accident as
-      // well as on purpose.
+      // ten-page file behind a $4.99 purchase.
       console.error(
         `[ourTailTales] Draft ${draft.id} banked a ${pages}-page file as the whole book.`,
       );
@@ -229,8 +250,8 @@ export async function PUT(request: Request): Promise<Response> {
     if (updateError) throw new Error(updateError.message);
 
     // Staging has done its job and is now a spare copy of the book sitting at
-    // the one path a client can write. Best effort: the nightly sweep removes
-    // it too, and failing to tidy up must not fail a banked book.
+    // a path a client can write. Best effort: the nightly sweep removes it
+    // too, and failing to tidy up must not fail a banked book.
     await supabase.storage
       .from(PREVIEW_BUCKET)
       .remove([stagingPath])

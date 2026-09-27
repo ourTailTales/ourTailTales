@@ -3,7 +3,11 @@ import { describe, expect, it } from "vitest";
 
 import { pdfPageCount } from "@/lib/book/pdf-pages";
 import { TEASER_PAGE_COUNT } from "@/lib/book/teaser";
-import { allDraftPdfPaths, draftPdfPath } from "@/lib/drafts/storage";
+import {
+  allDraftPdfPaths,
+  draftIncomingPdfPath,
+  draftPdfPath,
+} from "@/lib/drafts/storage";
 
 async function pdfWith(pages: number): Promise<Uint8Array> {
   const document = await PDFDocument.create();
@@ -37,16 +41,24 @@ describe("pdfPageCount", () => {
 describe("draft storage paths", () => {
   it("sweeps every file a draft can own, not only the recorded ones", () => {
     const paths = allDraftPdfPaths("abc");
-    for (const kind of ["incoming", "teaser", "preview", "clean"] as const) {
+    for (const kind of ["teaser", "preview", "clean"] as const) {
       expect(paths).toContain(draftPdfPath("abc", kind));
+    }
+    for (const bankKind of ["teaser", "full"] as const) {
+      expect(paths).toContain(draftIncomingPdfPath("abc", bankKind));
     }
   });
 
-  it("keeps uploads off every path that is served", () => {
-    // The staging path is the only one a client is handed a signed URL for.
-    const staging = draftPdfPath("abc", "incoming");
+  it("keeps uploads off every path that is served, and off each other", () => {
+    // Staging is the only place a client is ever handed a signed URL for,
+    // and a teaser upload can never land where a full-book upload does.
+    const teaserStaging = draftIncomingPdfPath("abc", "teaser");
+    const fullStaging = draftIncomingPdfPath("abc", "full");
+    expect(teaserStaging).not.toBe(fullStaging);
     for (const served of ["teaser", "preview", "clean"] as const) {
-      expect(draftPdfPath("abc", served)).not.toBe(staging);
+      const servedPath = draftPdfPath("abc", served);
+      expect(servedPath).not.toBe(teaserStaging);
+      expect(servedPath).not.toBe(fullStaging);
     }
   });
 });
