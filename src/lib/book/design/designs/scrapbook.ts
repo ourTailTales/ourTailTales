@@ -20,6 +20,7 @@ import {
   overlaps,
   pick,
   rotateAround,
+  rotatedHalfExtents,
   seededRandom,
   type Box,
   type DesignContext,
@@ -209,10 +210,13 @@ function slotPrint(args: {
 
 /* ------------------------------ scraps & doodles ------------------------------ */
 
-function paperScrap(random: () => number, palette: BookPalette): RectShape {
+function paperScrap(
+  random: () => number,
+  palette: BookPalette,
+  corner = Math.floor(random() * 4),
+): RectShape {
   // Anchored to a corner and running off the page, like a torn sheet tucked
   // under the prints.
-  const corner = Math.floor(random() * 4);
   const w = between(random, 0.46, 0.62);
   const h = between(random, 0.34, 0.5);
   const cx = corner % 2 === 0 ? w / 2 - 0.02 : 1 - w / 2 + 0.02;
@@ -229,6 +233,51 @@ function paperScrap(random: () => number, palette: BookPalette): RectShape {
   };
 }
 
+/**
+ * A strip of patterned paper laid along one edge, running off both ends.
+ *
+ * A page whose photographs sit in the middle leaves two bands of bare paper
+ * down its sides, and a corner scrap only ever answers one of them. This is
+ * what an album actually has there: a length of backing paper, slightly out
+ * of true, the photographs overlapping it.
+ */
+function paperStrip(random: () => number, palette: BookPalette): RectShape {
+  const upright = random() < 0.5;
+  const thickness = between(random, 0.08, 0.13);
+  const near = random() < 0.5;
+  const along = near ? thickness / 2 - 0.015 : 1 - thickness / 2 + 0.015;
+  return {
+    kind: "rect",
+    cx: upright ? along : 0.5,
+    cy: upright ? 0.5 : along,
+    w: upright ? thickness : 1.12,
+    h: upright ? 1.12 : thickness,
+    rotation: (random() < 0.5 ? -1 : 1) * between(random, 0.4, 1.4),
+    fill: pick(random, palette.scraps),
+    opacity: 0.5,
+  };
+}
+
+/**
+ * What goes under the photographs on an ordinary page.
+ *
+ * Always something. The page used to have a four-in-ten chance of nothing at
+ * all under it, which on a page of two prints is a large field of plain cream
+ * with two rectangles on it — the emptiest thing in the book, and the reason
+ * the design read as unfinished rather than as restrained.
+ */
+function backingPaper(random: () => number, palette: BookPalette): Shape[] {
+  const scraps: Shape[] = [paperScrap(random, palette)];
+  if (random() < 0.45) scraps.push(paperStrip(random, palette));
+  // A second corner, opposite the first, on the pages with room to show it.
+  else if (random() < 0.5) {
+    const first = scraps[0] as RectShape;
+    const opposite = first.cx < 0.5 ? (first.cy < 0.5 ? 3 : 1) : first.cy < 0.5 ? 2 : 0;
+    scraps.push(paperScrap(random, palette, opposite));
+  }
+  return scraps;
+}
+
 const DOODLE_SPOTS: readonly [number, number][] = [
   [0.085, 0.075],
   [0.915, 0.075],
@@ -238,6 +287,17 @@ const DOODLE_SPOTS: readonly [number, number][] = [
   [0.5, 0.94],
   [0.06, 0.5],
   [0.94, 0.5],
+  // Between the corners and the middle of each edge. A page whose prints
+  // reach the corners used to have nowhere left to draw, so it went bare;
+  // these are the gaps such a page actually leaves.
+  [0.22, 0.075],
+  [0.78, 0.075],
+  [0.22, 0.925],
+  [0.78, 0.925],
+  [0.07, 0.25],
+  [0.93, 0.25],
+  [0.07, 0.75],
+  [0.93, 0.75],
 ];
 
 /**
@@ -288,15 +348,30 @@ function doodlesFor(
   const spots = [...DOODLE_SPOTS].sort(() => random() - 0.5);
   for (const [spotX, spotY] of spots) {
     if (doodles.length >= count) break;
-    const size = between(random, 0.052, 0.078);
+    const wanted = between(random, 0.062, 0.1);
+
     // Pulled in far enough that the binder's knife never takes half a paw.
-    const inside = (value: number): number =>
+    const inside = (value: number, size: number): number =>
       Math.min(Math.max(value, DECOR_EDGE + size / 2), 1 - DECOR_EDGE - size / 2);
-    const cx = inside(spotX);
-    const cy = inside(spotY);
-    const candidate = { cx, cy, size };
-    if (overlaps(candidate, occupied, 0.008)) continue;
-    if (overlaps(candidate, doodles.map((doodle) => ({ ...doodle, w: doodle.size, h: doodle.size })), 0.02)) continue;
+    const fits = (
+      size: number,
+      pad: number,
+    ): { cx: number; cy: number; size: number } | null => {
+      const candidate = { cx: inside(spotX, size), cy: inside(spotY, size), size };
+      if (overlaps(candidate, occupied, pad)) return null;
+      const drawn = doodles.map((doodle) => ({ ...doodle, w: doodle.size, h: doodle.size }));
+      if (overlaps(candidate, drawn, 0.02)) return null;
+      return candidate;
+    };
+
+    // A page of two wide prints leaves only narrow bands of paper, and a
+    // doodle at full size clears none of them — which is how the roomiest
+    // layouts in the book ended up the barest. A smaller pen mark fits where
+    // a large one does not, and a small mark drawn close to a photograph is
+    // what somebody with a pen actually does.
+    const placed = fits(wanted, 0.008) ?? fits(wanted * 0.75, 0.008) ?? fits(0.036, 0.003);
+    if (!placed) continue;
+    const { cx, cy, size } = placed;
     const kind = pick(random, kinds);
     // Hearts and stars are stuck on about half the time: filled in the
     // book's own color with the white edge of a die-cut sticker.
@@ -327,7 +402,7 @@ function occupiedBy(prints: Print[]): Rotated[] {
  */
 function doodleCount(random: () => number): number {
   const roll = random();
-  return roll < 0.25 ? 1 : roll < 0.75 ? 2 : 3;
+  return roll < 0.2 ? 2 : roll < 0.7 ? 3 : 4;
 }
 
 /* ------------------------------ notes ------------------------------ */
@@ -441,6 +516,90 @@ function noteCard(args: {
   return { shapes, texts, occupied: [card] };
 }
 
+/* ------------------------------ the date in hand ------------------------------ */
+
+/** Where a date might be written, in the order an owner would reach for. */
+const STAMP_SPOTS: readonly [number, number][] = [
+  [0.5, 0.945],
+  [0.5, 0.075],
+  [0.25, 0.945],
+  [0.75, 0.945],
+  [0.25, 0.075],
+  [0.75, 0.075],
+];
+
+const STAMP_SIZE = 21;
+const STAMP_WIDTH = 0.34;
+
+/**
+ * The month, written on the page by hand.
+ *
+ * A page of three or four photographs said nothing at all. The polaroid pages
+ * carry their date on the print's deep bottom edge and the caption pages
+ * carry it on the note card, so the grids were the one kind of page in the
+ * book with no words on it anywhere — and an album page nobody wrote a date
+ * on is a page nobody kept.
+ *
+ * Set in the same hand as the note cards, in a gap the photographs left, and
+ * given back to the caller as an occupied box so the doodles keep off it.
+ */
+function dateInHand(args: {
+  label: string | null;
+  context: DesignContext;
+  random: () => number;
+  occupied: Rotated[];
+}): { texts: TextBlock[]; occupied: Rotated[] } {
+  const { label, context, random, occupied } = args;
+  if (!label) return { texts: [], occupied: [] };
+
+  const height = fromPt(STAMP_SIZE * 1.4);
+  // Against the line's own box rather than a square around it. A written
+  // date is wide and shallow, and a square the width of one finds nowhere to
+  // sit on a page of four photographs — which is exactly the page that most
+  // needs a date on it.
+  // Pulled inside the decorative edge first, so a spot near the side does not
+  // hang the line off the page.
+  const place = (at: number): number =>
+    Math.min(Math.max(at, DECOR_EDGE + STAMP_WIDTH / 2), 1 - DECOR_EDGE - STAMP_WIDTH / 2);
+  const spot = STAMP_SPOTS.map(([cx, cy]): [number, number] => [place(cx), cy]).find(
+    ([cx, cy]) => !clashes({ cx, cy, w: STAMP_WIDTH, h: height, rotation: 0 }, occupied, 0.006),
+  );
+  if (!spot) return { texts: [], occupied: [] };
+
+  const [cx, cy] = spot;
+  const rotation = (random() < 0.5 ? -1 : 1) * between(random, 0.8, 2.6);
+  return {
+    texts: [
+      lineAt({
+        baseline: cy + fromPt(STAMP_SIZE * 0.32),
+        x: cx - STAMP_WIDTH / 2,
+        w: STAMP_WIDTH,
+        rotation,
+        paragraph: {
+          text: label,
+          font: "hand",
+          size: STAMP_SIZE,
+          color: context.palette.accent,
+          align: "center",
+        },
+      }),
+    ],
+    occupied: [{ cx, cy, w: STAMP_WIDTH, h: height, rotation }],
+  };
+}
+
+/** Whether two boxes come within `pad` of one another, once both are turned. */
+function clashes(box: Rotated, boxes: readonly Rotated[], pad: number): boolean {
+  const mine = rotatedHalfExtents(box);
+  return boxes.some((other) => {
+    const theirs = rotatedHalfExtents(other);
+    return (
+      Math.abs(box.cx - other.cx) < mine.hw + theirs.hw + pad &&
+      Math.abs(box.cy - other.cy) < mine.hh + theirs.hh + pad
+    );
+  });
+}
+
 /* ------------------------------ words ------------------------------ */
 
 function titleTexts(context: DesignContext): TextBlock[] {
@@ -547,13 +706,39 @@ function designPage(page: BookPage, context: DesignContext): PageDesign {
         polaroid: true,
         tapeStyle: "top",
       });
+      design.under = [
+        // Torn paper behind the name, so the emptiest page in the book is not
+        // a name floating over cream.
+        {
+          kind: "rect",
+          cx: 0.5,
+          cy: 0.215,
+          w: between(random, 0.76, 0.86),
+          h: between(random, 0.15, 0.185),
+          rotation: (random() < 0.5 ? -1 : 1) * between(random, 1, 2.4),
+          fill: pick(random, palette.scraps),
+          opacity: 0.45,
+        },
+      ];
       design.prints = [print];
+      design.over = [
+        {
+          kind: "tape",
+          cx: between(random, 0.11, 0.17),
+          cy: between(random, 0.145, 0.175),
+          w: 0.12,
+          h: 0.032,
+          rotation: -34 + between(random, -6, 6),
+          color: pick(random, palette.tape),
+          opacity: 0.8,
+        },
+      ];
       design.doodles = doodlesFor(
         random,
         palette,
-        [...occupiedBy([print]), { cx: 0.5, cy: 0.23, w: 0.72, h: 0.16, rotation: 0 }],
-        2,
-        ["sparkle", "heart", "star"],
+        [...occupiedBy([print]), { cx: 0.5, cy: 0.23, w: 0.78, h: 0.24, rotation: 0 }],
+        4,
+        ["sparkle", "heart", "star", "paw"],
       );
       design.texts = titleTexts(context);
       return design;
@@ -588,7 +773,7 @@ function designPage(page: BookPage, context: DesignContext): PageDesign {
         random,
         palette,
         [...occupiedBy([print]), { ...OPENER_CARD, w: OPENER_CARD.w + 0.06, h: OPENER_CARD.h + 0.06, rotation: 0 }],
-        1,
+        2,
       );
       if (context.chapter) {
         const { cx, cy, r } = OPENER_STICKER;
@@ -613,13 +798,14 @@ function designPage(page: BookPage, context: DesignContext): PageDesign {
         polaroid: true,
         tapeStyle: "top",
       });
+      design.under = [paperScrap(random, palette)];
       design.prints = [print];
       design.doodles = doodlesFor(
         random,
         palette,
         [...occupiedBy([print]), { cx: 0.5, cy: 0.885, w: 0.7, h: 0.08, rotation: 0 }],
-        1,
-        ["heart", "sparkle"],
+        3,
+        ["heart", "sparkle", "paw", "star"],
       );
       design.texts = [
         lineAt({
@@ -655,7 +841,6 @@ function photoPage(
   const { palette } = context;
 
   let prints: Print[];
-  let scrapChance = 0.6;
   let doodles = doodleCount(random);
 
   if (page.layoutId === "full-bleed") {
@@ -688,8 +873,7 @@ function photoPage(
         tapeStyle: "corners",
       }),
     ];
-    scrapChance = 1;
-    doodles = 2;
+    doodles = 3;
   } else {
     const slots = gridSlots(page.layoutId, CONTENT, GRID);
     prints = page.photoIds.flatMap((id, index) => {
@@ -698,9 +882,27 @@ function photoPage(
     });
   }
 
-  design.under = random() < scrapChance ? [paperScrap(random, palette)] : [];
+  design.under = backingPaper(random, palette);
   design.prints = prints;
-  design.doodles = doodlesFor(random, palette, occupiedBy(prints), doodles);
+
+  // Nothing else on this page says when it was, so the page says it: the
+  // prints here carry no date of their own, and the layout keeps no room for
+  // the owner's words.
+  const written = polaroid
+    ? { texts: [], occupied: [] }
+    : dateInHand({
+        label: (photoId ? context.captionOf(photoId) : null) ?? context.chapter?.dateLabel ?? null,
+        context,
+        random,
+        occupied: occupiedBy(prints),
+      });
+  design.texts = written.texts;
+  design.doodles = doodlesFor(
+    random,
+    palette,
+    [...occupiedBy(prints), ...written.occupied],
+    doodles,
+  );
   return design;
 }
 
@@ -740,9 +942,9 @@ function captionPage(
     cards.push(...card.occupied);
   });
 
-  // A torn scrap in a corner, as on any other page: the note cards are
-  // white, and a page of white cards on cream needs some color under it.
-  design.under = random() < 0.55 ? [paperScrap(random, palette), ...under] : under;
+  // Torn paper under it, as on any other page: the note cards are white, and
+  // a page of white cards on cream needs some color beneath them.
+  design.under = [...backingPaper(random, palette), ...under];
   design.prints = prints;
   design.texts = texts;
   design.doodles = doodlesFor(

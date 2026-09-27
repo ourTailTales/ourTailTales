@@ -230,6 +230,48 @@ describe("the scrapbook design", () => {
     }
   });
 
+  it("puts torn paper under every page of photographs", () => {
+    // Four pages in ten used to get nothing at all beneath the prints, which
+    // on a page of two is a large field of plain cream with two rectangles
+    // on it — the emptiest thing in the book.
+    const { contextFor } = book();
+    for (const layout of PHOTO_LAYOUTS) {
+      const page = photoPage(layout);
+      const drawn = designPage(page, contextFor(page));
+      expect(drawn.under.filter((shape) => shape.kind === "rect").length).toBeGreaterThan(0);
+    }
+  });
+
+  it("marks up every page, however little room the photographs leave", () => {
+    // Pages of two wide prints leave only narrow bands of paper, and a mark
+    // at full size cleared none of them — so the roomiest-looking layouts in
+    // the book came out with nothing drawn on them at all. The imprint is
+    // the colophon and is meant to be plain.
+    const { pages, contextFor } = book();
+    for (const page of [...pages, ...PHOTO_LAYOUTS.map(photoPage)]) {
+      if (page.kind === "imprint") continue;
+      expect(designPage(page, contextFor(page)).doodles.length).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it("writes the date by hand on a page that says nothing else", () => {
+    // A page of three or four carries no polaroid date and keeps no room for
+    // the owner's words, so it was the one kind of page in the book with
+    // nothing written on it anywhere.
+    const { contextFor } = book();
+    const wordless = PHOTO_LAYOUTS.filter(
+      (spec) => spec.noteCount === 0 && spec.photoCount >= 3 && spec.photoCount <= 4,
+    );
+    expect(wordless.length).toBeGreaterThan(0);
+    for (const layout of wordless) {
+      const page = photoPage(layout);
+      const words = designPage(page, contextFor(page))
+        .texts.flatMap((block) => layoutTextBlock(block).lines.map((line) => line.text))
+        .join(" ");
+      expect(words).toMatch(/June 2019/);
+    }
+  });
+
   it("tapes a note card to every page that keeps room for words", () => {
     const { contextFor } = book();
     for (const layout of PHOTO_LAYOUTS.filter((spec) => spec.noteCount > 0)) {
