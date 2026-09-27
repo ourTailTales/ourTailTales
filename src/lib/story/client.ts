@@ -138,7 +138,12 @@ function pickSamples(
     .map((id) => photos.get(id))
     .filter((photo): photo is PhotoAsset => photo !== undefined);
 
-  const hero = chapter.heroPhotoId ? photos.get(chapter.heroPhotoId) : undefined;
+  // Same fallback the book itself uses to pick the opener (`chapterBodyIds`,
+  // `paginateBook`): a chapter without an explicit hero opens on its first
+  // photograph, and the model must be shown the same one it will be judged
+  // against, not just whichever `heroPhotoId` happens to say.
+  const heroId = chapter.heroPhotoId ?? chapter.photoIds[0] ?? null;
+  const hero = heroId ? photos.get(heroId) : undefined;
   const rest = available.filter((photo) => photo.id !== hero?.id);
   const wanted = hero ? AI_SAMPLES - 1 : AI_SAMPLES;
 
