@@ -1,5 +1,5 @@
 import { track } from "@/lib/analytics";
-import { renderFullPreviewPdf } from "@/lib/book/sample-pdf";
+import { renderCleanBookPdf } from "@/lib/book/sample-pdf";
 import { saveBookProject } from "@/lib/books/cloud";
 import { bankBook } from "@/lib/drafts/upload";
 import { photoMapOf, useOurTailTalesStore } from "@/store/useOurTailTalesStore";
@@ -20,7 +20,7 @@ export async function renderAndBankFullBook(): Promise<{ bookUrl: string | null 
     throw new Error("This device does not have this book's photos.");
   }
 
-  const pdf = await renderFullPreviewPdf({
+  const pdf = await renderCleanBookPdf({
     pages: state.pages,
     chapters: state.chapters,
     meta: state.meta,

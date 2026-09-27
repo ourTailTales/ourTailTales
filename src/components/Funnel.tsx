@@ -11,6 +11,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { captureClientException, identifyLead, track } from "@/lib/analytics";
 import {
   previewFileName,
+  renderCleanBookPdf,
   renderFullPreviewPdf,
   renderTeaserPdf,
   teaserFileName,
@@ -556,7 +557,7 @@ export function Funnel({
     const state = useOurTailTalesStore.getState();
     if (state.pages.length === 0) return;
 
-    const pdf = await renderFullPreviewPdf({
+    const pdf = await renderCleanBookPdf({
       pages: state.pages,
       chapters: state.chapters,
       meta: state.meta,

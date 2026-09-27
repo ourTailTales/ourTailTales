@@ -90,6 +90,40 @@ export async function renderFullPreviewPdf(args: {
   return new Blob([bytes as unknown as BlobPart], { type: "application/pdf" });
 }
 
+/**
+ * The whole book at screen resolution, with no watermark — what gets banked
+ * as the buyer's clean file.
+ *
+ * Deliberately its own function rather than `renderFullPreviewPdf` with a
+ * flag: that one is named, documented, and used elsewhere specifically
+ * because it *is* watermarked, and reusing it here is exactly how the
+ * "clean" file ended up watermarked in the first place. `upload-pdf` stamps
+ * its own copy of these bytes for `preview.pdf`; nothing before that needs
+ * to stamp anything.
+ */
+export async function renderCleanBookPdf(args: {
+  pages: BookPage[];
+  chapters: Chapter[];
+  meta: BookMeta;
+  photos: Map<string, PhotoAsset>;
+  onProgress?: (completed: number, total: number) => void;
+}): Promise<Blob> {
+  const { bytes } = await renderInteriorPdf({
+    pages: args.pages,
+    chapters: args.chapters,
+    meta: args.meta,
+    photos: args.photos,
+    placements: [],
+    targetPpi: FULL_PREVIEW_PPI,
+    jpegQuality: 0.7,
+    frontCover: true,
+    cropToTrim: true,
+    onProgress: args.onProgress,
+  });
+
+  return new Blob([bytes as unknown as BlobPart], { type: "application/pdf" });
+}
+
 export function teaserFileName(petName: string): string {
   return `ourtailtales-${slug(petName)}-first-pages.pdf`;
 }
