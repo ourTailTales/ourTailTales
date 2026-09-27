@@ -5,6 +5,7 @@ import {
   albumChapterRange,
   chaptersForAlbum,
   proposeChapters,
+  selectRepresentatives,
 } from "@/lib/photo/cluster";
 import {
   BASE_CHAPTERS,
@@ -139,6 +140,87 @@ describe("how many chapters an album comes to", () => {
 
   it("has an answer for an empty album", () => {
     expect(chaptersForAlbum([])).toBe(BASE_CHAPTERS);
+  });
+});
+
+describe("a week away", () => {
+  /** An album with somewhere to be: `[count, dayOffset, kmFromHome]`. */
+  function trip(legs: [number, number, number][]): PhotoAsset[] {
+    return legs.flatMap(([count, day, km]) =>
+      Array.from({ length: count }, (_, index) => ({
+        ...photoAt(START + (day + index) * DAY),
+        lat: 47.6,
+        // A degree of longitude at this latitude is almost exactly 75 km.
+        lng: -122.3 + km / 75,
+      })),
+    );
+  }
+
+  /** Five ordinary periods months apart, then a fortnight with a week in it. */
+  const lastLegAt = (km: number): [number, number, number][] => [
+    [10, 0, 0],
+    [10, 100, 0],
+    [10, 200, 0],
+    [10, 300, 0],
+    [10, 400, 0],
+    [5, 500, 0],
+    [5, 510, km],
+  ];
+
+  it("is its own period even with no quiet fortnight around it", () => {
+    // Ten days at home and then five hundred miles away, photographed
+    // throughout: no gap anywhere in it is long enough to be a seam on the
+    // calendar, and it is plainly not the same stretch of their life.
+    expect(albumChapterRange(trip(lastLegAt(900))).available).toBe(7);
+  });
+
+  it("is not read into a walk to the next park", () => {
+    // The same album with the trip five kilometres from home: one period,
+    // as the calendar already said.
+    expect(albumChapterRange(trip(lastLegAt(5))).available).toBe(6);
+  });
+});
+
+describe("which photographs a chapter keeps", () => {
+  /** `[count, dayOffset]`, all at home, an hour apart within the day. */
+  function occasions(runs: [number, number][]): PhotoAsset[] {
+    return runs.flatMap(([count, day]) =>
+      Array.from({ length: count }, (_, index) =>
+        photoAt(START + day * DAY + index * 3_600_000),
+      ),
+    );
+  }
+
+  it("keeps something from every outing, not just the busy ones", () => {
+    // One heavily photographed weekend and eight quiet visits. Slicing the
+    // chapter's span evenly gives the weekend a single slice and can leave a
+    // whole visit out; every visit has to reach the book.
+    const album = occasions([
+      [120, 0],
+      ...Array.from({ length: 8 }, (_, index): [number, number] => [3, 20 + index * 10]),
+    ]);
+    const kept = new Set(selectRepresentatives(album, 30).map((photo) => photo.id));
+
+    for (let index = 0; index < 8; index += 1) {
+      const visit = album.slice(120 + index * 3, 120 + index * 3 + 3);
+      expect(visit.some((photo) => kept.has(photo.id))).toBe(true);
+    }
+  });
+
+  it("gives the bigger day more of the places", () => {
+    const album = occasions([[60, 0], [6, 40]]);
+    const kept = new Set(selectRepresentatives(album, 20).map((photo) => photo.id));
+    const fromTheBigDay = album.slice(0, 60).filter((photo) => kept.has(photo.id));
+    const fromTheSmall = album.slice(60).filter((photo) => kept.has(photo.id));
+
+    expect(kept.size).toBe(20);
+    expect(fromTheBigDay.length).toBeGreaterThan(fromTheSmall.length);
+    expect(fromTheSmall.length).toBeGreaterThan(0);
+  });
+
+  it("keeps a chapter that already fits exactly as it is", () => {
+    const album = occasions([[4, 0], [4, 10]]);
+    expect(selectRepresentatives(album, 30)).toEqual(album);
   });
 });
 

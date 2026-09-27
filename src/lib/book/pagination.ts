@@ -42,6 +42,8 @@ export type PagePhoto = {
   capturedAt?: number | null;
   lat?: number;
   lng?: number;
+  /** The perceptual hash, so grouping can tell one scene from another. */
+  dHash?: string;
 };
 
 export type PhotoLookup = Map<string, PagePhoto>;
@@ -287,7 +289,13 @@ function capacitiesOf(chosen: readonly (PhotoLayoutId | null)[]): (number | null
 
 function plannable(id: string, photos: PhotoLookup): PlannablePhoto {
   const photo = photos.get(id);
-  return { id, capturedAt: photo?.capturedAt, lat: photo?.lat, lng: photo?.lng };
+  return {
+    id,
+    capturedAt: photo?.capturedAt,
+    lat: photo?.lat,
+    lng: photo?.lng,
+    dHash: photo?.dHash,
+  };
 }
 
 /**

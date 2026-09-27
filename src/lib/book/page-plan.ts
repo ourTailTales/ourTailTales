@@ -1,4 +1,5 @@
 import { MAX_PHOTOS_PER_PAGE } from "@/lib/book/layouts";
+import { hammingHex } from "@/lib/photo/dedupe";
 import {
   MAX_STORY_PAGES_PER_CHAPTER,
   MIN_STORY_PAGES_PER_CHAPTER,
@@ -16,9 +17,11 @@ import type { PhotoAsset } from "@/types/photo";
  *    a chapter, and five pages of one photograph each is the right book for
  *    that album — not nine thin pages and five empty ones.
  * 2. **Photographs share a page because they belong together**: the same
- *    afternoon, the same place, the same outing. Only when a chapter has
- *    more photographs than it has pages do any of them share at all, and
- *    then the ones that share are the ones taken closest together.
+ *    afternoon, the same place, the same scene. Two shots of one moment
+ *    share a page however much room the chapter has, because two pages of
+ *    the same picture is worse than one page of both. Beyond that, sharing
+ *    only happens when a chapter has more photographs than it has pages,
+ *    and then the ones that share are the ones with most in common.
  *
  * The grouping is decided once, when the chapter is written — by the model
  * where it offered one (`Chapter.pagePlan`), and by `planPages` here where
@@ -38,26 +41,95 @@ export type PlannablePhoto = {
   capturedAt?: number | null;
   lat?: number;
   lng?: number;
+  /**
+   * The 64-bit perceptual hash, as hex. Two photographs of the same scene
+   * differ by a handful of bits; two unrelated ones by a third of them. It is
+   * the only thing here that knows what a photograph actually looks like, and
+   * therefore the only way to tell one afternoon photographed twice from two
+   * afternoons a few hours apart.
+   */
+  dHash?: string;
 };
 
 export function photoFactsOf(photo: PhotoAsset): PlannablePhoto {
-  return { id: photo.id, capturedAt: photo.capturedAt, lat: photo.lat, lng: photo.lng };
+  return {
+    id: photo.id,
+    capturedAt: photo.capturedAt,
+    lat: photo.lat,
+    lng: photo.lng,
+    dHash: photo.dHash,
+  };
 }
+
+/**
+ * Two photographs of one moment: taken within the hour, in the same spot, and
+ * plainly of the same scene.
+ *
+ * All three are required, and the last one is why this exists. Timestamps
+ * close together mean the camera was out, not that the pictures are alike —
+ * a dog on the lawn and the lawn's new fence, four minutes apart, are two
+ * subjects and belong on two pages. So a pair is only put together on the
+ * evidence of the pictures themselves, which means an album with no capture
+ * dates, no coordinates or no hashes never triggers this at all and keeps a
+ * page per photograph.
+ *
+ * Exact duplicates never reach here: `groupDuplicates` has already hidden
+ * everything within `NEAR_DUPLICATE_BITS`. What is left in this band is the
+ * same scene shot twice — the second frame, the one where they looked up.
+ */
+const SAME_SCENE_BITS = 14;
+const SAME_MOMENT_MINUTES = 45;
+const SAME_SPOT_KM = 0.5;
+
+function sameMoment(left: PlannablePhoto, right: PlannablePhoto): boolean {
+  if (!left.dHash || !right.dHash) return false;
+  if (hammingHex(left.dHash, right.dHash) > SAME_SCENE_BITS) return false;
+  if (!left.capturedAt || !right.capturedAt) return false;
+  if (Math.abs(right.capturedAt - left.capturedAt) > SAME_MOMENT_MINUTES * 60_000) {
+    return false;
+  }
+  return kmBetween(left, right) <= SAME_SPOT_KM;
+}
+
+/** The most photographs one moment puts on a page of its own accord. */
+const SAME_MOMENT_MAX_PER_PAGE = 3;
 
 /**
  * Groups a chapter's photographs onto pages by what they have in common.
  *
- * Starts with one photograph to a page — which is the whole answer for a
- * chapter with few — and while there are more pages than the chapter may
- * have, merges the two neighbouring pages whose photographs have the most in
- * common: taken minutes apart, in the same place. The last merges are the
- * ones between one afternoon and the next, so a page almost never straddles
- * two occasions.
+ * Two passes, and they answer different questions.
+ *
+ * The first asks what belongs together whatever the page budget says: runs of
+ * one moment, shot minutes apart in one spot and plainly of one scene
+ * (`sameMoment`). Those go on a page together even in a chapter with pages to
+ * spare, because two consecutive pages of the same picture is a worse book
+ * than one page of both. Nothing else is touched.
+ *
+ * The second is the page budget. While there are more pages than the chapter
+ * may have, it merges the two neighbouring pages whose photographs have the
+ * most in common: taken close together, in the same place, and looking alike.
+ * The last merges are the ones between one afternoon and the next, so a page
+ * almost never straddles two occasions.
  */
 export function planPages(photos: readonly PlannablePhoto[]): PlannedPage[] {
   if (photos.length === 0) return [];
   const pages = photos.map((photo) => [photo]);
   const maxPages = Math.min(MAX_PHOTO_PAGES, Math.max(MIN_PHOTO_PAGES, photos.length));
+
+  // One moment, shot more than once. Merged from the left so a burst of four
+  // becomes one page of three and one of the fourth rather than two of two.
+  for (let index = 0; index < pages.length - 1 && pages.length > MIN_PHOTO_PAGES; ) {
+    const left = pages[index]!;
+    const right = pages[index + 1]!;
+    if (
+      left.length + right.length <= SAME_MOMENT_MAX_PER_PAGE &&
+      sameMoment(left.at(-1)!, right[0]!)
+    ) {
+      pages.splice(index, 2, [...left, ...right]);
+      continue;
+    }
+    index += 1;
+  }
 
   while (pages.length > maxPages) {
     let bestAt = -1;
@@ -119,9 +191,15 @@ function pageCap(total: number): number {
 }
 
 /**
- * How little two photographs have in common: hours apart, and how far apart
- * they were taken. Undated photographs are treated as a day apart, which is
- * enough to keep them from being merged ahead of a real burst.
+ * How little two photographs have in common: hours apart, how far apart they
+ * were taken, and how unalike they look. Undated photographs are treated as a
+ * day apart, which is enough to keep them from being merged ahead of a real
+ * burst.
+ *
+ * The third term is what stops a page reading as two unrelated pictures that
+ * happened to fall next to each other in the chronology. Where a chapter must
+ * crowd its pages, the ones that end up sharing are the ones of the same
+ * scene — which is the difference between a page and a pair of leftovers.
  */
 function apartness(left: PlannablePhoto, right: PlannablePhoto): number {
   const hours =
@@ -129,7 +207,33 @@ function apartness(left: PlannablePhoto, right: PlannablePhoto): number {
       ? Math.abs(right.capturedAt - left.capturedAt) / 3_600_000
       : 24;
   const km = kmBetween(left, right);
-  return Math.log1p(hours) + Math.log1p(km) * 0.6;
+  return Math.log1p(hours) + Math.log1p(km) * 0.6 - kinship(left, right);
+}
+
+/**
+ * How much two photographs look like they belong beside one another, as an
+ * amount to take off how far apart they are.
+ *
+ * Deliberately smaller than a day (`log1p(24)` ≈ 3.2): looking alike decides
+ * which of two similar gaps is merged first, and never carries a pair across
+ * a real one. Photographs with no hash — an album read before hashes were
+ * kept — score nothing and are ordered on time and place alone, exactly as
+ * before.
+ */
+const LOOK_ALIKE_WEIGHT = 0.9;
+/** Bits of dHash difference past which two photographs have nothing in common. */
+const UNRELATED_BITS = 26;
+
+/**
+ * Only what the pictures look like. Facing the same way was tried here and
+ * taken out: which way a photograph faces is a question for the layout, which
+ * already deals orientations into slots, and pulling portraits onto pages with
+ * portraits made every page of the book hold the same shapes as the last.
+ */
+function kinship(left: PlannablePhoto, right: PlannablePhoto): number {
+  if (!left.dHash || !right.dHash) return 0;
+  const bits = hammingHex(left.dHash, right.dHash);
+  return Math.max(0, 1 - bits / UNRELATED_BITS) * LOOK_ALIKE_WEIGHT;
 }
 
 function kmBetween(a: PlannablePhoto, b: PlannablePhoto): number {

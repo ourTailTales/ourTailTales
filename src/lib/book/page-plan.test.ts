@@ -73,6 +73,103 @@ describe("grouping a chapter's photographs onto pages", () => {
   });
 });
 
+describe("two photographs of one moment", () => {
+  /** The same scene twice: minutes apart, one spot, hashes a few bits apart. */
+  const scene = (
+    id: string,
+    minutes: number,
+    dHash: string,
+  ): PlannablePhoto => ({
+    id,
+    capturedAt: START + minutes * 60_000,
+    lat: 47.61,
+    lng: -122.33,
+    dHash,
+  });
+
+  const SAME = "ffff0000ffff0000";
+  const NEARLY = "ffff0000ffff000f";
+  const NOTHING_ALIKE = "0f0f0f0f0f0f0f0f";
+
+  it("share a page even in a chapter with pages to spare", () => {
+    const pages = planPages([
+      scene("a", 0, SAME),
+      scene("b", 3, NEARLY),
+      scene("c", 600, NOTHING_ALIKE),
+      scene("d", 1200, "00ff00ff00ff00ff"),
+      scene("e", 1800, "f000f000f000f000"),
+    ]);
+    expect(photosOf(pages)).toEqual([["a", "b"], ["c"], ["d"], ["e"]]);
+  });
+
+  it("stay apart when only their timestamps are close", () => {
+    // Four minutes apart in the same spot, and of completely different
+    // things: the camera was out, which is not the same as one moment.
+    const pages = planPages([
+      scene("a", 0, SAME),
+      scene("b", 4, NOTHING_ALIKE),
+      scene("c", 600, "00ff00ff00ff00ff"),
+    ]);
+    expect(photosOf(pages)).toEqual([["a"], ["b"], ["c"]]);
+  });
+
+  it("stay apart when the same scene was shot hours later", () => {
+    const pages = planPages([
+      scene("a", 0, SAME),
+      scene("b", 60 * 6, NEARLY),
+      scene("c", 60 * 20, NOTHING_ALIKE),
+    ]);
+    expect(photosOf(pages)).toEqual([["a"], ["b"], ["c"]]);
+  });
+
+  it("never takes a chapter below the pages it must have", () => {
+    const burst = Array.from({ length: 6 }, (_, index) =>
+      scene(`p${index}`, index * 2, index % 2 === 0 ? SAME : NEARLY),
+    );
+    const pages = planPages(burst);
+    expect(pages.length).toBeGreaterThanOrEqual(MIN_PHOTO_PAGES);
+    expect(photosOf(pages).flat()).toEqual(burst.map((photo) => photo.id));
+    // Three of one moment is as many as a page takes of its own accord.
+    expect(Math.max(...pages.map((page) => page.photos.length))).toBeLessThanOrEqual(3);
+  });
+
+  it("leaves an album with no hashes exactly as it was", () => {
+    const pages = planPages(album([[9, 0]]));
+    expect(pages.every((page) => page.photos.length === 1)).toBe(true);
+  });
+});
+
+describe("crowding a chapter that has more photographs than pages", () => {
+  it("puts the ones that look alike together rather than the ones next in line", () => {
+    // Twenty photographs three hours apart — far enough that none of them is
+    // one moment shot twice, so every neighbouring gap is identical and only
+    // what the pictures look like can tell the pairs apart. Odd indices
+    // deliberately: merging left to right, which is what happens when
+    // nothing distinguishes two pairs, would pair 0 with 1 and never 1
+    // with 2.
+    const twins = new Set([1, 5, 9, 13, 17]);
+    const sceneOf = (index: number): number => (twins.has(index) ? index : index - 1);
+    const photos: PlannablePhoto[] = Array.from({ length: 20 }, (_, index) => ({
+      id: `p${index}`,
+      capturedAt: START + index * 3 * 3_600_000,
+      // A twin and the photograph after it are the same scene; the rest are
+      // unrelated to everything.
+      dHash:
+        twins.has(index) || twins.has(index - 1)
+          ? `${sceneOf(index).toString(16).padStart(2, "0")}ff00ff00ff00ff`
+          : `${index.toString(16).padStart(2, "0")}0f1e2d3c4b5a69`,
+    }));
+
+    const pages = planPages(photos);
+    // Every twin ended up on a page with its own pair.
+    for (const index of twins) {
+      const page = pages.find((entry) => entry.photos.includes(`p${index}`))!;
+      expect(page.photos).toContain(`p${index + 1}`);
+    }
+    expect(photosOf(pages).flat()).toEqual(photos.map((photo) => photo.id));
+  });
+});
+
 describe("a grouping the model sent back", () => {
   const ids = ["a", "b", "c", "d", "e"];
 

@@ -902,9 +902,9 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 /**
- * What pagination needs from the album: which way each photograph faces, and
- * when and where it was taken — the facts that decide which photographs
- * belong on a page together.
+ * What pagination needs from the album: which way each photograph faces, when
+ * and where it was taken, and what it looks like — the facts that decide
+ * which photographs belong on a page together.
  */
 function photoFactsOf(photos: PhotoAsset[]): PhotoLookup {
   return new Map(
@@ -915,6 +915,7 @@ function photoFactsOf(photos: PhotoAsset[]): PhotoLookup {
         capturedAt: photo.capturedAt,
         lat: photo.lat,
         lng: photo.lng,
+        dHash: photo.dHash,
       },
     ]),
   );

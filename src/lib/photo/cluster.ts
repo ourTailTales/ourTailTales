@@ -78,6 +78,23 @@ export function proposeChapters(
 export const SEAM_DAYS = 14;
 
 /**
+ * A gap in distance that is a seam however short the gap in time is.
+ *
+ * Seams were read off the calendar alone, which misses the most obvious
+ * chapter break an album has: the week away. A fortnight in another country,
+ * photographed every day, has no quiet fortnight anywhere in it, so it was
+ * folded into the same chapter as the garden it left and came back to — the
+ * one stretch of the album with an obvious story of its own, told as part of
+ * somebody's spring.
+ *
+ * Seventy-five kilometres is far enough that it cannot be the next street or
+ * the usual park, and near enough to catch a weekend away. Photographs with
+ * no coordinates give zero here and are decided on their dates alone, exactly
+ * as before.
+ */
+export const SEAM_KM = 75;
+
+/**
  * How many chapters this album is actually made of.
  *
  * Every book came out at exactly five chapters, whatever was dropped in: the
@@ -145,7 +162,7 @@ function runsBetweenSeams(ordered: PhotoAsset[]): number[] {
 
   ordered.forEach((photo, index) => {
     const previous = ordered[index - 1];
-    if (previous && daysBetween(previous, photo) >= SEAM_DAYS) {
+    if (previous && isSeam(previous, photo)) {
       runs.push(run);
       run = 0;
     }
@@ -175,6 +192,11 @@ function runsBetweenSeams(ordered: PhotoAsset[]): number[] {
     kept[kept.length - 1] += short;
   }
   return kept;
+}
+
+/** The camera stopped and started again: a long quiet, or a long way. */
+function isSeam(previous: PhotoAsset, photo: PhotoAsset): boolean {
+  return daysBetween(previous, photo) >= SEAM_DAYS || kmBetween(previous, photo) >= SEAM_KM;
 }
 
 /* -------------------------------- boundaries -------------------------------- */
@@ -289,9 +311,34 @@ function evenSegments(ordered: PhotoAsset[], count: number): PhotoAsset[][] {
 /* ------------------------------- representatives ------------------------------ */
 
 /**
- * Picks the photos that actually get placed. Temporal bins stop one afternoon
- * from dominating a multi-year chapter; the top-up pass then favors quality,
- * fresh content, and orientation variety.
+ * How close together two photographs have to be to be the same occasion: the
+ * same day out, the same visit, the same afternoon in the garden.
+ *
+ * Shorter and less far than a chapter seam, because this divides the inside
+ * of a chapter rather than the album. A day is the unit an owner thinks in
+ * ("the day at the lake"), and twenty-five kilometres separates a trip out
+ * from the usual streets without splitting a walk in half.
+ */
+const OCCASION_HOURS = 20;
+const OCCASION_KM = 25;
+
+/**
+ * Picks the photos that actually get placed.
+ *
+ * By occasion, not by the calendar. Even slices of a chapter's span sound
+ * fair and are not: a chapter holding one heavily photographed weekend and
+ * eight quiet visits gives the weekend a single slice — it is short — and
+ * spreads the other twenty-nine over the empty months around it, so the two
+ * days the album is really about come out as one picture. Worse, a visit
+ * that falls entirely inside one slice competes with the whole slice and can
+ * be left out of the book altogether.
+ *
+ * So the chapter is split where it actually breaks — a day apart, or a drive
+ * away — and the places are shared out between those occasions: one each
+ * first, so nothing the owner photographed is missing from the chapter, and
+ * the rest by how much of the chapter each occasion is. Within an occasion
+ * the picks are spread across it and chosen on quality, and the top-up pass
+ * then favors quality, fresh content, and orientation variety as before.
  */
 export function selectRepresentatives(
   segment: PhotoAsset[],
@@ -299,19 +346,22 @@ export function selectRepresentatives(
 ): PhotoAsset[] {
   if (segment.length <= target) return [...segment];
 
-  const bins = binByTime(segment, target);
+  const occasions = occasionsIn(segment);
+  const quota = shareOut(
+    occasions.map((occasion) => occasion.length),
+    target,
+  );
+
   const picked: PhotoAsset[] = [];
   const pickedIds = new Set<string>();
 
-  for (const bin of bins) {
-    if (bin.length === 0) continue;
-    const best = bin.reduce((winner, photo) =>
-      photo.qualityScore > winner.qualityScore ? photo : winner,
-    );
-    picked.push(best);
-    pickedIds.add(best.id);
-    if (picked.length >= target) break;
-  }
+  occasions.forEach((occasion, index) => {
+    for (const photo of bestSpread(occasion, quota[index] ?? 0)) {
+      if (pickedIds.has(photo.id)) continue;
+      picked.push(photo);
+      pickedIds.add(photo.id);
+    }
+  });
 
   if (picked.length < target) {
     const remaining = segment.filter((photo) => !pickedIds.has(photo.id));
@@ -326,6 +376,78 @@ export function selectRepresentatives(
   }
 
   return picked.sort(compareChronologically);
+}
+
+/** The chapter split where it breaks: a day apart, or a drive away. */
+function occasionsIn(segment: PhotoAsset[]): PhotoAsset[][] {
+  const occasions: PhotoAsset[][] = [];
+  for (const photo of segment) {
+    const open = occasions.at(-1);
+    const previous = open?.at(-1);
+    const broke =
+      previous !== undefined &&
+      (daysBetween(previous, photo) * 24 >= OCCASION_HOURS ||
+        kmBetween(previous, photo) >= OCCASION_KM);
+    if (!open || broke) occasions.push([photo]);
+    else open.push(photo);
+  }
+  return occasions;
+}
+
+/**
+ * How many of the chapter's places each occasion gets.
+ *
+ * One each to start with, largest first, so an occasion is only left out
+ * altogether when there are more occasions than places in the chapter. The
+ * rest go by highest averages — an occasion with twice the photographs earns
+ * its second place before one with half of them earns its first — and an
+ * occasion never gets more places than it has photographs.
+ */
+function shareOut(sizes: readonly number[], target: number): number[] {
+  const quota = sizes.map(() => 0);
+  const total = sizes.reduce((sum, size) => sum + size, 0);
+  let left = Math.min(target, total);
+
+  const biggestFirst = sizes
+    .map((size, index) => ({ size, index }))
+    .sort((a, b) => b.size - a.size || a.index - b.index);
+  for (const { index } of biggestFirst) {
+    if (left === 0) break;
+    quota[index] = 1;
+    left -= 1;
+  }
+
+  while (left > 0) {
+    let best = -1;
+    let bestClaim = -Infinity;
+    for (let index = 0; index < sizes.length; index += 1) {
+      if (quota[index]! >= sizes[index]!) continue;
+      const claim = sizes[index]! / (quota[index]! + 1);
+      if (claim > bestClaim) {
+        bestClaim = claim;
+        best = index;
+      }
+    }
+    if (best === -1) break;
+    quota[best]! += 1;
+    left -= 1;
+  }
+  return quota;
+}
+
+/** The best `count` of one occasion, spread across the time it covers. */
+function bestSpread(occasion: PhotoAsset[], count: number): PhotoAsset[] {
+  if (count <= 0) return [];
+  if (occasion.length <= count) return [...occasion];
+  return binByTime(occasion, count).flatMap((bin) =>
+    bin.length === 0
+      ? []
+      : [
+          bin.reduce((winner, photo) =>
+            photo.qualityScore > winner.qualityScore ? photo : winner,
+          ),
+        ],
+  );
 }
 
 function binByTime(segment: PhotoAsset[], binCount: number): PhotoAsset[][] {
