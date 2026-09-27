@@ -236,4 +236,25 @@ describe("whichever way the model numbered the photographs", () => {
       expect(photosOf(pages!).flat().sort()).toEqual([...ids].sort());
     }
   });
+
+  it("does not let one stray zero shift every other, clearly one-based group", () => {
+    // Five photos, numbered 1 to 5. One group mistakenly writes "0" — a slip,
+    // not a signal that the whole plan is zero-based — while another group
+    // correctly reaches 5, which only a one-based count can do. Read as
+    // zero-based, every caption but the broken group's would land one
+    // photograph later than the one it was written about.
+    const five = ["q0", "q1", "q2", "q3", "q4"];
+    const pages = planFromIndexes(five, [
+      { photos: [1, 2], caption: "First" },
+      { photos: [0], caption: "A stray zero" },
+      { photos: [3, 4], caption: "Middle" },
+      { photos: [5], caption: "Last" },
+    ]);
+
+    expect(pages).toEqual([
+      { photos: ["q0", "q1"], caption: "First" },
+      { photos: ["q2", "q3"], caption: "Middle" },
+      { photos: ["q4"], caption: "Last" },
+    ]);
+  });
 });

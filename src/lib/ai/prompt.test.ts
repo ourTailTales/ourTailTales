@@ -152,6 +152,24 @@ describe("cohesion and the shape of the story", () => {
     expect(prompt).toContain("25 to 40 words");
   });
 
+  it("ties concrete detail to the opening photograph, not the rest of the period", () => {
+    const prompt = storySystemPrompt({ stillHere: true });
+    expect(prompt).toContain("The opening photograph");
+    expect(prompt).toContain("the only one printed beside your words");
+    expect(prompt).toContain("Never describe a specific object, pose, or setting from any photograph but the opening one");
+  });
+
+  it("tells the caller which attached thumbnail is the opening photograph", () => {
+    const prompt = buildStoryPrompt(chapterOf({ thumbnails: ["a", "b", "c"] }));
+    expect(prompt).toContain("The first is the opening photograph");
+  });
+
+  it("bans decorated nouns in both the introduction and the page captions", () => {
+    const prompt = storySystemPrompt({ stillHere: true });
+    expect(prompt).toContain('"the blanket", not "the striped blanket"');
+    expect(prompt).toContain('"Right by the fireplace", not "Right by the brick fireplace"');
+  });
+
   it("reads the first period of a young animal as a homecoming", () => {
     const prompt = buildStoryPrompt(chapterOf({ chapterNumber: 1, chapterCount: 5 }));
     expect(prompt).toContain("This is period 1 of 5");

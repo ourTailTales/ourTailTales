@@ -32,12 +32,16 @@ Write plainly. Say it the way you'd say it out loud, not the way a jacket blurb 
 
 Match what the pet is actually doing, not a mood you'd like the scene to have. A dog gripping a toy in its teeth, mid-motion, or looking straight at the camera is not "settling in", "resting", or "letting the day slow down" — don't default to calm or sleepy language unless the pet is plainly still or asleep. Write the actual state: playing, chewing, watching, mid-stride, whatever it is.
 
+You write about the period, not about one picture. The opening photograph (always the first one described below) is the only one printed beside your words — everything else attached is there so you understand the shape of these weeks or months, not to be narrated. Never describe a specific object, pose, or setting from any photograph but the opening one: naming what only a later or earlier picture shows prints a sentence beside a photograph it isn't about. When you want the feel of the whole period rather than the one moment the opening photograph catches, say so in general terms — "settling into the new house", "the long slow weeks of winter" — not as if you were describing another exact picture you can't see.
+
+Name things plainly, not decoratively: "the blanket", not "the striped blanket"; "the fireplace", not "the brick fireplace"; "the pillow", not "the striped pillow". Add what something is made of, colored, or patterned only when that quality is the actual point of the sentence, never as scene-dressing. A string of descriptors is the surest tell of AI-written copy — a friend describing the photo out loud wouldn't reach for one.
+
 Tell one small story, not an inventory:
 - Find the one scene or idea this period is about, and build the paragraph on it with a clear through-line.
 - Write one occasion, never the pattern across all of them. Nothing that holds true of every scene at once: no "each new", "every", "any time", "always", "until finally". Those are a summary of a pile of pictures wearing the clothes of a story.
-- Use at most two concrete details you can actually see, and connect them (one leads to the other, or contrasts with it). Never list objects, poses, or places: no "X, Y, and Z".
-- You may name a feeling a scene plainly shows. Never invent what cannot be seen: no events off camera, no people's names, no backstory.
-- Mention a clothing item or collar only if it plausibly appears here. At most one place name, only if it helps.
+- Use at most two concrete details from the opening photograph, and connect them (one leads to the other, or contrasts with it). Never list objects, poses, or places: no "X, Y, and Z".
+- You may name a feeling the opening photograph plainly shows. Never invent what cannot be seen there: no events off camera, no people's names, no backstory.
+- Mention a clothing item or collar only if it plausibly appears in the opening photograph. At most one place name, only if it helps.
 - Vary sentence openings; don't start with the pet's name plus "'s", or with "In", "During", "This", or "These".
 
 Length: 25 to 40 words, two or three sentences. Title: 2 to 5 words, particular to what is shown, never a date or "Early Days" — and never a phrase that could read as a euphemism for death ("at rest", "where it ends", "the last…") unless the book is a memorial and the pet has died. Date label: short, e.g. "Spring 2016". No quotation marks, emoji, or markdown; never mention files, metadata, or AI.
@@ -50,6 +54,11 @@ Too flat — never write like these:
 Too fancy — also never write like this:
 - "Spring brought quieter afternoons spent sinking deep into the striped fleece blanket. Rocket rested his chin near the green toy, finally letting the long day slow down." (the photo shows him gripping the toy in his teeth, alert — this invents a calm he isn't in, and "sinking deep" / "finally letting the long day slow down" is a blurb, not a sentence a friend would say)
 - "Spring demanded nothing more than the striped blanket draped over the sofa. Rocket burrowed beneath its folds, sleeping off the afternoon until the warmth finally coaxed him back upright." (he's on the floor gnawing a sock, not asleep on a sofa — "demanded", "coaxed", "finally" are all reaching for a mood the picture doesn't show)
+
+Too decorated, and about the wrong photo — also never write like this:
+- "Winter kept the striped pillow pulled close on the sofa. Rocket spent the coldest weeks curled into the wool folds, watching the snow pile up outside." (the opening photograph is a dog on a striped rug in front of a brick fireplace — "striped pillow", "wool folds" and "watching the snow" all describe a different picture entirely, one the reader never sees beside this text)
+- "Everything was larger than him by half. Rocket tested the new tile floors flat on his belly before claiming the blue bed under a pile of bright blankets." (the opening photograph shows him on plain tile, nothing else — "the blue bed under a pile of bright blankets" is a real detail from a photo further into the chapter, printed as if it belonged to this one; "tile floors" is fine, three more decorated nouns after it is not)
+- "Right by the brick fireplace" (a page caption: naming the fireplace is fine if it is there, but "brick" is doing nothing the reader needed — "Right by the fireplace" says the same thing without reaching for a material nobody asked about)
 
 The voice we want:
 - "The Lawn Was His": "Spring meant one thing: the lawn. Rocket rolled until his red collar vanished into the grass, then flopped in the one patch of sun by the fence."
@@ -80,6 +89,7 @@ The caption on each page:
 - Three to ten words, one line, in the same voice as the introduction. It sits under the date, in the owner's book, beside their photographs.
 - Say something about that page: the season it falls in, the place, where it comes in the chapter's story. "Back at the lake by June", "The long slow middle of winter", "First week in the new house".
 - Only what the dates, the seasons, the place and the story you just wrote actually support. You cannot see these photographs individually — never invent what one shows, never name a person, never claim an event. "Out into the sunny green yard" is a guess at a picture, and it was printed under a dog asleep on a wooden floor; "The first warm week of June" is the same page, told from what is actually known.
+- Plain nouns, not decorated ones, same as the introduction: "Right by the fireplace", not "Right by the brick fireplace" — naming the material adds nothing and is a guess about a photograph you cannot see.
 - No full stop at the end unless the line is a sentence. Never a date alone: the date is already printed.
 - Never the camera, in any form: no photograph, picture, image, lens, close-up, "up close", posing, backdrop or background. "Right up close to the lens" is a line about a photograph; "Nose first, as usual" is a line about a dog.
 - Every page gets one, and no two pages in a chapter get the same line.`
@@ -133,7 +143,7 @@ export function buildStoryPrompt(chapter: StoryRequest): string {
       ? `Where this period took place (optional — mention at most one, only if it helps): ${places.join(" | ")}`
       : null,
     chapter.thumbnails.length > 0
-      ? `${chapter.thumbnails.length} pictures from this period are attached. Look closely at them: they are the story.`
+      ? `${chapter.thumbnails.length} pictures from this period are attached. The first is the opening photograph — the only one printed beside what you write, so any concrete detail you name must be visible in it. The rest are only so you understand the shape of the whole period; look closely at all of them for that, but do not describe what only they show.`
       : "No pictures are attached; keep the introduction short and general rather than inventing detail.",
   ].filter((line): line is string => line !== null);
 
