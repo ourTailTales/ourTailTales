@@ -12,6 +12,7 @@ import {
   captureServerException,
 } from "@/lib/posthog-server";
 import { stripeClient } from "@/lib/stripe";
+import { isMissingColumnError } from "@/lib/supabase/missing-column";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { videosEligibleForArchival } from "@/lib/archival/can-archive";
 import type { FrozenBookRevision } from "@/types/video-memory";
@@ -333,6 +334,20 @@ async function moneyGoingBack(
   });
 }
 
+const PAYMENT_INTENT_COLUMN = "digital_stripe_payment_intent_id";
+
+/** The database is missing supabase/migrations/20260927200000_draft_refund_tracking.sql. */
+async function alertMigrationPending(
+  draftId?: string,
+  paymentIntentId?: string | null,
+): Promise<void> {
+  await alertOps(`book_drafts.${PAYMENT_INTENT_COLUMN} is missing`, {
+    draft: draftId,
+    paymentIntent: paymentIntentId,
+    note: "Apply supabase/migrations/20260927200000_draft_refund_tracking.sql. Until then, digital purchases are granted but a refund or dispute cannot revoke them.",
+  });
+}
+
 /**
  * The digital-purchase half of a refund or dispute.
  *
@@ -368,6 +383,12 @@ async function revokeDigitalAccess(
     .select("id")
     .maybeSingle();
 
+  // Without the column no purchase was ever linked to its payment, so there
+  // is nothing to match. The caller alerts on the unmatched payment.
+  if (isMissingColumnError(error, PAYMENT_INTENT_COLUMN)) {
+    await alertMigrationPending();
+    return false;
+  }
   if (error) throw new Error(error.message);
   if (!draft) return false;
 
@@ -405,19 +426,33 @@ async function grantDigitalAccess(
 
   // Conditional on not already being purchased, so a redelivered webhook
   // cannot re-grant or send a second confirmation.
-  const { data: claimed, error } = await supabase
-    .from("book_drafts")
-    .update({
-      digital_purchased_at: new Date().toISOString(),
-      digital_stripe_payment_intent_id: paymentIntentId,
-      watermarked: false,
-      expires_at: null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", draftId)
-    .is("digital_purchased_at", null)
-    .select("id, pet_name")
-    .maybeSingle();
+  const claim = (withPaymentIntent: boolean) =>
+    supabase
+      .from("book_drafts")
+      .update({
+        digital_purchased_at: new Date().toISOString(),
+        ...(withPaymentIntent
+          ? { [PAYMENT_INTENT_COLUMN]: paymentIntentId }
+          : {}),
+        watermarked: false,
+        expires_at: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", draftId)
+      .is("digital_purchased_at", null)
+      .select("id, pet_name")
+      .maybeSingle();
+
+  let { data: claimed, error } = await claim(true);
+
+  // The buyer has paid, so a database that is behind on migrations must not
+  // stop the grant. PostgREST rejects the whole update before it runs, so the
+  // retry is still the first and only write. The cost is that this purchase
+  // has no link for a later refund to match.
+  if (isMissingColumnError(error, PAYMENT_INTENT_COLUMN)) {
+    await alertMigrationPending(draftId, paymentIntentId);
+    ({ data: claimed, error } = await claim(false));
+  }
 
   if (error) throw new Error(error.message);
   if (!claimed) return;
