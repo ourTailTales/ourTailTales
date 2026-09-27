@@ -32,9 +32,45 @@ function album(bursts: [number, number][]): PlannablePhoto[] {
 }
 
 describe("grouping a chapter's photographs onto pages", () => {
-  it("gives a photograph its own page while the chapter has pages to spare", () => {
-    const pages = planPages(album([[1, 0], [1, 30], [1, 60], [1, 90], [1, 120]]));
-    expect(photosOf(pages)).toEqual([["p0"], ["p1"], ["p2"], ["p3"], ["p4"]]);
+  it("leaves photographs alone when nothing nearby belongs beside them", () => {
+    // A month between each: five separate occasions, not five thin pages of
+    // one chapter's worth of company waiting to happen.
+    const source = album([[1, 0], [1, 30], [1, 60], [1, 90], [1, 120]]);
+    const pages = planPages(source);
+    expect(photosOf(pages)).toEqual(source.map((photo) => [photo.id]));
+  });
+
+  it("keeps a noteworthy photograph to itself rather than folding it into company", () => {
+    // Close enough in time that company-folding would otherwise apply, but
+    // p0 is far and away the sharpest, best-exposed frame of the three.
+    const source: PlannablePhoto[] = [
+      { id: "p0", capturedAt: START, qualityScore: 0.95 },
+      { id: "p1", capturedAt: START + 2 * DAY, qualityScore: 0.3 },
+      { id: "p2", capturedAt: START + 4 * DAY, qualityScore: 0.3 },
+    ];
+    const pages = planPages(source);
+    const solo = pages.find((page) => page.photos.length === 1);
+    expect(solo?.photos).toEqual(["p0"]);
+    // p0 neither loses its own page nor gains company brought to it.
+    expect(pages.some((page) => page.photos.includes("p0") && page.photos.length > 1)).toBe(
+      false,
+    );
+  });
+
+  it("folds a page of one into nearby company by default, even with pages to spare", () => {
+    // Two days apart each: close enough to plausibly belong together, far
+    // enough that nothing here calls it one moment shot twice.
+    const source = album([[1, 0], [1, 2], [1, 4], [1, 6], [1, 8]]);
+    const pages = planPages(source);
+    // Every photograph is still printed, exactly once, in order.
+    expect(photosOf(pages).flat()).toEqual(source.map((photo) => photo.id));
+    // Fewer pages than photographs: at least one page gained company.
+    expect(pages.length).toBeLessThan(source.length);
+    // At most the one photograph parity leaves stranded ends up alone.
+    expect(pages.filter((page) => page.photos.length === 1).length).toBeLessThanOrEqual(1);
+    // Company is capped at two here — three or four is earned elsewhere, by
+    // actually belonging together, not handed out for lack of anything else.
+    expect(pages.every((page) => page.photos.length <= 2)).toBe(true);
   });
 
   it("puts one afternoon together before it puts two apart", () => {
@@ -67,9 +103,13 @@ describe("grouping a chapter's photographs onto pages", () => {
     }
   });
 
-  it("does not crowd a page while there are pages left", () => {
-    const pages = planPages(album([[9, 0]]));
-    expect(pages.every((page) => page.photos.length === 1)).toBe(true);
+  it("pairs up rather than crowds a page while there are pages left", () => {
+    const source = album([[9, 0]]);
+    const pages = planPages(source);
+    expect(photosOf(pages).flat()).toEqual(source.map((photo) => photo.id));
+    expect(pages.length).toBeLessThan(source.length);
+    expect(pages.filter((page) => page.photos.length === 1).length).toBeLessThanOrEqual(1);
+    expect(pages.every((page) => page.photos.length <= 2)).toBe(true);
   });
 });
 
@@ -133,9 +173,11 @@ describe("two photographs of one moment", () => {
     expect(Math.max(...pages.map((page) => page.photos.length))).toBeLessThanOrEqual(3);
   });
 
-  it("leaves an album with no hashes exactly as it was", () => {
+  it("never bursts a hash-less album to three or more on the strength of a guess", () => {
+    // Without hashes, `sameMoment` cannot fire — so any page over two here
+    // would mean it fired anyway, on nothing but timing.
     const pages = planPages(album([[9, 0]]));
-    expect(pages.every((page) => page.photos.length === 1)).toBe(true);
+    expect(pages.every((page) => page.photos.length <= 2)).toBe(true);
   });
 });
 

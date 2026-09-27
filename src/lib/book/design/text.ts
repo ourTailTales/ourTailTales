@@ -174,12 +174,34 @@ export function layoutTextBlock(block: TextBlock): LaidOutBlock {
     const others = measured
       .filter((entry) => entry !== filler)
       .reduce((sum, entry) => sum + (entry.paragraph.gap ?? 0) + entry.lines.length * entry.leading, 0);
-    const room = Math.floor((height - others - (filler.paragraph.gap ?? 0) + 0.001) / filler.leading);
+    const roomAt = (leading: number): number =>
+      Math.floor((height - others - (filler.paragraph.gap ?? 0) + 0.001) / leading);
+
+    // A caption that is one line too tall for its band reads better one size
+    // smaller than cut short with an ellipsis. Shrink it, a point at a time —
+    // which also shortens its own leading and so grows the room for it — before
+    // falling back to a truncated line at its original size.
+    const floor = Math.max(6, filler.size - 3);
+    let size = filler.size;
+    let leading = filler.leading;
+    let lines = filler.lines;
+    let room = roomAt(leading);
+    while (lines.length > Math.max(0, room) && size > floor) {
+      size -= 1;
+      leading = filler.paragraph.leading
+        ? filler.paragraph.leading * (size / filler.paragraph.size)
+        : size * 1.25;
+      lines = wrap(filler.text, filler.paragraph.font, size, filler.maxWidth, filler.paragraph.tracking ?? 0);
+      room = roomAt(leading);
+    }
+
+    filler.size = size;
+    filler.leading = leading;
     filler.lines = fitLines(
-      filler.lines,
+      lines,
       Math.max(0, room),
       filler.paragraph.font,
-      filler.size,
+      size,
       filler.maxWidth,
       filler.paragraph.tracking ?? 0,
     );
