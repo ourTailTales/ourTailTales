@@ -53,6 +53,31 @@ describe("buildStoryPrompt", () => {
   it("says nothing about a note that was never given", () => {
     expect(buildStoryPrompt(chapterOf())).not.toContain("wanted us to know");
   });
+
+  it("says nothing about repeats when this is the first chapter written", () => {
+    expect(buildStoryPrompt(chapterOf())).not.toContain("already used");
+  });
+
+  it("names the titles and captions the rest of the book already used", () => {
+    const prompt = buildStoryPrompt(
+      chapterOf({
+        alreadyUsed: {
+          titles: ["The Lawn Was His"],
+          captions: ["Back at the lake by June"],
+        },
+      }),
+    );
+    expect(prompt).toContain('"The Lawn Was His"');
+    expect(prompt).toContain('"Back at the lake by June"');
+    expect(prompt).toContain("Do not reuse any of these");
+  });
+
+  it("drops an empty avoid-list rather than printing an empty instruction", () => {
+    const prompt = buildStoryPrompt(
+      chapterOf({ alreadyUsed: { titles: [], captions: [] } }),
+    );
+    expect(prompt).not.toContain("already used");
+  });
 });
 
 describe("storySystemPrompt", () => {
@@ -74,6 +99,11 @@ describe("storySystemPrompt", () => {
     const prompt = storySystemPrompt({ stillHere: true });
     expect(prompt).toContain("This pet is alive");
     expect(prompt).toContain("no farewells");
+  });
+
+  it("warns against writing its own quoted examples into a real book", () => {
+    const prompt = storySystemPrompt({ stillHere: true });
+    expect(prompt).toContain("shown to every chapter of every book this writes");
   });
 
   it("stays true either way when nobody said", () => {

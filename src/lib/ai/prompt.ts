@@ -81,7 +81,9 @@ Too decorated, and about the wrong photo — also never write like this:
 The voice we want — every one of these could stand over any photograph in its chapter:
 - "The Lawn Was His": "Spring meant one thing: the lawn. Rocket rolled until his red collar vanished into the grass, then flopped in the one patch of sun by the fence."
 - "Small Dog, Big House": "Everything was new and most of it was too tall. Juniper met each room at floor level, and by the end of the first month the green toy had become her whole personality."
-- "Too Hot To Bother": "August in Farmington was the kind of heat nobody argues with. Rocket found the coolest room in the house early on and made the rest of the summer somebody else's problem." (built from the dates, the place and the season — the pictures only confirm where he spent it)`;
+- "Too Hot To Bother": "August in Farmington was the kind of heat nobody argues with. Rocket found the coolest room in the house early on and made the rest of the summer somebody else's problem." (built from the dates, the place and the season — the pictures only confirm where he spent it)
+
+These, and every other quoted line anywhere in these instructions, are here to show a register, not to be written into a real book. The same words are shown to every chapter of every book this writes, so a phrase lifted from here — even changed by a word or two — turns up again and again to anyone who has read more than one of these. Write this chapter's own sentence from its own evidence instead.`;
 
 /**
  * The second half of the job: how the chapter's photographs are dealt onto
@@ -176,6 +178,7 @@ export function buildStoryPrompt(chapter: StoryRequest): string {
     chapter.thumbnails.length > 0
       ? `${chapter.thumbnails.length} pictures from this period are attached. The first is the opening photograph — the only one printed beside what you write, so any concrete detail you name must be visible in it, and it is a limit rather than your subject. The rest are attached so you can see what these weeks had in common; read all of them closely for that, and describe none of them.`
       : "No pictures are attached; keep the introduction short and general rather than inventing detail.",
+    alreadyUsedLines(chapter),
   ].filter((line): line is string => line !== null);
 
   const layout = pageLayoutLines(chapter);
@@ -183,6 +186,33 @@ export function buildStoryPrompt(chapter: StoryRequest): string {
   return `${lines.join("\n")}
 
 Write this period's title, a short date label, and the 25 to 40 word introduction to these weeks — what they were, not what one photograph shows.${layout}`;
+}
+
+/**
+ * What the rest of the book has already said, so this chapter does not
+ * reach for it again.
+ *
+ * Every chapter is written in its own call, with no memory of the others —
+ * so left alone, a phrase that fit one period gets written again for the
+ * next one that resembles it even slightly, and a phrase given as an example
+ * in these very instructions is the likeliest of all to come back verbatim,
+ * chapter after chapter, book after book. Naming the exact titles and
+ * captions already used is a harder rule to miss than a general "be
+ * original" ever is.
+ */
+function alreadyUsedLines(chapter: StoryRequest): string | null {
+  const titles = chapter.alreadyUsed?.titles.filter((title) => title.trim()) ?? [];
+  const captions = chapter.alreadyUsed?.captions.filter((caption) => caption.trim()) ?? [];
+  if (titles.length === 0 && captions.length === 0) return null;
+
+  const parts: string[] = [];
+  if (titles.length > 0) {
+    parts.push(`Titles already used elsewhere in this book: ${titles.map((title) => `"${title}"`).join(", ")}.`);
+  }
+  if (captions.length > 0) {
+    parts.push(`Page captions already used elsewhere in this book: ${captions.map((caption) => `"${caption}"`).join(", ")}.`);
+  }
+  return `${parts.join(" ")} Do not reuse any of these, and do not write a close variant of one — swap a word or two and it still reads as the same line to someone turning the pages. Say this period's own true thing instead, even if it is less tidy than the phrase that already exists.`;
 }
 
 /**

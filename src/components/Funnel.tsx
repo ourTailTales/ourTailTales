@@ -411,6 +411,13 @@ export function Funnel({
               chapterNumber: chapter.index + 1,
               chapterCount: useOurTailTalesStore.getState().chapters.length,
             },
+            // Read fresh, right before the request goes out, so a chapter
+            // that finished writing moments ago is already on the list —
+            // the two workers running alongside each other mean this can
+            // never be complete, but it catches the common case: most
+            // repeats are between chapters that did not run at the exact
+            // same moment.
+            usedPhrasesSoFar(chapterId),
           );
           actions.setChapterPlaces(chapterId, places);
           actions.applyChapterStory(chapterId, story, spotlightIds);
@@ -901,6 +908,28 @@ async function lookAtThePet(stop: AbortSignal): Promise<void> {
     clearTimeout(timer);
     stop.removeEventListener("abort", onStop);
   }
+}
+
+/**
+ * The titles and page captions every other chapter has already settled on,
+ * read live off the store rather than accumulated as the run goes — two
+ * chapters are being written at once, and a snapshot taken when the run
+ * started would miss whatever either of them has finished since.
+ */
+function usedPhrasesSoFar(excludingChapterId: string): {
+  titles: string[];
+  captions: string[];
+} {
+  const chapters = useOurTailTalesStore
+    .getState()
+    .chapters.filter((chapter) => chapter.id !== excludingChapterId && chapter.aiStatus === "done");
+  return {
+    titles: chapters.map((chapter) => chapter.title).filter((title) => title.trim()),
+    captions: chapters
+      .flatMap((chapter) => chapter.pagePlan ?? [])
+      .map((page) => page.caption)
+      .filter((caption): caption is string => Boolean(caption?.trim())),
+  };
 }
 
 async function deliverTeaserOnce(): Promise<void> {
