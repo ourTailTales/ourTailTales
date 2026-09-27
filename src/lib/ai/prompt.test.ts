@@ -100,6 +100,37 @@ describe("the pet profile in the chapter prompt", () => {
     expect(prompt).toContain("a green tennis ball");
   });
 
+  it("reads the album's own shape as evidence about the period", () => {
+    const prompt = buildStoryPrompt(
+      chapterOf({
+        photos: [
+          { i: 1, on: "2019-08-03", place: "Farmington", orientation: "landscape" },
+          { i: 2, on: "2019-08-03", place: "Farmington", orientation: "portrait" },
+          { i: 3, on: "2019-09-27", place: "Farmington", orientation: "landscape" },
+        ],
+      }),
+    );
+    expect(prompt).toContain(
+      "Shape of this period: 3 photographs, taken on 2 separate days between 2019-08-03 and 2019-09-27.",
+    );
+    expect(prompt).toContain("All of them around Farmington.");
+    expect(prompt).toContain("read it, never recite it");
+  });
+
+  it("says nothing about a shape it has no dates for", () => {
+    expect(buildStoryPrompt(chapterOf())).not.toContain("Shape of this period");
+    const undated = buildStoryPrompt(
+      chapterOf({ photos: [{ i: 1, orientation: "square" }] }),
+    );
+    expect(undated).toContain("the files do not record");
+  });
+
+  it("asks for the weeks rather than the one photograph beside them", () => {
+    expect(buildStoryPrompt(chapterOf())).toContain(
+      "introduction to these weeks — what they were, not what one photograph shows",
+    );
+  });
+
   it("offers places as optional, never as a list to recite", () => {
     const prompt = buildStoryPrompt(
       chapterOf({ places: [{ city: "Farmington" }, { city: "West Springfield" }] }),
@@ -144,19 +175,72 @@ describe("soundsLikeACaption", () => {
   });
 });
 
+describe("a paragraph that is the opening photograph written out", () => {
+  it("catches the blurb that was printed in a real book", () => {
+    expect(
+      soundsLikeACaption(
+        "Rocket claimed the middle of the bed against the green wall, waiting out the afternoon heat. His white paws rested flat on the plaid blanket while he watched the window.",
+      ),
+    ).toBe(true);
+  });
+
+  it("catches the staging whichever way round it is written", () => {
+    for (const blurb of [
+      "Rocket rested his chin near the green toy.",
+      "Chin hooked over a favorite green toy, he waited it out.",
+      "Her head lay flat against the cushion.",
+      "Tail curled under him, he took the afternoon off.",
+    ]) {
+      expect(soundsLikeACaption(blurb)).toBe(true);
+    }
+  });
+
+  it("leaves every blurb the rules hold up as the voice we want", () => {
+    for (const blurb of [
+      "Spring meant one thing: the lawn. Rocket rolled until his red collar vanished into the grass, then flopped in the one patch of sun by the fence.",
+      "Everything was new and most of it was too tall. Juniper met each room at floor level, and by the end of the first month the green toy had become her whole personality.",
+      "August in Farmington was the kind of heat nobody argues with. Rocket found the coolest room in the house early on and made the rest of the summer somebody else's problem.",
+      "The move took the whole of March. Biscuit spent it underfoot in every room that had a box in it.",
+      "Nose first through the door, as usual, and then straight back out again.",
+    ]) {
+      expect(soundsLikeACaption(blurb)).toBe(false);
+    }
+  });
+
+  it("never drops a page caption for it — a line is not worth a retry", () => {
+    expect(mentionsTheCamera("His white paws rested flat on the blanket")).toBe(false);
+  });
+});
+
 describe("cohesion and the shape of the story", () => {
-  it("asks for one small story, not an inventory, and quotes the list it must not write", () => {
+  it("asks for one thing about the period, not an inventory, and quotes the list it must not write", () => {
     const prompt = storySystemPrompt({ stillHere: true });
-    expect(prompt).toContain("Tell one small story, not an inventory");
+    expect(prompt).toContain("Tell one thing about the period, not an inventory of it");
     expect(prompt).toContain("a list of descriptors, not a story");
     expect(prompt).toContain("25 to 40 words");
   });
 
-  it("ties concrete detail to the opening photograph, not the rest of the period", () => {
+  it("makes the weeks the subject and the opening photograph only a limit", () => {
     const prompt = storySystemPrompt({ stillHere: true });
+    expect(prompt).toContain("Write the period, not a photograph");
     expect(prompt).toContain("The opening photograph");
     expect(prompt).toContain("the only one printed beside your words");
-    expect(prompt).toContain("Never describe a specific object, pose, or setting from any photograph but the opening one");
+    expect(prompt).toContain("a limit, not a subject");
+    expect(prompt).toContain("It is not what you are writing about");
+  });
+
+  it("refuses to let the paragraph be the opening photograph written out", () => {
+    const prompt = storySystemPrompt({ stillHere: true });
+    expect(prompt).toContain("Never write out the contents of the opening photograph");
+    // The blurb that prompted the rule, quoted as the thing never to write.
+    expect(prompt).toContain("His white paws rested flat on the plaid blanket");
+    expect(prompt).toContain("the late summer it belonged to");
+  });
+
+  it("gives a swap test for telling the two apart", () => {
+    expect(storySystemPrompt()).toContain(
+      "then you wrote about a photograph",
+    );
   });
 
   it("tells the caller which attached thumbnail is the opening photograph", () => {
@@ -219,9 +303,10 @@ describe("copy that is about the photograph, not the pet", () => {
     }
   });
 
-  it("asks for one occasion rather than the pattern across them all", () => {
+  it("still refuses the sweep over every scene at once", () => {
     const prompt = storySystemPrompt({ stillHere: true });
-    expect(prompt).toContain("Write one occasion, never the pattern across all of them");
+    expect(prompt).toContain("not as a sweep over everything that happened");
+    expect(prompt).toContain('no "each new", "every", "any time", "always", "until finally"');
     // The blurb that prompted the rule, quoted as the thing never to write.
     expect(prompt).toContain("Everything demanded immediate investigation");
   });
