@@ -199,7 +199,7 @@ export function ShippingStep({
           />
           <span>
             I&rsquo;ve checked this address and want to continue with it as
-            entered (Lulu may still adjust formatting).
+            entered.
           </span>
         </label>
       ) : null}
