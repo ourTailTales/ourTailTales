@@ -925,6 +925,7 @@ function photoFactsOf(photos: PhotoAsset[]): PhotoLookup {
         lat: photo.lat,
         lng: photo.lng,
         dHash: photo.dHash,
+        qualityScore: photo.qualityScore,
       },
     ]),
   );

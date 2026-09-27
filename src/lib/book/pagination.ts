@@ -44,6 +44,8 @@ export type PagePhoto = {
   lng?: number;
   /** The perceptual hash, so grouping can tell one scene from another. */
   dHash?: string;
+  /** Sharpness, exposure and resolution, 0..1. How a page earns a photo to itself. */
+  qualityScore?: number;
 };
 
 export type PhotoLookup = Map<string, PagePhoto>;
@@ -303,6 +305,7 @@ function plannable(id: string, photos: PhotoLookup): PlannablePhoto {
     lat: photo?.lat,
     lng: photo?.lng,
     dHash: photo?.dHash,
+    qualityScore: photo?.qualityScore,
   };
 }
 

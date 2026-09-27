@@ -14,14 +14,18 @@ import type { PhotoAsset } from "@/types/photo";
  *
  * 1. **A chapter is as long as its photographs are worth**, between three
  *    and ten pages. Twenty-five photographs across five chapters is five to
- *    a chapter, and five pages of one photograph each is the right book for
- *    that album — not nine thin pages and five empty ones.
- * 2. **Photographs share a page because they belong together**: the same
- *    afternoon, the same place, the same scene. Two shots of one moment
- *    share a page however much room the chapter has, because two pages of
- *    the same picture is worse than one page of both. Beyond that, sharing
- *    only happens when a chapter has more photographs than it has pages,
- *    and then the ones that share are the ones with most in common.
+ *    a chapter — not nine thin pages and five empty ones.
+ * 2. **A page of company is the default; a page of one is earned.**
+ *    Photographs share a page because they belong together — the same
+ *    afternoon, the same place, the same scene, or simply near enough in
+ *    the chapter that nothing sets them apart — and a page of exactly one
+ *    is for a photograph plainly worth the room, not for whatever was left
+ *    once the rest paired off.
+ *
+ * Two shots of one moment share a page however much room the chapter has,
+ * because two pages of the same picture is worse than one page of both.
+ * When the chapter has more photographs than it has pages, sharing goes
+ * first to whichever photographs have the most in common.
  *
  * The grouping is decided once, when the chapter is written — by the model
  * where it offered one (`Chapter.pagePlan`), and by `planPages` here where
@@ -49,6 +53,8 @@ export type PlannablePhoto = {
    * afternoons a few hours apart.
    */
   dHash?: string;
+  /** Sharpness, exposure and resolution, 0..1. How a page earns a photo to itself. */
+  qualityScore?: number;
 };
 
 export function photoFactsOf(photo: PhotoAsset): PlannablePhoto {
@@ -58,6 +64,7 @@ export function photoFactsOf(photo: PhotoAsset): PlannablePhoto {
     lat: photo.lat,
     lng: photo.lng,
     dHash: photo.dHash,
+    qualityScore: photo.qualityScore,
   };
 }
 
@@ -154,7 +161,124 @@ export function planPages(photos: readonly PlannablePhoto[]): PlannedPage[] {
   // occasions anyway, so it is dealt evenly, in order, instead.
   if (pages.length > maxPages) return evenGroups(photos, maxPages);
 
+  // A page of one is earned, not left over. Everything above only merges
+  // photographs the budget forces together; most chapters have pages to
+  // spare, and left alone that means most pages end up holding one
+  // photograph apiece. Company is the better default — fold a page of one
+  // into whichever neighbour it sits closest to, unless that photograph is
+  // one of the chapter's best, which is what a page to itself is for, or
+  // doing so would leave the chapter shorter than it is allowed to run.
+  //
+  // Capped at two rather than at the crowding limit above: the goal is
+  // fewer thin pages, not the fewest pages the budget allows. Three or four
+  // to a page stays earned by actually belonging together (the passes
+  // above), never handed out just because a solo page had somewhere to go.
+  preferCompany(pages, noteworthySet(photos), PREFERRED_COMPANY_SIZE, MIN_PHOTO_PAGES);
+
   return pages.map((page) => ({ photos: page.map((photo) => photo.id) }));
+}
+
+/** How much of a chapter's best photographs still get a page of their own. */
+const NOTEWORTHY_FRACTION = 0.2;
+
+/** The company a solo page is folded up to. Three or more stays earned, not defaulted to. */
+const PREFERRED_COMPANY_SIZE = 2;
+
+/**
+ * The photographs sharp, well-lit and clear enough to be worth a page alone
+ * — the top fifth of the chapter by the same quality score the upload
+ * pipeline already scores every photograph with, at least one, so a chapter
+ * never loses its best photograph to company it does not need.
+ *
+ * A chapter with no quality signal at all — a very old draft, or an album
+ * read before scoring existed — marks nothing noteworthy, which simply means
+ * every one of its pages is free to gain company.
+ */
+function noteworthySet(photos: readonly PlannablePhoto[]): Set<string> {
+  const scored = photos.filter(
+    (photo): photo is PlannablePhoto & { qualityScore: number } =>
+      typeof photo.qualityScore === "number",
+  );
+  if (scored.length === 0) return new Set();
+  const count = Math.max(1, Math.ceil(scored.length * NOTEWORTHY_FRACTION));
+  return new Set(
+    [...scored]
+      .sort((a, b) => b.qualityScore - a.qualityScore)
+      .slice(0, count)
+      .map((photo) => photo.id),
+  );
+}
+
+/**
+ * How far apart two photographs may be and still be considered company for
+ * one another, in `apartness` units — generous next to `sameMoment`'s forty
+ * five minutes, because this is pairing up a page, not identifying one
+ * moment shot twice, but still a real limit. `log1p(24)` (a day) is about
+ * 3.2 and `log1p(24 * 30)` (a month) is about 6.6; this sits a little past
+ * "a few days, roughly the same place" and well short of "a different trip
+ * entirely".
+ */
+const COMPANY_APARTNESS_LIMIT = Math.log1p(24 * 4);
+
+/**
+ * Folds solo pages into company, nearest neighbour first.
+ *
+ * A photograph on a page by itself, and not one of the chapter's noteworthy
+ * ones, joins whichever adjacent page — earlier or later in the chapter — it
+ * plausibly belongs beside, as long as that page still has room under the
+ * cap and holds nothing noteworthy itself: a noteworthy photograph keeps its
+ * own page both ways, neither leaving it for company nor taking on company
+ * that was looking for somewhere to go. This is the softer half of the rule
+ * the whole file rests on: photographs share a page because they belong
+ * together, never because a page had room. A solo page with nothing near
+ * enough to join, one between two full or noteworthy pages, or one the cap
+ * will not let grow, is left alone — company is preferred here, never
+ * forced.
+ */
+function preferCompany(
+  pages: PlannablePhoto[][],
+  noteworthy: ReadonlySet<string>,
+  cap: number,
+  minPages: number,
+): void {
+  const isNoteworthy = (candidate: PlannablePhoto[]): boolean =>
+    candidate.some((photo) => noteworthy.has(photo.id));
+
+  let index = 0;
+  while (index < pages.length && pages.length > minPages) {
+    const page = pages[index]!;
+    if (page.length !== 1 || noteworthy.has(page[0]!.id)) {
+      index += 1;
+      continue;
+    }
+    const solo = page[0]!;
+    const left = index > 0 ? pages[index - 1]! : undefined;
+    const right = index < pages.length - 1 ? pages[index + 1]! : undefined;
+    const leftGap = left ? apartness(left.at(-1)!, solo) : Infinity;
+    const rightGap = right ? apartness(solo, right[0]!) : Infinity;
+    const leftRoom =
+      left && left.length < cap && !isNoteworthy(left) && leftGap <= COMPANY_APARTNESS_LIMIT
+        ? left
+        : undefined;
+    const rightRoom =
+      right && right.length < cap && !isNoteworthy(right) && rightGap <= COMPANY_APARTNESS_LIMIT
+        ? right
+        : undefined;
+    if (!leftRoom && !rightRoom) {
+      index += 1;
+      continue;
+    }
+    const joinLeft = leftRoom && rightRoom ? leftGap <= rightGap : Boolean(leftRoom);
+    if (joinLeft) {
+      leftRoom!.push(solo);
+    } else {
+      rightRoom!.unshift(solo);
+    }
+    pages.splice(index, 1);
+    // The page that follows the one just removed has shifted down to this
+    // index; revisiting it is how a run of three or more solo pages in a row
+    // still ends up in company rather than only ever merging in pairs.
+  }
 }
 
 /** The photographs in order, split into `count` groups of as even a size as possible. */
