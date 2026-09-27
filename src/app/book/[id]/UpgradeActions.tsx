@@ -2,34 +2,33 @@
 
 import { ArrowRight, BookOpen } from "lucide-react";
 
-import { BuyDigitalButton } from "@/components/BuyDigitalButton";
+import { ClaimAndBuyDigital } from "@/components/ClaimAndBuyDigital";
 import { formatUsd } from "@/lib/pricing";
 
 /**
  * The two ways to pay, shown under the free account offer rather than instead
  * of it.
- *
- * The PDF button is `BuyDigitalButton`, shared with the finishing step in the
- * editor: what the checkout route expects, and the instructions it answers
- * with, are known in one place.
  */
 export function UpgradeActions({
   draftId,
   secret,
   digitalPrice,
   hardcoverPrice,
+  knownEmail,
 }: {
   draftId: string;
   secret: string;
   digitalPrice: number;
   hardcoverPrice: number;
+  knownEmail: string | null;
 }) {
   return (
     <div className="flex flex-col gap-3 sm:flex-row">
-      <BuyDigitalButton
+      <ClaimAndBuyDigital
         draftId={draftId}
         secret={secret}
         price={digitalPrice}
+        knownEmail={knownEmail}
         className="flex-1"
       />
       <a

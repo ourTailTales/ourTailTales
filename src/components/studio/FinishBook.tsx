@@ -3,7 +3,7 @@
 import { ArrowLeft, ArrowRight, Download, Loader2 } from "lucide-react";
 import { useMemo } from "react";
 
-import { BuyDigitalButton } from "@/components/BuyDigitalButton";
+import { ClaimAndBuyDigital } from "@/components/ClaimAndBuyDigital";
 import { orderSummary } from "@/lib/order/summary";
 import { DIGITAL_PRICE, formatUsd } from "@/lib/pricing";
 import { placedMemoriesReadyForCheckout } from "@/lib/video-memory/checkout-ready";
@@ -43,6 +43,7 @@ export function FinishBook({
   const videoAssets = useOurTailTalesStore((state) => state.videoAssets);
   const draftId = useOurTailTalesStore((state) => state.draftId);
   const draftSecret = useOurTailTalesStore((state) => state.draftSecret);
+  const leadEmail = useOurTailTalesStore((state) => state.leadEmail);
   const funnelState = useOurTailTalesStore((state) => state.funnelState);
   const exportMessage = useOurTailTalesStore((state) => state.exportMessage);
 
@@ -198,10 +199,11 @@ export function FinishBook({
             {downloading ? "Preparing…" : "Download the free copy"}
           </button>
           {draftId && draftSecret ? (
-            <BuyDigitalButton
+            <ClaimAndBuyDigital
               draftId={draftId}
               secret={draftSecret}
               price={DIGITAL_PRICE}
+              knownEmail={leadEmail}
               label={`${formatUsd(DIGITAL_PRICE)} · the clean PDF`}
               className="flex-1"
             />

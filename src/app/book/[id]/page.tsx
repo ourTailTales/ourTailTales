@@ -8,6 +8,7 @@ import { ExpiryBanner } from "@/components/ExpiryBanner";
 import { SavedBookSignIn } from "@/components/auth/SavedBookSignIn";
 import { BookViewAnalytics } from "@/components/create/BookViewAnalytics";
 import { UpgradeActions } from "./UpgradeActions";
+import { draftLeadEmail } from "@/lib/drafts/lead";
 import { loadDraftPreview, type DraftPreview } from "@/lib/drafts/preview";
 import { BASE_PRICE, DIGITAL_PRICE } from "@/lib/pricing";
 import { createAuthServerClient } from "@/lib/supabase/auth-server";
@@ -45,11 +46,13 @@ export default async function BookPage({
 
   const draft = await loadDraftPreview(id, secret);
   if (draft) {
+    const knownEmail = await draftLeadEmail(id);
     return (
       <FreeBookPreview
         draft={draft}
         secret={secret!}
         justPurchased={purchased === "true"}
+        knownEmail={knownEmail}
       />
     );
   }
@@ -162,10 +165,12 @@ function FreeBookPreview({
   draft,
   secret,
   justPurchased,
+  knownEmail,
 }: {
   draft: DraftPreview;
   secret: string;
   justPurchased: boolean;
+  knownEmail: string | null;
 }) {
   // Stripe redirects the moment it takes the money, which can beat the webhook
   // that actually grants access. Showing the upgrade CTA to someone who has
@@ -304,6 +309,7 @@ function FreeBookPreview({
                 secret={secret}
                 digitalPrice={DIGITAL_PRICE}
                 hardcoverPrice={BASE_PRICE}
+                knownEmail={knownEmail}
               />
             </div>
           </div>
