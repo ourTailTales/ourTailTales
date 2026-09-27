@@ -118,8 +118,51 @@ export async function createDraft(email?: string | null): Promise<StoredDraft> {
   return draft;
 }
 
+function clearStoredDraft(email?: string | null): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(draftStorageKey(email));
+  } catch {
+    // Best effort — createDraft below overwrites this key either way.
+  }
+}
+
+/**
+ * Whether the server still has a row behind these credentials.
+ *
+ * A network hiccup is not proof the draft is gone, so only a definite
+ * "Unknown draft." (401) counts — anything else keeps the stored draft and
+ * lets the next real request fail on its own terms if something else is
+ * wrong.
+ */
+async function draftStillKnown(draft: StoredDraft): Promise<boolean> {
+  try {
+    const response = await fetch("/api/drafts/status", {
+      method: "GET",
+      headers: draftHeaders(draft.draftId, draft.secret),
+    });
+    return response.status !== 401;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * A stored draft is reused forever once a browser has one — which is right
+ * up until the row behind it stops existing. That happens for real customers
+ * too, not just a wiped dev database: the nightly sweep reaps an expired
+ * draft's files, and an operator can delete rows directly. Without this
+ * check, every later call keeps sending the same dead id and secret and
+ * every one of them comes back "Unknown draft.", with nothing short of the
+ * customer manually clearing their browser storage able to recover.
+ */
 export async function ensureDraft(email?: string | null): Promise<StoredDraft> {
-  return loadStoredDraft(email) ?? createDraft(email);
+  const stored = loadStoredDraft(email);
+  if (!stored) return createDraft(email);
+  if (await draftStillKnown(stored)) return stored;
+
+  clearStoredDraft(email);
+  return createDraft(email);
 }
 
 export async function fetchVideoMemoryConfig(): Promise<VideoMemoryPublicConfig> {

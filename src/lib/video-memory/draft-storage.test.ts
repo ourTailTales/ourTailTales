@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { loadStoredDraft, storeDraft } from "@/lib/video-memory/client";
+import { ensureDraft, loadStoredDraft, storeDraft } from "@/lib/video-memory/client";
 
 /** Enough of localStorage for these functions, on a node runner. */
 function installStorage(): Map<string, string> {
@@ -69,5 +69,57 @@ describe("draft credentials are bucketed by email", () => {
   it("treats a malformed record as no draft at all", () => {
     data.set("ourtailtales.draft:anon", "{oh no");
     expect(loadStoredDraft(null)).toBeNull();
+  });
+});
+
+describe("ensureDraft self-heals when the server no longer knows the draft", () => {
+  beforeEach(() => {
+    installStorage();
+  });
+
+  afterEach(() => {
+    delete (globalThis as { window?: unknown }).window;
+    vi.unstubAllGlobals();
+  });
+
+  it("keeps a stored draft the server still recognizes", async () => {
+    storeDraft(alice, null);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 200 })),
+    );
+
+    await expect(ensureDraft(null)).resolves.toEqual(alice);
+  });
+
+  it("discards a stored draft the server calls unknown, and mints a new one", async () => {
+    storeDraft(alice, null);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/api/drafts/status")) {
+          return new Response(JSON.stringify({ error: "Unknown draft." }), {
+            status: 401,
+          });
+        }
+        return new Response(JSON.stringify(bob), { status: 200 });
+      }),
+    );
+
+    await expect(ensureDraft(null)).resolves.toEqual(bob);
+    expect(loadStoredDraft(null)).toEqual(bob);
+  });
+
+  it("keeps a stored draft rather than churning it over a network error", async () => {
+    storeDraft(alice, null);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("offline");
+      }),
+    );
+
+    await expect(ensureDraft(null)).resolves.toEqual(alice);
   });
 });
