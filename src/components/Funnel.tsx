@@ -31,6 +31,7 @@ import { generateChapterStory } from "@/lib/story/client";
 import { withoutUsedCaptions } from "@/lib/story/lines";
 import { generatePetProfile } from "@/lib/story/profile";
 import { bankCleanBookForOrder } from "@/lib/drafts/claim";
+import { clearPdfOwed, markPdfOwed, pdfIsOwed } from "@/lib/drafts/pdf-owed";
 import { prepareOrder } from "@/lib/order/prepare";
 import { bookSpec } from "@/lib/pricing";
 import { placedMemoriesReadyForCheckout } from "@/lib/video-memory/checkout-ready";
@@ -46,6 +47,12 @@ import { shouldAutoClaim } from "@/components/auth/auto-claim";
 import { useSessionEmail } from "@/components/auth/useSessionEmail";
 import { useIsAuthenticated } from "@/hooks/useIsAuthenticated";
 import { authConfigured } from "@/lib/supabase/auth-browser";
+
+/** How long after leaving for checkout the finish page stops saying "preparing". */
+const CHECKOUT_SETTLE_MS = 8_000;
+
+/** How long checkout waits for the hardcover's PDF copy before moving on. */
+const PDF_BANK_GRACE_MS = 20_000;
 
 /** Chapters written at once. Keeps the AI endpoint from being hammered. */
 const STORY_CONCURRENCY = 2;
@@ -765,6 +772,45 @@ export function Funnel({
     claimAttemptedFor,
   } = store;
   const pageCount = store.pages.length;
+
+  /**
+   * Finishes a PDF copy that a checkout left unsaved.
+   *
+   * `handleCheckout` leaves a note in this browser when it starts saving the
+   * clean PDF for a hardcover and takes it away when the save lands. A note
+   * still here when the book is opened again means that save was cut off, and
+   * this browser is the only place it can be redone. Once per page load. The
+   * order page unlocks the file the next time it is opened.
+   */
+  /**
+   * Coming back from checkout.
+   *
+   * A successful checkout leaves the store saying "exporting" and moves to
+   * another page. The store outlives the page, so the Back button brought the
+   * customer to a finish page whose button said "Preparing your book…" for
+   * good. On arrival, an export nobody in this component started is over.
+   */
+  const checkoutRunning = useRef(false);
+  useEffect(() => {
+    if (!localReady || checkoutRunning.current) return;
+    if (useOurTailTalesStore.getState().funnelState !== "exporting") return;
+    useOurTailTalesStore.getState().setExporting(null);
+    useOurTailTalesStore.getState().goToEditing();
+  }, [localReady]);
+
+  const pdfRetryStarted = useRef(false);
+  useEffect(() => {
+    if (!localReady || pdfRetryStarted.current) return;
+    if (funnelState !== "editing" || pageCount === 0) return;
+    const owedKey = leadEmail ?? "";
+    if (!pdfIsOwed(owedKey)) return;
+    pdfRetryStarted.current = true;
+    void bankCleanBookForOrder().then(
+      () => clearPdfOwed(owedKey),
+      (error: unknown) => captureClientException(error),
+    );
+  }, [localReady, funnelState, pageCount, leadEmail]);
+
   useEffect(() => {
     if (!localReady || !isAuthenticated) return;
     // A save for another book is still finishing. This runs again when it
@@ -884,6 +930,7 @@ export function Funnel({
 
   const handleCheckout = useCallback(async () => {
     setNotice(null);
+    checkoutRunning.current = true;
     const state = useOurTailTalesStore.getState();
 
     // With Video Memories off, anything a draft still holds is treated as
@@ -909,11 +956,17 @@ export function Funnel({
       //
       // The draft is settled first, because the order has to name the same
       // one the bank writes to. The bank itself then runs beside the order
-      // rather than ahead of it: it renders the whole book a second time, and
-      // nobody should wait on that to reach checkout. Best effort throughout.
-      // A failure here costs the PDF copy, never the printed book.
+      // rather than ahead of it: it renders the whole book a second time.
+      // Before leaving for checkout it is given a little longer to finish,
+      // because a payment page that redirects to a bank would cut it off. If
+      // it still has not finished, or it failed, this browser remembers that
+      // the PDF is owed and the editor finishes the job the next time the
+      // book is opened here. A failure costs the PDF copy for now, never the
+      // printed book.
       let draftId = state.draftId;
       let draftSecret = state.draftSecret;
+      let banking: Promise<boolean> | null = null;
+      const owedKey = state.leadEmail ?? "";
       if (placements.length === 0) {
         try {
           // The button goes busy before the first wait, so a second tap
@@ -922,11 +975,17 @@ export function Funnel({
           const draft = await ensureDraft(state.leadEmail);
           draftId = draft.draftId;
           draftSecret = draft.secret;
-          // Not awaited, here or below. It carries on after the move to the
-          // checkout page, and it reports its own failure.
-          void bankCleanBookForOrder().catch((bankError: unknown) => {
-            captureClientException(bankError);
-          });
+          markPdfOwed(owedKey);
+          banking = bankCleanBookForOrder().then(
+            () => {
+              clearPdfOwed(owedKey);
+              return true;
+            },
+            (bankError: unknown) => {
+              captureClientException(bankError);
+              return false;
+            },
+          );
         } catch (draftError) {
           captureClientException(draftError);
         }
@@ -946,10 +1005,31 @@ export function Funnel({
         onStatus: (message) => state.setExporting(message),
       });
 
+      // The print files took a while, so the PDF copy has usually landed by
+      // now. If not, it gets a short grace period and then carries on in the
+      // background; the note left above covers the case where it is cut off.
+      if (banking) {
+        state.setExporting("Saving your PDF copy…");
+        await Promise.race([
+          banking,
+          new Promise<boolean>((resolve) => setTimeout(() => resolve(false), PDF_BANK_GRACE_MS)),
+        ]);
+      }
+
       track("checkout_started", { chapters: state.chapterCount });
       router.push(
         `/checkout?order=${orderId}&t=${encodeURIComponent(orderToken)}`,
       );
+      // The store outlives this page. Once the move to checkout has had time
+      // to happen, the export is over, wherever the customer is by then.
+      window.setTimeout(() => {
+        checkoutRunning.current = false;
+        const later = useOurTailTalesStore.getState();
+        if (later.funnelState === "exporting") {
+          later.setExporting(null);
+          later.goToEditing();
+        }
+      }, CHECKOUT_SETTLE_MS);
     } catch (error) {
       captureClientException(error);
       useOurTailTalesStore.getState().setExporting(null);
@@ -959,6 +1039,7 @@ export function Funnel({
           ? error.message
           : "Your book could not be prepared for printing.",
       );
+      checkoutRunning.current = false;
     }
   }, [router, videoMemoriesEnabled]);
 

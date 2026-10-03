@@ -109,7 +109,8 @@ function PayForm({
     // from the browser's cache, after the address or the number of copies was
     // changed somewhere else. The amount it holds is then out of date, and
     // paying it would put the order on hold.
-    const payable = await orderPayable(orderId, orderToken);
+    const check = await orderPayable(orderId, orderToken);
+    const payable = check === null ? null : check.payable;
     if (payable === null) {
       setBusy(false);
       setError("We could not check your order. You have not been charged. Please try again.");
@@ -118,6 +119,14 @@ function PayForm({
     if (!payable) {
       setError("Your order details changed. Taking you back to confirm delivery.");
       router.replace(`${shippingHref}&changed=1`);
+      return;
+    }
+    // The button must show what will be charged. A page the Back button
+    // restored can be showing a total from before delivery was changed.
+    if (check !== null && check.amountCents !== null && check.amountCents !== Math.round(total * 100)) {
+      setBusy(false);
+      setError("Your total has changed. We have updated this page. Please check the amount and pay again.");
+      router.refresh();
       return;
     }
 
@@ -176,15 +185,21 @@ function PayForm({
 async function orderPayable(
   orderId: string,
   orderToken: string,
-): Promise<boolean | null> {
+): Promise<{ payable: boolean; amountCents: number | null } | null> {
   try {
     const response = await fetch(
       `/api/orders/payable?orderId=${encodeURIComponent(orderId)}`,
       { headers: { "x-order-token": orderToken }, cache: "no-store" },
     );
     if (!response.ok) return null;
-    const data = (await response.json()) as { payable?: boolean };
-    return data.payable === true;
+    const data = (await response.json()) as {
+      payable?: boolean;
+      amountCents?: number | null;
+    };
+    return {
+      payable: data.payable === true,
+      amountCents: typeof data.amountCents === "number" ? data.amountCents : null,
+    };
   } catch (error) {
     captureClientException(error);
     return null;

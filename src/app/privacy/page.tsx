@@ -70,8 +70,8 @@ export default function PrivacyPage() {
             card numbers on our servers.
           </li>
           <li>
-            Usage data such as device type, pages visited and actions taken in
-            the product.
+            Usage data such as your IP address, device type, pages visited and
+            actions taken in the product.
           </li>
           {videoMemories ? (
             <li>Video files, if you add optional video memories.</li>
@@ -141,7 +141,7 @@ export default function PrivacyPage() {
             orders. Ask us and we will delete it.
           </li>
           <li>
-            Hardcover print files are deleted about 60 days after you order,
+            Hardcover print files are deleted about 90 days after you order,
             so we can reprint a damaged book.
           </li>
           <li>
@@ -158,7 +158,8 @@ export default function PrivacyPage() {
       <LegalSection title="6. Cookies and analytics">
         <p>
           We use PostHog and Vercel analytics to see how the site is used.
-          This stores an identifier in your browser. Our payment and account
+          This stores an identifier in your browser. We do not record your
+          screen or your photos for analytics. Our payment and account
           providers also store what they need in your browser to keep you
           signed in and to take payment.
         </p>

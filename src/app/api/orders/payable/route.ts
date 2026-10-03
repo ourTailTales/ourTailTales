@@ -1,4 +1,5 @@
 import { routeError } from "@/lib/env";
+import { expectedOrderAmount } from "@/lib/order/amount";
 import { requireOrderToken } from "@/lib/order/token";
 import { supabaseAdmin } from "@/lib/supabase/server";
 
@@ -11,7 +12,12 @@ import { supabaseAdmin } from "@/lib/supabase/server";
  * of copies was changed in another tab. Paying then takes the old amount for
  * an order that now costs something else, and the book is held for review.
  *
- * Requires the order's token. Says only yes or no.
+ * Also says what the order costs right now, in cents. A payment page restored
+ * by the Back button can show an older total on its button than the amount
+ * the payment was last set to, and nobody should be charged a figure other
+ * than the one they are looking at.
+ *
+ * Requires the order's token.
  */
 export async function GET(request: Request): Promise<Response> {
   try {
@@ -25,7 +31,9 @@ export async function GET(request: Request): Promise<Response> {
 
     const { data: order, error } = await supabaseAdmin()
       .from("orders")
-      .select("status, shipping_price, stripe_payment_intent_id")
+      .select(
+        "status, shipping_price, stripe_payment_intent_id, book_price, quantity, video_memory_total_cents",
+      )
       .eq("id", orderId)
       .maybeSingle();
 
@@ -40,7 +48,7 @@ export async function GET(request: Request): Promise<Response> {
       Boolean(order.stripe_payment_intent_id);
 
     return Response.json(
-      { payable },
+      { payable, amountCents: payable ? expectedOrderAmount(order) : null },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {

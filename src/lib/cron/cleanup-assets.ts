@@ -6,8 +6,9 @@ import { STORAGE_BUCKET, supabaseAdmin } from "@/lib/supabase/server";
  * Print PDFs are a means to an end, not an archive, but the end is later than
  * the day the book ships. A book that arrives damaged or misprinted is
  * reprinted free if we are told within 30 days of delivery, and a reprint
- * needs the files. So a finished order keeps them for 60 days from the day it
- * was placed, which covers printing, shipping and the 30 days after, and is
+ * needs the files. So a finished order keeps them for 90 days from the day it
+ * was placed. Printing and the slowest delivery can take about a month, and
+ * the 30 days start at delivery, so 60 was not always enough. This is also
  * what the Privacy Policy says. An order nobody paid for keeps them a week.
  */
 
@@ -15,7 +16,7 @@ import { STORAGE_BUCKET, supabaseAdmin } from "@/lib/supabase/server";
 const UNPAID_RETENTION_DAYS = 7;
 
 /** Finished orders: long enough to honour the reprint promise. */
-const FINISHED_RETENTION_DAYS = 60;
+const FINISHED_RETENTION_DAYS = 90;
 
 const UNPAID_STATUSES = ["pending_payment"];
 const FINISHED_STATUSES = ["shipped", "delivered", "canceled"];

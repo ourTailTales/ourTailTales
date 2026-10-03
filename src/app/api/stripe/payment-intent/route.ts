@@ -262,6 +262,20 @@ export async function POST(request: Request): Promise<Response> {
       intentId = created.id;
     }
 
+    // Unlocked before the amount on the payment moves. If the write that
+    // locks the new price below then fails, the order is left with no price,
+    // which the Pay button and the webhook both treat as "go back through
+    // delivery", instead of with the old price beside a payment for the new
+    // amount.
+    if (order.stripe_payment_intent_id) {
+      const { error: unlockError } = await supabase
+        .from("orders")
+        .update({ shipping_price: null })
+        .eq("id", orderId)
+        .eq("status", "pending_payment");
+      if (unlockError) throw new Error(unlockError.message);
+    }
+
     const paymentIntent = await stripe.paymentIntents.update(intentId, {
       amount,
       receipt_email: email,
@@ -270,6 +284,29 @@ export async function POST(request: Request): Promise<Response> {
       description: `ourTailTales hardcover (${order.chapter_count} chapters${quantity > 1 ? `, ${quantity} copies` : ""})`,
       metadata: analyticsMetadata,
     });
+
+    // The delivery details first, the locked price last. Whatever fails on
+    // the way, the order is never left with a price locked for details that
+    // were not saved.
+    const { error: shippingError } = await supabase
+      .from("order_shipping")
+      .upsert(
+        {
+          order_id: orderId,
+          name: address.name,
+          phone: address.phone,
+          street1: address.street1,
+          street2: address.street2 || null,
+          city: address.city,
+          state: address.state.toUpperCase(),
+          postcode: address.postcode,
+          country: address.country,
+          shipping_level: shippingLevel,
+        },
+        { onConflict: "order_id" },
+      );
+
+    if (shippingError) throw new Error(shippingError.message);
 
     const { error: orderUpdateError } = await supabase
       .from("orders")
@@ -290,29 +327,10 @@ export async function POST(request: Request): Promise<Response> {
             ? new Date().toISOString()
             : null,
       })
-      .eq("id", orderId);
+      .eq("id", orderId)
+      .eq("status", "pending_payment");
 
     if (orderUpdateError) throw new Error(orderUpdateError.message);
-
-    const { error: shippingError } = await supabase
-      .from("order_shipping")
-      .upsert(
-        {
-          order_id: orderId,
-          name: address.name,
-          phone: address.phone,
-          street1: address.street1,
-          street2: address.street2 || null,
-          city: address.city,
-          state: address.state.toUpperCase(),
-          postcode: address.postcode,
-          country: address.country,
-          shipping_level: shippingLevel,
-        },
-        { onConflict: "order_id" },
-      );
-
-    if (shippingError) throw new Error(shippingError.message);
 
     await captureServerEvent(distinctId, "payment_intent_created", {
       total: book + videoMemoryPrice + shippingPrice,

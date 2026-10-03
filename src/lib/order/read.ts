@@ -28,6 +28,8 @@ export type OrderView = {
   reviewReason: string | null;
   trackingUrls: string[];
   hasPrintFiles: boolean;
+  /** Whether the order is still tied to the draft its PDF copy comes from. */
+  hasDraft: boolean;
   hasFrozenRevision: boolean;
   createdAt: string;
 };
@@ -40,7 +42,7 @@ export async function readOrder(orderId: string): Promise<OrderView | null> {
   const { data, error } = await supabaseAdmin()
     .from("orders")
     .select(
-      "id, status, email, pet_name, chapter_count, story_pages, total_pages, book_price, quantity, shipping_price, video_memory_total_cents, video_memory_pack_count, selected_video_count, fulfillment_stage, lulu_print_job_id, lulu_status_message, review_reason, tracking_urls, interior_path, cover_path, frozen_interior_path, book_snapshot, created_at",
+      "id, status, email, pet_name, chapter_count, story_pages, total_pages, book_price, quantity, shipping_price, video_memory_total_cents, video_memory_pack_count, selected_video_count, fulfillment_stage, lulu_print_job_id, lulu_status_message, review_reason, tracking_urls, interior_path, cover_path, frozen_interior_path, book_snapshot, created_at, draft_id",
     )
     .eq("id", orderId)
     .maybeSingle();
@@ -70,6 +72,7 @@ export async function readOrder(orderId: string): Promise<OrderView | null> {
     reviewReason: data.review_reason,
     trackingUrls: Array.isArray(data.tracking_urls) ? data.tracking_urls : [],
     hasPrintFiles: Boolean(data.interior_path && data.cover_path),
+    hasDraft: Boolean(data.draft_id),
     hasFrozenRevision: Boolean(data.frozen_interior_path && data.book_snapshot && data.cover_path),
     createdAt: data.created_at,
   };

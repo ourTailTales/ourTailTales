@@ -378,10 +378,12 @@ async function moneyGoingBack(
   // shipped order's status would take its tracking off the customer's page
   // for no benefit.
   if (order.status === "shipped" || order.status === "delivered") {
+    // The book cannot be taken back. The PDF that came with it can.
+    await takeBackIncludedPdf(order.id, paymentIntentId, kind);
     await alertOps(`A ${kind} payment on an order that already shipped`, {
       order: order.id,
       status: order.status,
-      note: "Nothing was changed on the order.",
+      note: "The order's status was left alone. The included PDF was locked again.",
     });
     return;
   }
@@ -394,6 +396,7 @@ async function moneyGoingBack(
       order.id,
       "This order is on hold while we sort out the payment. Nothing further will be printed until we do.",
     );
+    await takeBackIncludedPdf(order.id, paymentIntentId, kind);
     await alertOps(`An order was ${kind} after it went to the printer`, {
       order: order.id,
       printJob: order.lulu_print_job_id,
@@ -426,18 +429,39 @@ async function moneyGoingBack(
     throw new Error(cancelError.message);
   }
 
-  // The PDF that came with the book goes back with the money. Quiet when no
-  // draft was unlocked by this payment.
-  try {
-    await revokeDigitalAccess(paymentIntentId, kind);
-  } catch (error) {
-    console.error("[ourTailTales] Could not revoke the included PDF", order.id, error);
-  }
+  await takeBackIncludedPdf(order.id, paymentIntentId, kind);
 
   await alertOps(`An order was ${kind}`, {
     order: order.id,
     previousStatus: order.status,
   });
+}
+
+/**
+ * The PDF that came with a hardcover goes back with the money.
+ *
+ * Two steps. The draft this payment unlocked is locked again; that is quiet
+ * when the payment unlocked nothing, and it leaves alone a PDF the customer
+ * bought separately, because that one is recorded against its own payment.
+ * Then the order lets go of the draft, which is what stops the order page
+ * unlocking it afresh the next time it is opened. Never throws: the refund
+ * itself has already been handled by the time this runs.
+ */
+async function takeBackIncludedPdf(
+  orderId: string,
+  paymentIntentId: string,
+  kind: "refunded" | "disputed",
+): Promise<void> {
+  try {
+    await revokeDigitalAccess(paymentIntentId, kind);
+    const { error } = await supabaseAdmin()
+      .from("orders")
+      .update({ draft_id: null })
+      .eq("id", orderId);
+    if (error) throw new Error(error.message);
+  } catch (error) {
+    console.error("[ourTailTales] Could not take back the included PDF", orderId, error);
+  }
 }
 
 const PAYMENT_INTENT_COLUMN = DRAFT_PAYMENT_INTENT_COLUMN;

@@ -277,10 +277,11 @@ function OrderDetail({
         </section>
       )}
 
-      {!pdfUrl && pdfCopyExpected(order.status) && (
+      {!pdfUrl && order.hasDraft && pdfCopyExpected(order.status) && (
         <p className="mt-8 text-sm leading-6 text-ink-faint">
-          Your PDF copy is not ready yet. If it has not appeared here in a few
-          minutes, email hello@ourtailtales.com and we will send it to you.
+          Your PDF copy is not ready yet. Open your book again on the device
+          you made it on and it will finish saving, then reload this page. Or
+          email hello@ourtailtales.com and we will send it to you.
         </p>
       )}
 

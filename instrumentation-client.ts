@@ -44,6 +44,10 @@ if (token && host) {
     // down by was never recorded for the people the funnel is about.
     person_profiles: "always",
     capture_exceptions: true,
+    // No session replay. A replay of the editor is a recording of somebody's
+    // photographs, and the Privacy Policy says we do not make one. Turning
+    // this on means changing section 6 of that policy first.
+    disable_session_recording: true,
     // Every event on localhost is dropped just below, so debug mode there
     // would only ever print "this event was rejected" — never anything
     // worth debugging, and PostHog logs that rejection loudly to the
