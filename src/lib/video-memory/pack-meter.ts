@@ -54,13 +54,13 @@ export function packBoundaryCopy(currentCapacity: number): {
     return {
       title: "Add Video Memories to your book?",
       body: `A Video Memory is a QR code printed on the page: point a phone at it and the video plays. ${VIDEO_MEMORIES_PER_PACK} of them cost ${packPrice}, and you only pay when you order the book.`,
-      confirm: `Add Video Memories — ${packPrice}`,
+      confirm: `Add Video Memories for ${packPrice}`,
     };
   }
 
   return {
     title: "Add another Video Memories pack?",
     body: `You’ve used all ${currentCapacity} Video Memories in your current pack. Add ${VIDEO_MEMORIES_PER_PACK} more Video Memories for ${packPrice}. You’ll have room for up to ${nextCapacity} Video Memories.`,
-    confirm: `Add ${VIDEO_MEMORIES_PER_PACK} More — ${packPrice}`,
+    confirm: `Add ${VIDEO_MEMORIES_PER_PACK} More for ${packPrice}`,
   };
 }

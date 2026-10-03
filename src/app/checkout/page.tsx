@@ -26,7 +26,7 @@ export default async function CheckoutPage({
 }: PageProps<"/checkout">) {
   const access = await checkoutAccess(await searchParams);
   if (!access.ok) {
-    return <CheckoutRefused reason={access.reason} />;
+    return <CheckoutRefused reason={access.reason} orderHref={access.orderHref} />;
   }
 
   const { order, token, shipping } = access;

@@ -44,10 +44,6 @@ export function teaserEmailHtml(args: {
       ${paragraph(opening)}
       ${paragraph(rest)}
       ${button("Open the whole book", args.claimUrl)}
-      ${paragraph(
-        "Your photos never left your own device. They were turned into a book right there in your browser.",
-        colors.inkSoft,
-      )}
     `,
   });
 }
@@ -84,19 +80,32 @@ export function orderConfirmationEmailHtml(args: {
   orderId: string;
   total: string;
   orderUrl: string;
+  copies?: number;
 }): string {
   const name = args.petName.trim();
+  const copies = args.copies ?? 1;
 
+  // Sent the moment the payment is confirmed, which is before the files reach
+  // the printer. It says what is true at that moment and no more.
   return layout({
-    preheader: "Your hardcover is on its way to the printer",
-    heading: name ? `${possessive(name)} book is being printed` : "Your book is being printed",
+    preheader: "Payment received. Your hardcover is next in line for printing.",
+    heading: name ? `We have your order for ${possessive(name)} book` : "We have your order",
     body: `
       ${paragraph(
-        "Your order is confirmed and has gone to the printer. Printing and binding take a few days, and you will get another email the moment it ships.",
+        "Thank you. Your payment is confirmed. We are getting your book ready to print. Printing and binding take a few days. We will email you again when it ships.",
       )}
       ${detailRow("Order", args.orderId)}
+      ${copies > 1 ? detailRow("Copies", String(copies)) : ""}
       ${detailRow("Total", args.total)}
-      ${button("Track your order", args.orderUrl)}
+      ${button("See your order", args.orderUrl)}
+      ${paragraph(
+        "The clean PDF of the book comes with your hardcover. If it is ready, you can download it from your order page.",
+        colors.inkSoft,
+      )}
+      ${paragraph(
+        "If the book arrives damaged or misprinted, email hello@ourtailtales.com within 30 days of delivery with a photo and we will reprint it free.",
+        colors.inkSoft,
+      )}
     `,
   });
 }
@@ -161,7 +170,7 @@ function layout(args: {
         <tr>
           <td style="padding:0 32px 32px 32px;">
             <p style="margin:0;font-family:Helvetica,Arial,sans-serif;font-size:12px;line-height:1.6;color:${colors.inkFaint};border-top:1px solid ${colors.line};padding-top:16px;">
-              ${brand.name} — ${escapeHtml(brand.line)}<br>
+              ${brand.name} · ${escapeHtml(brand.line)}<br>
               <a href="${escapeAttribute(SITE_URL)}" style="color:${colors.inkFaint};">${escapeHtml(siteLabel())}</a>
             </p>
           </td>

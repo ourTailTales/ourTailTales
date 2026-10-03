@@ -13,6 +13,8 @@ import {
 import { supabaseAdmin } from "@/lib/supabase/server";
 import type { ShippingAddress, ShippingOption } from "@/types/order";
 import { LIMITS, enforceRateLimit } from "@/lib/rate-limit";
+import { requireOrderToken } from "@/lib/order/token";
+import { clampCopies } from "@/lib/pricing";
 
 /**
  * Shipping quote for one order.
@@ -53,9 +55,14 @@ export async function POST(request: Request): Promise<Response> {
 
     const { orderId, email, address } = parsed.data;
 
+    // Each quote is several calls to the printer on our account, so an order
+    // id alone is not enough to ask for one.
+    const unauthorized = requireOrderToken(request, orderId);
+    if (unauthorized) return unauthorized;
+
     const { data: order, error } = await supabaseAdmin()
       .from("orders")
-      .select("id, total_pages, status")
+      .select("id, total_pages, status, quantity")
       .eq("id", orderId)
       .maybeSingle();
 
@@ -64,9 +71,11 @@ export async function POST(request: Request): Promise<Response> {
       return Response.json({ error: "Unknown order." }, { status: 404 });
     }
 
+    const quantity = clampCopies(order.quantity);
     const available = await fetchShippingOptions(
       order.total_pages,
       address as ShippingAddress,
+      quantity,
     );
 
     const chosen = cheapestPerLevel(available);
@@ -90,6 +99,7 @@ export async function POST(request: Request): Promise<Response> {
         address: address as ShippingAddress,
         shippingLevel: option.level,
         email,
+        quantity,
       });
 
       const shippingPrice = Number(

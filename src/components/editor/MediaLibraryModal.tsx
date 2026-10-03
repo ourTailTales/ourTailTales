@@ -11,8 +11,10 @@ import type { PhotoAsset } from "@/types/photo";
 /**
  * Everything dropped in so far, in one grid, each with its own way out.
  *
- * The album lives entirely on this device until the book is built, so
- * "delete" here really is delete — there is no server copy to fall back on.
+ * The original files are only held on this device, so "delete" here really is
+ * delete: we keep no copy of the original to fall back on. (Small previews
+ * are sent to the server to write the story, and the finished book files are
+ * uploaded, but neither can put a removed photo back in the album.)
  * That is also why this needs to exist at all: once media is folded into a
  * running total instead of a pile you can see, the only way to fix a bad
  * photo that snuck in is to start the whole album over.

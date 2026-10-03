@@ -14,6 +14,7 @@ import {
   luluInteriorPages,
   orderedInteriorPages,
 } from "@/lib/pricing";
+import { resolveDraft } from "@/lib/drafts/resolve";
 import { mintOrderToken } from "@/lib/order/token";
 import { LIMITS, enforceRateLimit } from "@/lib/rate-limit";
 import { supabaseAdmin } from "@/lib/supabase/server";
@@ -59,6 +60,11 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     const { petName, chapterCount, interiorPages, email, draftId } = parsed.data;
+    // A draft is only attached to an order by somebody who holds its secret.
+    // The clean PDF that comes with a hardcover is found through this link, so
+    // an id alone must not be enough to claim somebody else's draft.
+    const draft = draftId ? await resolveDraft(request) : null;
+    const ownedDraftId = draft && draft.id === draftId ? draft.id : null;
     const orderId = crypto.randomUUID();
     const totalPages = orderedInteriorPages(
       interiorPages ?? luluInteriorPages(chapterCount),
@@ -73,7 +79,7 @@ export async function POST(request: Request): Promise<Response> {
       story_pages: totalPages - FIXED_INTERIOR_PAGES,
       total_pages: totalPages,
       book_price: bookPrice(chapterCount),
-      draft_id: draftId ?? null,
+      draft_id: ownedDraftId,
       status: "pending_payment",
     });
 

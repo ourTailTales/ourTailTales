@@ -1,4 +1,4 @@
-import { bookUrl, claimUrl } from "@/lib/drafts/storage";
+import { bookUrl, claimUrl, type DraftBankKind } from "@/lib/drafts/storage";
 import { draftHeaders, ensureDraft } from "@/lib/video-memory/client";
 
 export type BankedBook = {
@@ -21,13 +21,15 @@ export type BankedBook = {
  * `kind` decides which book this is. The teaser is banked the moment the story
  * is written, so the welcome email has something to attach; the full book is
  * banked once there is an account to attach it to, and the server watermarks
- * that copy on arrival.
+ * that copy on arrival. `order` is the whole book banked at hardcover checkout:
+ * the server keeps it as the clean file only and leaves the draft's public
+ * link, its expiry and its watermark exactly as they were.
  */
 export async function bankBook(args: {
   pdf: Blob;
   petName: string;
   chapterCount: number;
-  kind: "teaser" | "full";
+  kind: DraftBankKind;
   /** Whose book this is. Two addresses in one browser get two drafts. */
   email: string | null;
 }): Promise<BankedBook> {

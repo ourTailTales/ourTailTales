@@ -6,6 +6,7 @@ import {
 } from "@/lib/email/templates";
 import { emailFrom, resendClient } from "@/lib/email/resend";
 import { SITE_URL } from "@/lib/env";
+import { mintOrderToken } from "@/lib/order/token";
 
 /**
  * Transactional senders.
@@ -76,20 +77,32 @@ export async function sendDigitalPurchaseEmail(args: {
   });
 }
 
+/**
+ * The order page, with the order's token on it.
+ *
+ * The page refuses a link that carries only the id, so every link we hand out
+ * has to carry both.
+ */
+function orderPageUrl(orderId: string): string {
+  return `${SITE_URL}/order/${orderId}?t=${mintOrderToken(orderId)}`;
+}
+
 export async function sendOrderConfirmationEmail(args: {
   to: string;
   petName: string;
   orderId: string;
   total: string;
+  copies?: number;
 }): Promise<SendResult> {
   return send({
     to: args.to,
-    subject: "Your hardcover is being printed",
+    subject: "We have your order",
     html: orderConfirmationEmailHtml({
       petName: args.petName,
       orderId: args.orderId,
       total: args.total,
-      orderUrl: `${SITE_URL}/order/${args.orderId}`,
+      copies: args.copies ?? 1,
+      orderUrl: orderPageUrl(args.orderId),
     }),
   });
 }
@@ -105,13 +118,45 @@ export async function sendShippingNotificationEmail(args: {
     subject: "Your book has shipped",
     html: shippingNotificationEmailHtml({
       petName: args.petName,
-      orderUrl: `${SITE_URL}/order/${args.orderId}`,
+      orderUrl: orderPageUrl(args.orderId),
       trackingUrl: args.trackingUrl,
     }),
   });
 }
 
 type Attachment = { filename: string; content: Buffer };
+
+/** Where a reply to any of these goes. */
+export const REPLY_TO = "hello@ourtailtales.com";
+
+/**
+ * How long one send may take.
+ *
+ * Mail is sent from webhooks and cron runs that have a fixed number of seconds
+ * to live and more important things to do with them. A send that has not been
+ * answered by now is reported as not sent, and the caller moves on.
+ */
+export const SEND_TIMEOUT_MS = 8_000;
+
+/** Rejects when `work` has not settled in time. The work itself is not cancelled. */
+export function withTimeout<T>(work: PromiseLike<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`Email send timed out after ${ms}ms`)),
+      ms,
+    );
+    work.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
 
 async function send(args: {
   to: string;
@@ -126,13 +171,18 @@ async function send(args: {
   }
 
   try {
-    const { error } = await client.emails.send({
-      from: emailFrom(),
-      to: args.to,
-      subject: args.subject,
-      html: args.html,
-      ...(args.attachments ? { attachments: args.attachments } : {}),
-    });
+    const { error } = await withTimeout(
+      client.emails.send({
+        from: emailFrom(),
+        to: args.to,
+        // A customer who replies reaches a person, not the sending address.
+        replyTo: REPLY_TO,
+        subject: args.subject,
+        html: args.html,
+        ...(args.attachments ? { attachments: args.attachments } : {}),
+      }),
+      SEND_TIMEOUT_MS,
+    );
     if (error) {
       console.error("[ourTailTales] Resend rejected an email", error);
       return { sent: false, reason: error.message };

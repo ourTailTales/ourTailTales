@@ -1,4 +1,4 @@
-import { formatUsd, storedPriceBreakdown } from "@/lib/pricing";
+import { extraCopyPrice, formatUsd, storedPriceBreakdown } from "@/lib/pricing";
 import type { OrderView } from "@/lib/order/read";
 
 /** What is being bought, beside every step of buying it. */
@@ -10,7 +10,8 @@ export function OrderSummary({
   /** Null until a delivery speed has been chosen. */
   shippingPrice: number | null;
 }) {
-  const total = order.bookPrice + order.videoMemoryPrice + (shippingPrice ?? 0);
+  const total = order.booksTotal + order.videoMemoryPrice + (shippingPrice ?? 0);
+  const extraCopies = order.quantity - 1;
   // Chapters are billed band by band; the rate each band was charged at is
   // shown rather than folded into one number.
   const bands = storedPriceBreakdown(order.chapterCount, order.bookPrice);
@@ -36,6 +37,13 @@ export function OrderSummary({
             indented
           />
         ))}
+        {extraCopies > 0 ? (
+          <Row
+            label={`${extraCopies} more ${extraCopies === 1 ? "copy" : "copies"} at ${formatUsd(extraCopyPrice(order.bookPrice))} each`}
+            value={formatUsd(order.booksTotal - order.bookPrice)}
+          />
+        ) : null}
+        <Row label="Clean PDF of the book" value="Included" />
         {order.hasVideoMemories ? (
           <Row
             label={`Video Memories × ${order.videoMemoryPackCount}`}
@@ -50,8 +58,8 @@ export function OrderSummary({
         <Row label="Total" value={formatUsd(total)} strong />
       </dl>
       <p className="mt-4 text-xs leading-5 text-ink-faint">
-        Printed and bound to order. Your photos were never uploaded to build this
-        book, only the finished print files were.
+        Printed and bound to order. If it arrives damaged or misprinted, tell
+        us within 30 days of delivery and we reprint it free.
       </p>
     </aside>
   );

@@ -24,7 +24,6 @@ import {
 import { track } from "@/lib/analytics";
 
 import { CoverCanvas, PageCanvas } from "@/components/book-viewer/PageCanvas";
-import { ExpiryBanner } from "@/components/ExpiryBanner";
 import { PageZoom } from "@/components/book-viewer/PageZoom";
 import { CoverStylePicker } from "@/components/studio/CoverStylePicker";
 import { DesignPicker } from "@/components/studio/DesignPicker";
@@ -37,6 +36,7 @@ import { buildSlides, followSelection, type StudioSlide } from "@/lib/book/studi
 import { summarizeTeaser } from "@/lib/book/teaser";
 import { selectablePhotos } from "@/lib/photo/dedupe";
 import { formatUsd } from "@/lib/pricing";
+import { useVideoMemoriesEnabled } from "@/lib/video-memory/flag-context";
 import { photoMapOf, useOurTailTalesStore } from "@/store/useOurTailTalesStore";
 import type { BookMeta, Chapter } from "@/types/book";
 import type { PhotoAsset } from "@/types/photo";
@@ -190,11 +190,12 @@ export function BookStudio({
   onFiles: (files: File[], target?: { chapterId: string; pageIndex: number }) => void;
   processing: boolean;
   onDownload: () => void;
-  /** Done editing: on to the Video Memories offer, the price and the order. */
+  /** Done editing: on to the price and the order. */
   onFinish: () => void;
   downloading: boolean;
   notice?: string | null;
 }) {
+  const videoMemoriesEnabled = useVideoMemoriesEnabled();
   const bookMeta = useOurTailTalesStore((state) => state.meta);
   // Signed out, the book is shown exactly as the free PDF prints it: in the
   // scrapbook. Choosing another design is part of what an account unlocks.
@@ -205,7 +206,6 @@ export function BookStudio({
   const chapters = useOurTailTalesStore((state) => state.chapters);
   const pages = useOurTailTalesStore((state) => state.pages);
   const photos = useOurTailTalesStore((state) => state.photos);
-  const bookExpiresAt = useOurTailTalesStore((state) => state.bookExpiresAt);
 
   const [selected, setSelected] = useState(0);
   const [zoomed, setZoomed] = useState(false);
@@ -499,8 +499,8 @@ export function BookStudio({
     <div>
       <h2 className="font-display text-lg text-page-ink">Cover styles</h2>
       <p className="mt-1 text-xs leading-5 text-page-ink-faint">
-        Your free book is bound in the first one. The rest — including two with no photo at
-        all — open with an account.
+        Your free book is bound in the first one. The rest, including two with no photo at
+        all, open with an account.
       </p>
       <div className="mt-3">
         <CoverStylePicker
@@ -555,22 +555,6 @@ export function BookStudio({
 
   return (
     <div className="flex flex-col gap-5">
-      {!unlocked && bookExpiresAt ? (
-        <ExpiryBanner
-          expiresAt={bookExpiresAt}
-          petName={meta.petName}
-          action={
-            <button
-              type="button"
-              onClick={onUnlock}
-              className="inline-flex min-h-11 items-center justify-center rounded-xl bg-periwinkle px-6 text-sm font-semibold text-white shadow-lift transition-colors hover:bg-periwinkle-deep"
-            >
-              Create my free account
-            </button>
-          }
-        />
-      ) : null}
-
       {notice ? (
         <p
           role="alert"
@@ -759,7 +743,7 @@ export function BookStudio({
               onClick={onUnlock}
               className="absolute bottom-0 left-1/2 z-20 inline-flex -translate-x-1/2 translate-y-1/2 items-center justify-center whitespace-nowrap rounded-full bg-periwinkle px-6 py-3 text-sm font-semibold text-white shadow-lift transition-colors hover:bg-periwinkle-deep sm:px-8 sm:text-base"
             >
-              Signup to Edit
+              Sign up to edit
             </button>
           ) : null}
         </div>
@@ -819,7 +803,9 @@ export function BookStudio({
                   : "Happy with your book?"}
               </p>
               <p className="mt-0.5 text-xs leading-5 text-page-ink-faint">
-                Hardcover from {formatUsd(price)}, plus the videos you want in it.
+                {videoMemoriesEnabled
+                  ? `Hardcover from ${formatUsd(price)}, plus the videos you want in it.`
+                  : `Hardcover from ${formatUsd(price)}.`}
               </p>
             </div>
             <div className="flex shrink-0 flex-col gap-2.5 sm:flex-row sm:items-center">

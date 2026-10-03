@@ -123,7 +123,7 @@ export function ClaimAndBuyDigital({
       if (!bookIsLocallyAvailable()) {
         setClaimableHere(false);
         setNotice(
-          "This book's photos are only saved on the device where you made it. Open this same link there — creating your free account is what unlocks the clean PDF, on that device.",
+          "This book's photos are only saved on the device where you made it. Open this same link there and make your free account. Then you can buy the clean PDF.",
         );
         return;
       }

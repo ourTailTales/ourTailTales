@@ -74,8 +74,8 @@ export function CoverStylePicker({
         <p className="mt-2.5 flex items-start gap-1.5 text-[0.7rem] leading-4 text-page-ink-faint">
           <Lock aria-hidden className="mt-px size-3 shrink-0" />
           <span>
-            {lockedCount} more cover {lockedCount === 1 ? "style" : "styles"} — including two
-            with no photo at all, just their name and years — come with a free account.
+            {lockedCount} more cover {lockedCount === 1 ? "style" : "styles"}, including two
+            with no photo at all, just their name and years, come with a free account.
           </span>
         </p>
       ) : null}

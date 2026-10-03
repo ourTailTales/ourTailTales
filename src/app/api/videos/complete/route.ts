@@ -3,11 +3,15 @@ import { z } from "zod";
 import { resolveDraft } from "@/lib/drafts/resolve";
 import { routeError } from "@/lib/env";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { videoMemoriesDisabledResponse } from "@/lib/video-memory/flag";
 
 const requestSchema = z.object({ assetId: z.string().uuid() });
 
 /** Marks the direct upload complete. Does not transcode. */
 export async function POST(request: Request): Promise<Response> {
+  const disabled = videoMemoriesDisabledResponse();
+  if (disabled) return disabled;
+
   try {
     const draft = await resolveDraft(request);
     if (!draft) {

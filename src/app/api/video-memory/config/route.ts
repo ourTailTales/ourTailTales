@@ -6,11 +6,19 @@ import {
 } from "@/lib/video-memory/config";
 import { effectiveUploadLimitBytes } from "@/lib/video-memory/storage-limit";
 import { routeError } from "@/lib/env";
+import { videoMemoriesEnabled } from "@/lib/video-memory/flag";
 
 export async function GET(): Promise<Response> {
+  // Off: say so and nothing else. No bucket lookup for a feature nobody can
+  // reach.
+  if (!videoMemoriesEnabled()) {
+    return Response.json({ enabled: false });
+  }
+
   try {
     const limits = await effectiveUploadLimitBytes();
     return Response.json({
+      enabled: true,
       maxDurationMs: VIDEO_MEMORY_MAX_DURATION_MS,
       maxSourceBytes: limits.effective,
       packSize: VIDEO_MEMORIES_PER_PACK,

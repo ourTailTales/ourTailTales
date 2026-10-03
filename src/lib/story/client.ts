@@ -97,9 +97,7 @@ export async function generateChapterStory(
     photos: pagePhotos.map((id, index) => photoFacts(index, photos.get(id), places)),
     spotlight,
     pageBudget: { min: MIN_PHOTO_PAGES, max: MAX_PHOTO_PAGES },
-    ...(alreadyUsed && (alreadyUsed.titles.length > 0 || alreadyUsed.captions.length > 0)
-      ? { alreadyUsed }
-      : {}),
+    ...withinBounds(alreadyUsed),
   };
 
   const response = await fetch("/api/story", {
@@ -116,6 +114,27 @@ export async function generateChapterStory(
 
   const story = (await response.json()) as StoryDraft;
   return { story, places, spotlightIds };
+}
+
+/**
+ * The book's lines so far, cut to what `/api/story` accepts.
+ *
+ * The route caps this list because it comes from the browser, and a request
+ * over a cap is refused outright — so one long caption in an earlier chapter
+ * would otherwise cost every later chapter its writing. The most recent lines
+ * are the ones kept.
+ */
+function withinBounds(
+  alreadyUsed: { titles: string[]; captions: string[] } | undefined,
+): Pick<StoryRequest, "alreadyUsed"> {
+  if (!alreadyUsed) return {};
+  const titles = alreadyUsed.titles.filter((title) => title.length <= 80).slice(-50);
+  const captions = alreadyUsed.captions
+    .filter((caption) => caption.length <= 120)
+    .slice(-500);
+  return titles.length > 0 || captions.length > 0
+    ? { alreadyUsed: { titles, captions } }
+    : {};
 }
 
 /**

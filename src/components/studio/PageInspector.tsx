@@ -11,6 +11,7 @@ import { NamePositionPicker } from "@/components/studio/controls/NamePositionPic
 import { PageVideos } from "@/components/studio/controls/PageVideos";
 import { PhotoPicker } from "@/components/studio/controls/PhotoPicker";
 import { Tabs } from "@/components/studio/controls/Tabs";
+import { useVideoMemoriesEnabled } from "@/lib/video-memory/flag-context";
 import {
   COVER_FONTS,
   DEFAULT_COVER_FONT,
@@ -561,6 +562,7 @@ function PhotoPagePanel({
   const removeAlbumPhoto = useOurTailTalesStore((state) => state.removeAlbumPhoto);
   const setPageLayout = useOurTailTalesStore((state) => state.setPageLayout);
   const setPageNote = useOurTailTalesStore((state) => state.setPageNote);
+  const videoMemoriesEnabled = useVideoMemoriesEnabled();
 
   const page = slide.page!;
   const chapter = chapters.find((entry) => entry.id === slide.chapterId);
@@ -781,11 +783,18 @@ function PhotoPagePanel({
               ),
           },
           { id: "photos", label: "Photos", content: () => photosTab },
-          {
-            id: "videos",
-            label: "Videos",
-            content: () => <PageVideos pageId={page.id} />,
-          },
+          // Only with Video Memories switched on. `PageVideos` is the one
+          // place that talks to `/api/videos` and `/api/placements`, so not
+          // mounting it is also what keeps those calls from being made.
+          ...(videoMemoriesEnabled
+            ? [
+                {
+                  id: "videos",
+                  label: "Videos",
+                  content: () => <PageVideos pageId={page.id} />,
+                },
+              ]
+            : []),
         ]}
       />
     </Panel>

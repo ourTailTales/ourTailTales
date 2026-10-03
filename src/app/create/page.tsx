@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { Funnel } from "@/components/Funnel";
+import { videoMemoriesEnabled } from "@/lib/video-memory/flag";
 
 // Reads ?email= from the landing-page CTA via useSearchParams, so this page
 // must render per-request rather than be statically generated at build time.
@@ -13,5 +14,5 @@ export const metadata: Metadata = {
 };
 
 export default function CreatePage() {
-  return <Funnel />;
+  return <Funnel videoMemoriesEnabled={videoMemoriesEnabled()} />;
 }

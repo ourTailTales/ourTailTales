@@ -19,7 +19,7 @@ import { brand, hexToRgb01 } from "@/lib/brand";
  * client was well behaved.
  */
 
-export const WATERMARK_TEXT = `PREVIEW — ${brand.domain}`;
+export const WATERMARK_TEXT = `PREVIEW · ${brand.domain}`;
 
 const FONT_SIZE = 36;
 const OPACITY = 0.15;

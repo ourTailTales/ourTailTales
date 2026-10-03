@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   advanceBatchProgress,
   beginBatchProgress,
   secondsRemaining,
+  useOurTailTalesStore,
 } from "@/store/useOurTailTalesStore";
 
 describe("upload batch progress", () => {
@@ -60,5 +61,74 @@ describe("how much longer the album has", () => {
 
   it("never promises less than a second", () => {
     expect(secondsRemaining(reading(999, 1000), 1_000)).toBe(1);
+  });
+});
+
+describe("saving a book to the account", () => {
+  const store = (): ReturnType<typeof useOurTailTalesStore.getState> =>
+    useOurTailTalesStore.getState();
+
+  beforeEach(() => {
+    useOurTailTalesStore.setState({
+      claim: null,
+      claimAttemptedFor: [],
+      localDraftId: null,
+    });
+  });
+
+  it("records the attempt against the book, once", () => {
+    store().setLocalDraftId("book-1");
+    store().beginClaim("book-1");
+    store().beginClaim("book-1");
+    expect(store().claim).toEqual({ draftId: "book-1", phase: "saving" });
+    expect(store().claimAttemptedFor).toEqual(["book-1"]);
+  });
+
+  it("clears the status when the save works, and keeps a failure", () => {
+    store().setLocalDraftId("book-1");
+    store().beginClaim("book-1");
+    store().endClaim("book-1", "claimed");
+    expect(store().claim).toBeNull();
+
+    store().beginClaim("book-1");
+    store().endClaim("book-1", "failed");
+    expect(store().claim).toEqual({ draftId: "book-1", phase: "failed" });
+    // Still counted as tried, so it is not tried again in a loop.
+    expect(store().claimAttemptedFor).toEqual(["book-1"]);
+  });
+
+  it("does not report a failure for a book that is no longer on screen", () => {
+    store().setLocalDraftId("book-1");
+    store().beginClaim("book-1");
+    store().setLocalDraftId("book-2");
+    store().endClaim("book-1", "failed");
+    expect(store().claim).toBeNull();
+  });
+
+  it("leaves another book's status alone", () => {
+    store().setLocalDraftId("book-2");
+    store().beginClaim("book-2");
+    store().endClaim("book-1", "failed");
+    expect(store().claim).toEqual({ draftId: "book-2", phase: "saving" });
+  });
+
+  it("lets the next book be saved after starting over", () => {
+    store().setLocalDraftId("book-1");
+    store().beginClaim("book-1");
+    store().endClaim("book-1", "failed");
+
+    store().reset();
+    expect(store().localDraftId).toBeNull();
+    expect(store().claimAttemptedFor).toEqual([]);
+    expect(store().claim).toBeNull();
+  });
+
+  it("lets a save that is still running finish after starting over", () => {
+    store().setLocalDraftId("book-1");
+    store().beginClaim("book-1");
+    store().reset();
+    expect(store().claim).toEqual({ draftId: "book-1", phase: "saving" });
+    store().endClaim("book-1", "abandoned");
+    expect(store().claim).toBeNull();
   });
 });

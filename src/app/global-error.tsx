@@ -53,8 +53,7 @@ export default function GlobalError({
             Something went wrong on our side
           </h1>
           <p style={{ margin: "12px 0 24px 0", fontSize: "15px", lineHeight: 1.6, color: "#5A6070" }}>
-            Not your fault. Your photos stay on your own device, so nothing you
-            were working on has been lost.
+            Not your fault. Trying again usually works.
           </p>
           <button
             type="button"

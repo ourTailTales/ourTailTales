@@ -2,9 +2,16 @@ import type Stripe from "stripe";
 import { freezePrintFiles } from "@/lib/order/freeze-print-files";
 
 import { requireEnv, routeError } from "@/lib/env";
-import { sendDigitalPurchaseEmail, sendOrderConfirmationEmail } from "@/lib/email/send";
+import { sendDigitalPurchaseEmail } from "@/lib/email/send";
 import { previewExpiryFrom } from "@/lib/drafts/expiry";
 import { bookUrl } from "@/lib/drafts/storage";
+import {
+  DRAFT_PAYMENT_INTENT_COLUMN,
+  confirmByEmail,
+  includeDigitalCopy,
+  quietly,
+} from "@/lib/order/after-payment";
+import { AMOUNT_MISMATCH_REASON, expectedOrderAmount } from "@/lib/order/amount";
 import { markNeedsReview, submitPaidOrderToLulu } from "@/lib/order/submit-print";
 import { alertOps } from "@/lib/ops/alert";
 import {
@@ -23,7 +30,17 @@ import type { FrozenBookRevision } from "@/types/video-memory";
  * Fulfilment is webhook-driven. This handler returns quickly: it claims the
  * order and either submits a photo-only Lulu job or inserts durable archival
  * work. It never imports Turbo or transcodes video.
+ *
+ * The order of work inside `fulfill` is deliberate: claim, check the amount,
+ * freeze the files, send to print. The email, the PDF unlock and the analytics
+ * come after, each on a short leash, because they talk to other people's
+ * servers and a slow one must not use up the seconds the print job needs.
  */
+
+// Freezing copies the print files and submission talks to the printer. The
+// platform default is too short for both on a slow day, and a timeout after
+// the claim leaves an order paid with no print job.
+export const maxDuration = 60;
 
 export async function POST(request: Request): Promise<Response> {
   try {
@@ -103,6 +120,26 @@ async function fulfill(paymentIntent: Stripe.PaymentIntent): Promise<void> {
 
   const supabase = supabaseAdmin();
 
+  // What the order costs now, read before it is claimed. The amount on the
+  // intent was fixed when delivery was chosen; the delivery speed, the address
+  // and the number of copies could all be changed after that, and the book
+  // then went out as changed for the price as fixed.
+  const { data: priced, error: pricedError } = await supabase
+    .from("orders")
+    .select(
+      "status, stripe_payment_intent_id, book_price, quantity, shipping_price, video_memory_total_cents, draft_id, chapter_count",
+    )
+    .eq("id", orderId)
+    .maybeSingle();
+  if (pricedError) throw new Error(pricedError.message);
+  if (!priced) {
+    await alertOps("A payment succeeded for an order that does not exist", {
+      order: orderId,
+      paymentIntent: paymentIntent.id,
+    });
+    return;
+  }
+
   const { data: claimed, error: claimError } = await supabase
     .from("orders")
     .update({ status: "paid", paid_at: new Date().toISOString() })
@@ -115,34 +152,111 @@ async function fulfill(paymentIntent: Stripe.PaymentIntent): Promise<void> {
     .maybeSingle();
 
   if (claimError) throw new Error(claimError.message);
-  if (!claimed) return;
+  if (!claimed) {
+    // A redelivery of the payment already handled is the ordinary case. A
+    // different payment on an order already paid for is a second charge.
+    if (
+      priced.stripe_payment_intent_id &&
+      priced.stripe_payment_intent_id !== paymentIntent.id
+    ) {
+      await alertOps("An order may have been paid for twice", {
+        order: orderId,
+        paymentIntent: paymentIntent.id,
+        recorded: priced.stripe_payment_intent_id,
+        note: "Refund one of the two payments in Stripe.",
+      });
+    }
+    return;
+  }
+
+  // The same sum the charge was made from, over the same stored columns.
+  const expected = expectedOrderAmount(priced);
+  const paid = paymentIntent.amount_received ?? paymentIntent.amount;
+  if (
+    expected === null ||
+    paid !== expected ||
+    priced.stripe_payment_intent_id !== paymentIntent.id
+  ) {
+    // No confirmation is sent for this hold. The resubmit route reads this
+    // reason to know the customer is still owed one.
+    await markNeedsReview(orderId, AMOUNT_MISMATCH_REASON);
+    await alertOps("A paid order does not match its price", {
+      order: orderId,
+      paymentIntent: paymentIntent.id,
+      paidCents: paid,
+      expectedCents: expected ?? "price was unlocked after the amount was fixed",
+      note: "Delivery details or copies changed after the amount was set. Charge or refund the difference, then POST /api/admin/orders/<id>/resubmit with the cron secret (add ?force=amount once the difference is settled).",
+    });
+    return;
+  }
+
+  // The print job first. Everything after it is a courtesy by comparison, and
+  // it used to run ahead of this: a slow mail or analytics call could use up
+  // the function's time and leave a paid order with no print job.
+  let printError: unknown = null;
+  try {
+    await sendToPrint(orderId, claimed);
+  } catch (error) {
+    // Kept until the customer has been told their payment landed. Rethrown
+    // below so Stripe's log shows the failure; the claim above means a retry
+    // cannot print or send anything twice.
+    printError = error;
+    console.error("[ourTailTales] Fulfilment failed after payment", orderId, error);
+  }
 
   // Claiming the row is what makes this run once, so the confirmation cannot
-  // be duplicated by a webhook retry. Not awaited as a precondition of
-  // fulfilment: a mail outage must never stop a paid book reaching the printer.
-  void confirmByEmail(orderId);
-
-  await captureServerEvent(
-    paymentIntent.metadata?.posthogDistinctId || orderId,
-    "payment_completed",
-    {
-      amount: paymentIntent.amount / 100,
-      currency: paymentIntent.currency,
-      video_memory_count: Number(claimed.selected_video_count ?? 0),
-    },
+  // be duplicated by a webhook retry. Awaited, because a function that has
+  // answered may be frozen before an unawaited send leaves, but each step is
+  // cut off rather than waited on for ever.
+  const distinctId = paymentIntent.metadata?.posthogDistinctId || orderId;
+  await quietly("Order confirmation email", () => confirmByEmail(orderId), 10_000);
+  // The clean PDF comes with the hardcover.
+  await quietly("Included PDF unlock", () =>
+    includeDigitalCopy({
+      draftId: priced.draft_id,
+      paymentIntentId: paymentIntent.id,
+      chapterCount: priced.chapter_count,
+    }),
+  );
+  await quietly(
+    "payment_completed capture",
+    () =>
+      captureServerEvent(distinctId, "payment_completed", {
+        amount: paymentIntent.amount / 100,
+        currency: paymentIntent.currency,
+        video_memory_count: Number(claimed.selected_video_count ?? 0),
+      }),
+    4_000,
   );
   // The one conversion event, whatever was bought, so a single funnel
   // (book_created → order_completed) covers both products.
-  await captureServerEvent(
-    paymentIntent.metadata?.posthogDistinctId || orderId,
-    "order_completed",
-    {
-      product: "hardcover",
-      revenue: paymentIntent.amount / 100,
-      currency: paymentIntent.currency,
-      order_id: orderId,
-    },
+  await quietly(
+    "order_completed capture",
+    () =>
+      captureServerEvent(distinctId, "order_completed", {
+        product: "hardcover",
+        revenue: paymentIntent.amount / 100,
+        currency: paymentIntent.currency,
+        order_id: orderId,
+      }),
+    4_000,
   );
+
+  if (printError) throw printError;
+}
+
+/**
+ * Freezes a claimed order's files and sends it to print, or queues its Video
+ * Memories for archival. Every expected failure ends as a hold on the order.
+ */
+async function sendToPrint(
+  orderId: string,
+  claimed: {
+    archival_consent_at: string | null;
+    book_snapshot: unknown;
+  },
+): Promise<void> {
+  const supabase = supabaseAdmin();
 
   // Before anything else reads them. The signed upload URLs the customer used
   // are still live, so from here on we print from a copy they cannot reach.
@@ -222,34 +336,6 @@ async function fulfill(paymentIntent: Stripe.PaymentIntent): Promise<void> {
   }
 }
 
-/** Best-effort order confirmation. Never throws into the webhook path. */
-async function confirmByEmail(orderId: string): Promise<void> {
-  try {
-    const { data: order } = await supabaseAdmin()
-      .from("orders")
-      .select("id, email, pet_name, book_price, shipping_price")
-      .eq("id", orderId)
-      .maybeSingle();
-
-    if (!order?.email) return;
-
-    const total =
-      Number(order.book_price ?? 0) + Number(order.shipping_price ?? 0);
-
-    await sendOrderConfirmationEmail({
-      to: order.email,
-      petName: order.pet_name ?? "",
-      orderId: order.id,
-      total: new Intl.NumberFormat("en-US", {
-        style: "currency",
-        currency: "USD",
-      }).format(total),
-    });
-  } catch (error) {
-    console.error("[ourTailTales] Order confirmation email failed", orderId, error);
-  }
-}
-
 /**
  * A refund or a dispute stops the book.
  *
@@ -316,7 +402,7 @@ async function moneyGoingBack(
     return;
   }
 
-  await supabase
+  const { error: cancelError } = await supabase
     .from("orders")
     .update({
       status: "canceled",
@@ -328,13 +414,33 @@ async function moneyGoingBack(
     .eq("id", order.id)
     .not("status", "in", "(shipped,delivered,canceled)");
 
+  // The money has gone back and the book has not been stopped. Said out loud,
+  // then thrown so Stripe delivers the event again.
+  if (cancelError) {
+    await alertOps(`A ${kind} order could NOT be cancelled`, {
+      order: order.id,
+      paymentIntent: paymentIntentId,
+      error: cancelError.message,
+      note: "Stop this order by hand before it reaches the printer.",
+    });
+    throw new Error(cancelError.message);
+  }
+
+  // The PDF that came with the book goes back with the money. Quiet when no
+  // draft was unlocked by this payment.
+  try {
+    await revokeDigitalAccess(paymentIntentId, kind);
+  } catch (error) {
+    console.error("[ourTailTales] Could not revoke the included PDF", order.id, error);
+  }
+
   await alertOps(`An order was ${kind}`, {
     order: order.id,
     previousStatus: order.status,
   });
 }
 
-const PAYMENT_INTENT_COLUMN = "digital_stripe_payment_intent_id";
+const PAYMENT_INTENT_COLUMN = DRAFT_PAYMENT_INTENT_COLUMN;
 
 /** The database is missing supabase/migrations/20260927200000_draft_refund_tracking.sql. */
 async function alertMigrationPending(

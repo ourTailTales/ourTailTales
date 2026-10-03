@@ -3,6 +3,7 @@ import { z } from "zod";
 import { resolveDraft } from "@/lib/drafts/resolve";
 import { routeError } from "@/lib/env";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { videoMemoriesDisabledResponse } from "@/lib/video-memory/flag";
 
 const patchSchema = z.object({
   pageId: z.string().min(1).max(80).optional(),
@@ -14,6 +15,9 @@ export async function PATCH(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ): Promise<Response> {
+  const disabled = videoMemoriesDisabledResponse();
+  if (disabled) return disabled;
+
   try {
     const draft = await resolveDraft(request);
     if (!draft) return Response.json({ error: "Unknown draft." }, { status: 401 });
@@ -45,6 +49,9 @@ export async function DELETE(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ): Promise<Response> {
+  const disabled = videoMemoriesDisabledResponse();
+  if (disabled) return disabled;
+
   try {
     const draft = await resolveDraft(request);
     if (!draft) return Response.json({ error: "Unknown draft." }, { status: 401 });

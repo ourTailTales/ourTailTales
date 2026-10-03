@@ -5,6 +5,7 @@ import { fulfillOrders } from "@/lib/cron/fulfill-orders";
 import { processVideos } from "@/lib/cron/process-videos";
 import { reconcileLulu } from "@/lib/cron/reconcile-lulu";
 import { isConfigured, routeError } from "@/lib/env";
+import { videoMemoriesEnabled } from "@/lib/video-memory/flag";
 
 /**
  * Every scheduled job, in one invocation.
@@ -42,9 +43,9 @@ type JobOutcome = {
  * Ordered cheapest and most customer-visible first, so the jobs most likely to
  * matter are the ones that always get their turn.
  *
- * The two Video Memory jobs are gated on their own configuration. That feature
- * is off (`enableVideoMemories={false}`) and its keys are unset, so they would
- * otherwise spend budget doing nothing.
+ * The two Video Memory jobs are gated on the feature flag first
+ * (`VIDEO_MEMORIES_ENABLED`, see `lib/video-memory/flag`) and then on their
+ * own keys, so with the feature off they spend no budget doing nothing.
  */
 const JOBS: {
   name: string;
@@ -58,14 +59,16 @@ const JOBS: {
   {
     name: "process-videos",
     run: processVideos,
-    enabled: () => isConfigured("VIDEO_MEMORY_WRAP_KEY"),
-    disabledReason: "Video Memories not configured",
+    enabled: () => videoMemoriesEnabled() && isConfigured("VIDEO_MEMORY_WRAP_KEY"),
+    disabledReason: "Video Memories off or not configured",
   },
   {
     name: "fulfill-orders",
     run: fulfillOrders,
-    enabled: () => isConfigured("VIDEO_MEMORY_WRAP_KEY", "TURBO_PAYMENT_KEY"),
-    disabledReason: "Video Memory archival not configured",
+    enabled: () =>
+      videoMemoriesEnabled() &&
+      isConfigured("VIDEO_MEMORY_WRAP_KEY", "TURBO_PAYMENT_KEY"),
+    disabledReason: "Video Memories off or archival not configured",
   },
 ];
 

@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 
 import { BrandMark } from "@/components/BrandMark";
 import { ClaimForm } from "@/app/claim/[id]/ClaimForm";
+import { createPathForEmail } from "@/components/auth/auth-flow";
 import { loadDraftPreview } from "@/lib/drafts/preview";
 import { draftLeadEmail } from "@/lib/drafts/lead";
 import { createAuthServerClient } from "@/lib/supabase/auth-server";
@@ -28,7 +29,7 @@ export default async function ClaimPage({
   searchParams,
 }: PageProps<"/claim/[id]">) {
   const { id } = await params;
-  const { k } = await searchParams;
+  const { k, mode } = await searchParams;
   const secret = typeof k === "string" && k.length > 0 ? k : null;
 
   const draft = await loadDraftPreview(id, secret);
@@ -62,17 +63,22 @@ export default async function ClaimPage({
         {signedIn ? (
           <div className="mt-6 space-y-3">
             <p className="text-sm text-page-ink-soft">
-              You&rsquo;re already signed in.
+              You are signed in.
             </p>
             <Link
-              href="/create"
+              // The album in this browser is filed under the address the book
+              // was made with. Without it the editor opens an empty book.
+              href={createPathForEmail(knownEmail)}
               className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-periwinkle px-6 text-base font-semibold text-white shadow-lift hover:bg-periwinkle-deep"
             >
               Open your book
             </Link>
           </div>
         ) : (
-          <ClaimForm knownEmail={knownEmail} />
+          <ClaimForm
+            knownEmail={knownEmail}
+            initialMode={mode === "signin" ? "signin" : "signup"}
+          />
         )}
 
         {draft.pdfUrl ? (

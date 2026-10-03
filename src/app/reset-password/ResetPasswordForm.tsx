@@ -3,6 +3,13 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import {
+  authErrorCopy,
+  createPathForEmail,
+  MIN_PASSWORD_LENGTH,
+  PASSWORD_HINT,
+  PASSWORD_TOO_SHORT,
+} from "@/components/auth/auth-flow";
 import { createAuthBrowserClient } from "@/lib/supabase/auth-browser";
 
 /**
@@ -20,10 +27,12 @@ export function ResetPasswordForm() {
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  /** Whose book to go back to. Known the moment the password is saved. */
+  const [sessionEmail, setSessionEmail] = useState<string | null>(null);
 
   const submit = async (): Promise<void> => {
-    if (password.length < 6) {
-      setError("Passwords need at least 6 characters.");
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      setError(PASSWORD_TOO_SHORT);
       return;
     }
     if (password !== confirm) {
@@ -35,19 +44,21 @@ export function ResetPasswordForm() {
     setError(null);
     try {
       const supabase = createAuthBrowserClient();
-      const { error: updateError } = await supabase.auth.updateUser({ password });
+      const { data, error: updateError } = await supabase.auth.updateUser({ password });
       if (updateError) {
         setWorking(false);
-        setError(updateError.message);
+        setError(authErrorCopy(updateError));
         return;
       }
+      // The local book is filed under the address it was made with, so the
+      // editor has to be asked for that address or it opens an empty one.
+      // An account with no address gets the plain editor, not `?email=`.
+      setSessionEmail(data.user?.email?.trim() || null);
       setDone(true);
       router.refresh();
     } catch (caught) {
       setWorking(false);
-      setError(
-        caught instanceof Error ? caught.message : "That did not work. Please try again.",
-      );
+      setError(authErrorCopy(caught));
     }
   };
 
@@ -55,11 +66,11 @@ export function ResetPasswordForm() {
     return (
       <div className="mt-6 space-y-4">
         <p role="status" className="text-sm leading-6 text-page-ink-soft">
-          Your password is updated. You&rsquo;re still signed in.
+          Your password is updated. You are still signed in.
         </p>
         <button
           type="button"
-          onClick={() => router.push("/create")}
+          onClick={() => router.push(createPathForEmail(sessionEmail))}
           className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-periwinkle px-6 text-base font-semibold text-white shadow-lift hover:bg-periwinkle-deep"
         >
           Continue to my book
@@ -88,9 +99,9 @@ export function ResetPasswordForm() {
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           disabled={working}
-          className="mt-1 min-h-11 w-full rounded-xl border border-page-line px-3 text-sm text-page-ink outline-none focus:border-periwinkle disabled:opacity-60"
+          className="mt-1 min-h-11 w-full rounded-xl border border-page-line px-3 text-base text-page-ink outline-none focus:border-periwinkle disabled:opacity-60"
         />
-        <p className="mt-1.5 text-xs text-page-ink-faint">At least 6 characters.</p>
+        <p className="mt-1.5 text-xs text-page-ink-faint">{PASSWORD_HINT}</p>
       </div>
 
       <div>
@@ -104,7 +115,7 @@ export function ResetPasswordForm() {
           value={confirm}
           onChange={(event) => setConfirm(event.target.value)}
           disabled={working}
-          className="mt-1 min-h-11 w-full rounded-xl border border-page-line px-3 text-sm text-page-ink outline-none focus:border-periwinkle disabled:opacity-60"
+          className="mt-1 min-h-11 w-full rounded-xl border border-page-line px-3 text-base text-page-ink outline-none focus:border-periwinkle disabled:opacity-60"
         />
       </div>
 

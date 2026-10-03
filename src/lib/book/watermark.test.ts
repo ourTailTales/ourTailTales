@@ -44,7 +44,7 @@ describe("watermarkPdf", () => {
   });
 
   it("names the live domain so a leaked preview is traceable", () => {
-    expect(WATERMARK_TEXT).toBe("PREVIEW — ourtailtales.com");
+    expect(WATERMARK_TEXT).toBe("PREVIEW · ourtailtales.com");
   });
 
   it("handles a non-square page without throwing", async () => {

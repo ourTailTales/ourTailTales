@@ -15,7 +15,7 @@ export default async function CheckoutAddressPage({
   searchParams,
 }: PageProps<"/checkout/address">) {
   const access = await checkoutAccess(await searchParams);
-  if (!access.ok) return <CheckoutRefused reason={access.reason} />;
+  if (!access.ok) return <CheckoutRefused reason={access.reason} orderHref={access.orderHref} />;
 
   const { order, token, shipping } = access;
 
@@ -29,6 +29,8 @@ export default async function CheckoutAddressPage({
         orderId={order.id}
         orderToken={token}
         email={order.email}
+        unitPrice={order.bookPrice}
+        quantity={order.quantity}
         address={shipping?.address ?? null}
         next={stepHref("shipping", order.id, token)}
       />

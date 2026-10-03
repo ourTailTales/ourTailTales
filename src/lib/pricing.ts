@@ -317,6 +317,39 @@ export function digitalPriceFor(chapterCount: number): number {
   return round2(bookPrice(chapterCount) * DIGITAL_PRICE_RATE);
 }
 
+/* --------------------------------- copies --------------------------------- */
+
+/** The most copies of one book a single order may carry. */
+export const MAX_COPIES = 5;
+
+/**
+ * What each copy after the first is discounted by.
+ *
+ * The files already exist, so a second copy costs us the print and nothing
+ * else. At five chapters an extra copy sells for $39.99 against a print cost
+ * of about $22.58, which holds the margin near 43%. Re-check with `printCost`
+ * before raising this.
+ */
+export const EXTRA_COPY_DISCOUNT = 0.2;
+
+/** Whole copies between one and `MAX_COPIES`, whatever was asked for. */
+export function clampCopies(quantity: number | null | undefined): number {
+  const whole = Math.floor(Number(quantity ?? 1));
+  if (!Number.isFinite(whole) || whole < 1) return 1;
+  return Math.min(whole, MAX_COPIES);
+}
+
+/** The price of one further copy of a book whose first copy costs `unitPrice`. */
+export function extraCopyPrice(unitPrice: number): number {
+  return round2(unitPrice * (1 - EXTRA_COPY_DISCOUNT));
+}
+
+/** What `quantity` copies cost together: one at full price, the rest discounted. */
+export function copiesTotal(unitPrice: number, quantity: number): number {
+  const copies = clampCopies(quantity);
+  return round2(unitPrice + (copies - 1) * extraCopyPrice(unitPrice));
+}
+
 export function storyPages(chapterCount: number): number {
   return chapterCount * STORY_PAGES_PER_CHAPTER;
 }

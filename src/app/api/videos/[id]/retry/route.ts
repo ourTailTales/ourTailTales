@@ -1,11 +1,15 @@
 import { resolveDraft } from "@/lib/drafts/resolve";
 import { routeError } from "@/lib/env";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { videoMemoriesDisabledResponse } from "@/lib/video-memory/flag";
 
 export async function POST(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ): Promise<Response> {
+  const disabled = videoMemoriesDisabledResponse();
+  if (disabled) return disabled;
+
   try {
     const draft = await resolveDraft(request);
     if (!draft) return Response.json({ error: "Unknown draft." }, { status: 401 });

@@ -33,14 +33,14 @@ describe("packMeterView", () => {
 describe("packBoundaryCopy", () => {
   it("asks to add 10 more at the first pack boundary", () => {
     const copy = packBoundaryCopy(10);
-    expect(copy.confirm).toBe("Add 10 More — $9.99");
+    expect(copy.confirm).toBe("Add 10 More for $9.99");
     expect(copy.body).toContain("up to 20 Video Memories");
   });
 
   it("offers the first pack rather than claiming one is full", () => {
     const copy = packBoundaryCopy(0);
     expect(copy.title).toBe("Add Video Memories to your book?");
-    expect(copy.confirm).toBe("Add Video Memories — $9.99");
+    expect(copy.confirm).toBe("Add Video Memories for $9.99");
     // The nonsense this replaces: "You've used all 0 Video Memories in your
     // current pack", shown to somebody placing their first one.
     expect(copy.body).not.toContain("all 0");

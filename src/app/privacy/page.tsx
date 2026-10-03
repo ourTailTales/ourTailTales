@@ -2,15 +2,19 @@ import type { Metadata } from "next";
 
 import { LegalDoc, LegalSection } from "@/components/landing/LegalDoc";
 import { brand } from "@/lib/brand";
+import { DRAFT_TTL_DAYS } from "@/lib/drafts/expiry";
+import { videoMemoriesEnabled } from "@/lib/video-memory/flag";
 
 export const metadata: Metadata = {
   title: `Privacy Policy | ${brand.name}`,
   description: `How ${brand.name} handles photos, emails, payments, and analytics.`,
 };
 
-const UPDATED = "September 14, 2026";
+const UPDATED = "October 3, 2026";
 
 export default function PrivacyPage() {
+  // Video Memory copy only appears while `VIDEO_MEMORIES_ENABLED` is on.
+  const videoMemories = videoMemoriesEnabled();
   return (
     <LegalDoc title="Privacy Policy" updated={UPDATED}>
       <p>
@@ -19,67 +23,103 @@ export default function PrivacyPage() {
         {brand.domain} and related services (the &ldquo;Service&rdquo;).
       </p>
 
-      <LegalSection title="1. Photos and videos on your device">
+      <LegalSection title="1. Your photos and your book">
         <p>
-          While you build a book, photo and video files you select are processed
-          in your browser whenever possible. We do not receive your full album
-          just because you open the editor.
+          Your original photos are read on your own device. To write the
+          story, small previews of your photos are sent to our servers, along
+          with the pet name and any notes you give us. We also send the date
+          each photo was taken and, if your photos carry a location, the
+          rough area where they were taken.
         </p>
         <p>
-          When you order a hardcover, or upload optional video memories, we
-          receive the files needed to prepare print-ready pages, covers, and
-          related assets. Those files are used to fulfill your order and operate
-          the Service.
+          Once the story is written, your preview book is uploaded and stored
+          so we can show it to you and email you a link. The preview book is a
+          PDF that contains your photos.
+        </p>
+        <p>
+          If you create a free account or buy the digital PDF, the full book
+          is uploaded and stored. If you order a hardcover, the print files
+          for the pages and cover are uploaded so the book can be printed.
         </p>
       </LegalSection>
 
       <LegalSection title="2. Information we collect">
-        <p>Depending on how you use the Service, we may collect:</p>
+        <p>Depending on how you use the Service, we collect:</p>
         <ul className="list-disc space-y-1 pl-5">
+          <li>Your email address.</li>
+          <li>Your pet&rsquo;s name and any notes you add about them.</li>
           <li>
-            Contact details you provide, such as an email address for a sample
-            PDF, order confirmation, or shipping updates.
+            Small previews of your photos, and the finished book file, which
+            contains your photos and the story.
           </li>
           <li>
-            Order and shipping details needed to print and deliver a book
-            (including pet name or book title if you enter them).
+            The dates your photos were taken, and the rough area where they
+            were taken if your photos carry it. We use these to name seasons
+            and places in the story.
           </li>
           <li>
-            Payment-related information processed by Stripe. We do not store
-            full card numbers on our servers.
+            Your name, shipping address and phone number at checkout, if you
+            order a hardcover.
           </li>
           <li>
-            Print files, cover files, and optional video memory files uploaded
-            for fulfillment.
+            Your account email and a hashed password, if you create an
+            account. We do not store the password itself.
           </li>
           <li>
-            Technical and usage data such as device type, pages visited, and
-            product events, including through analytics providers.
+            Payment details, which are handled by Stripe. We do not store full
+            card numbers on our servers.
           </li>
+          <li>
+            Usage data such as device type, pages visited and actions taken in
+            the product.
+          </li>
+          {videoMemories ? (
+            <li>Video files, if you add optional video memories.</li>
+          ) : null}
         </ul>
       </LegalSection>
 
       <LegalSection title="3. How we use information">
         <p>We use information to:</p>
         <ul className="list-disc space-y-1 pl-5">
-          <li>Create, preview, and fulfill hardcover books and related PDFs.</li>
+          <li>Write, preview, print and deliver your book.</li>
           <li>Process payments and prevent fraud or abuse.</li>
-          <li>Communicate about orders, samples, and service updates.</li>
-          <li>Improve the product and understand how the funnel is used.</li>
+          <li>Email you about your book, your order and your account.</li>
+          <li>Understand how the product is used and improve it.</li>
           <li>Comply with law and enforce our Terms of Service.</li>
         </ul>
       </LegalSection>
 
-      <LegalSection title="4. Sharing">
+      <LegalSection title="4. Service providers">
         <p>
-          We share information with service providers who help us run the
-          Service, including:
+          We share information with the companies that help us run the
+          Service. Each one receives only what it needs for its job:
         </p>
         <ul className="list-disc space-y-1 pl-5">
-          <li>Stripe for payment processing.</li>
-          <li>Print and shipping partners (such as Lulu) for manufacturing and delivery.</li>
-          <li>Hosting, storage, and database providers for files and order records.</li>
-          <li>Analytics providers (such as PostHog and Vercel Analytics).</li>
+          <li>
+            Google (Gemini): writes the story. It receives your photo
+            previews, the dates they were taken, city names, the pet name and
+            your notes.
+          </li>
+          <li>
+            OpenStreetMap (Nominatim): turns a rough map area into a city
+            name. It receives rounded coordinates, never a photo.
+          </li>
+          <li>
+            Supabase: our database, file storage and accounts. It holds your
+            book files, order records and account details.
+          </li>
+          <li>Stripe: takes payments.</li>
+          <li>
+            Lulu: prints and ships hardcover books. It receives the print
+            files and your shipping details.
+          </li>
+          <li>Resend: sends our emails.</li>
+          <li>
+            PostHog: product analytics. It receives usage data and, once you
+            give it to us, your email address.
+          </li>
+          <li>Vercel: hosts the website and provides site analytics.</li>
         </ul>
         <p>
           We do not sell your personal information. We may disclose information
@@ -88,22 +128,44 @@ export default function PrivacyPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="5. Retention">
-        <p>
-          We keep order, contact, and fulfillment records for as long as needed
-          to complete your order, provide support, meet legal obligations, and
-          operate the business. Uploaded print and video assets may be retained
-          for fulfillment and troubleshooting, then deleted or archived
-          according to our operational needs.
-        </p>
+      <LegalSection title="5. How long we keep it">
+        <ul className="list-disc space-y-1 pl-5">
+          <li>
+            Free preview books and their links are deleted {DRAFT_TTL_DAYS}{" "}
+            days after they were last saved, unless you buy the book. If you
+            make a free account, a separate copy is kept in your library. The
+            pet name stored with the preview is deleted at the same time.
+          </li>
+          <li>
+            Your email address is kept so we can find your book and your
+            orders. Ask us and we will delete it.
+          </li>
+          <li>
+            Hardcover print files are deleted about 60 days after you order,
+            so we can reprint a damaged book.
+          </li>
+          <li>
+            Books saved to an account, and your account details, are kept
+            until you ask us to delete them.
+          </li>
+          <li>
+            Order and payment records are kept for as long as we need them for
+            support, accounting and legal reasons.
+          </li>
+        </ul>
       </LegalSection>
 
-      <LegalSection title="6. Cookies and similar technologies">
+      <LegalSection title="6. Cookies and analytics">
         <p>
-          We and our providers may use cookies or similar technologies for
-          essential site functions, payments, and analytics. You can control
-          cookies through your browser settings; some features may not work if
-          you block them.
+          We use PostHog and Vercel analytics to see how the site is used.
+          This stores an identifier in your browser. Our payment and account
+          providers also store what they need in your browser to keep you
+          signed in and to take payment.
+        </p>
+        <p>
+          You can clear or block this in your browser settings. Some features
+          may not work if you block it. You can also ask us to delete your
+          data. See section 8.
         </p>
       </LegalSection>
 
@@ -115,12 +177,18 @@ export default function PrivacyPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="8. Your choices">
+      <LegalSection title="8. Deleting your information">
         <p>
-          You may request access to or deletion of personal information we hold
-          about you, subject to legal and operational limits (for example, we
-          may retain records needed for completed orders or accounting). Contact
-          us using the details below.
+          To have your photos, books, account or other personal information
+          deleted, or to ask for a copy of it, email{" "}
+          <a
+            href={`mailto:hello@${brand.domain}`}
+            className="text-periwinkle underline decoration-page-line underline-offset-4"
+          >
+            hello@{brand.domain}
+          </a>{" "}
+          from the address you used with us. We may need to keep some records
+          of completed orders for accounting and legal reasons.
         </p>
       </LegalSection>
 

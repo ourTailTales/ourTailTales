@@ -15,7 +15,7 @@ export const brand = {
     /** Web-optimized mark for headers and UI. Source master: `logo.png`. */
     src: "/branding/logo-512.png",
     master: "/branding/logo.png",
-    alt: "ourTailTales — book with paw print",
+    alt: "ourTailTales, book with paw print",
   },
   colors: {
     periwinkle: "#5B68C8",

@@ -3,15 +3,18 @@ import Link from "next/link";
 
 import { LegalDoc, LegalSection } from "@/components/landing/LegalDoc";
 import { brand } from "@/lib/brand";
+import { videoMemoriesEnabled } from "@/lib/video-memory/flag";
 
 export const metadata: Metadata = {
   title: `Terms of Service | ${brand.name}`,
   description: `Terms for using ${brand.name} to create and order hardcover pet books.`,
 };
 
-const UPDATED = "September 14, 2026";
+const UPDATED = "October 3, 2026";
 
 export default function TermsPage() {
+  // Video Memory copy only appears while `VIDEO_MEMORIES_ENABLED` is on.
+  const videoMemories = videoMemoriesEnabled();
   return (
     <LegalDoc title="Terms of Service" updated={UPDATED}>
       <p>
@@ -23,9 +26,9 @@ export default function TermsPage() {
       <LegalSection title="1. The Service">
         <p>
           {brand.name} helps you turn a pet photo album into a hardcover book.
-          Features may include on-device organization, chapter editing, PDF
-          previews or samples, optional video memories, and print fulfillment
-          through third-party partners.
+          Features may include chapter editing, a free preview, a digital PDF,
+          {videoMemories ? " optional video memories," : ""} and hardcover
+          printing through third-party partners.
         </p>
         <p>
           We may change, suspend, or discontinue parts of the Service at any
@@ -43,7 +46,8 @@ export default function TermsPage() {
 
       <LegalSection title="3. Your content">
         <p>
-          You retain ownership of photos, videos, captions, and other materials
+          You retain ownership of photos,{videoMemories ? " videos," : ""}{" "}
+          captions, and other materials
           you submit (&ldquo;Content&rdquo;). You grant us a limited license to
           host, process, reproduce, and transmit Content solely as needed to
           provide the Service, including generating previews, print files, and
@@ -58,28 +62,61 @@ export default function TermsPage() {
 
       <LegalSection title="4. Orders and payment">
         <p>
-          Prices, chapter counts, shipping, and taxes shown at checkout apply to
-          that order. Payment is processed by Stripe. Placing an order is an
+          Prices, chapter counts, and shipping shown at checkout apply to that
+          order. Any tax that applies is shown before you pay. Payment is
+          processed by Stripe. Placing an order is an
           offer to purchase; we may decline or cancel an order (for example, if
           payment fails, files cannot be printed, or we suspect fraud).
         </p>
         <p>
-          Once a book is in production with our print partner, changes or
-          cancellations may not be possible. Contact us promptly if something is
-          wrong with an order confirmation.
+          Contact us promptly if something is wrong with an order confirmation.
         </p>
       </LegalSection>
 
       <LegalSection title="5. Shipping and fulfillment">
         <p>
-          Delivery estimates are approximate. Risk of loss passes according to
-          the carrier and print partner&rsquo;s practices. International orders
-          may be subject to customs, duties, or local restrictions that are your
-          responsibility unless we expressly state otherwise.
+          We currently ship within the United States only. Delivery estimates
+          are approximate. Risk of loss passes according to the carrier and
+          print partner&rsquo;s practices.
+        </p>
+        <p>
+          If your book does not arrive, email{" "}
+          <a
+            href={`mailto:hello@${brand.domain}`}
+            className="text-periwinkle underline decoration-page-line underline-offset-4"
+          >
+            hello@{brand.domain}
+          </a>{" "}
+          and we will reprint it.
         </p>
       </LegalSection>
 
-      <LegalSection title="6. Acceptable use">
+      <LegalSection title="6. Refunds, cancellations and reprints">
+        <p>Every book is made to order.</p>
+        <p>
+          If your hardcover arrives damaged or misprinted, email{" "}
+          <a
+            href={`mailto:hello@${brand.domain}`}
+            className="text-periwinkle underline decoration-page-line underline-offset-4"
+          >
+            hello@{brand.domain}
+          </a>{" "}
+          within 30 days of delivery with a photo. We will reprint it and ship
+          a replacement at no cost to you.
+        </p>
+        <p>
+          You can cancel a hardcover order for a full refund until it has been
+          sent to print. That happens shortly after payment. After that, the
+          order cannot be cancelled or refunded for a change of mind, because
+          the book is custom made.
+        </p>
+        <p>
+          The digital PDF is delivered immediately and is not refundable once
+          purchased. The exception is a faulty file that we cannot fix.
+        </p>
+      </LegalSection>
+
+      <LegalSection title="7. Acceptable use">
         <p>You agree not to:</p>
         <ul className="list-disc space-y-1 pl-5">
           <li>Misuse the Service or attempt unauthorized access.</li>
@@ -89,7 +126,7 @@ export default function TermsPage() {
         </ul>
       </LegalSection>
 
-      <LegalSection title="7. Intellectual property">
+      <LegalSection title="8. Intellectual property">
         <p>
           The Service, branding, software, and design are owned by {brand.name}{" "}
           or its licensors. These Terms do not transfer those rights to you,
@@ -97,7 +134,7 @@ export default function TermsPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="8. Disclaimers">
+      <LegalSection title="9. Disclaimers">
         <p>
           THE SERVICE IS PROVIDED &ldquo;AS IS&rdquo; AND &ldquo;AS
           AVAILABLE.&rdquo; TO THE FULLEST EXTENT PERMITTED BY LAW, WE DISCLAIM
@@ -108,9 +145,9 @@ export default function TermsPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="9. Limitation of liability">
+      <LegalSection title="10. Limitation of liability">
         <p>
-          TO THE FULLEST EXTENT PERMITTED BY LAW, {brand.name.toUpperCase()} AND
+          TO THE FULLEST EXTENT PERMITTED BY LAW, {brand.name} AND
           ITS PROVIDERS WILL NOT BE LIABLE FOR INDIRECT, INCIDENTAL, SPECIAL,
           CONSEQUENTIAL, OR PUNITIVE DAMAGES, OR FOR LOST PROFITS, DATA, OR
           GOODWILL. OUR TOTAL LIABILITY FOR ANY CLAIM ARISING OUT OF THE SERVICE
@@ -119,7 +156,7 @@ export default function TermsPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="10. Privacy">
+      <LegalSection title="11. Privacy">
         <p>
           Our{" "}
           <Link
@@ -133,7 +170,7 @@ export default function TermsPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="11. Changes">
+      <LegalSection title="12. Changes">
         <p>
           We may update these Terms from time to time. The &ldquo;Last
           updated&rdquo; date will change when we do. Continued use after an
@@ -142,7 +179,7 @@ export default function TermsPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="12. Contact">
+      <LegalSection title="13. Contact">
         <p>
           Questions about these Terms:{" "}
           <a

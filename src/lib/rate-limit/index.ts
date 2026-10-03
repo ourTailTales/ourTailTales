@@ -83,6 +83,13 @@ export const LIMITS = {
    * Loose enough that a real customer retrying a declined card never notices.
    */
   checkoutDigital: { name: "checkout_digital", limit: 15, windowSeconds: 60 * 10 },
+  /**
+   * Signing a Video Memory upload: a storage URL good for up to the source
+   * cap, and a `video_assets` row, behind a draft anyone can mint. Counted per
+   * address and again per draft. Above the per-draft asset cap, so a customer
+   * filling a library in one sitting, with retries, never meets it.
+   */
+  videoAuthorize: { name: "video_authorize", limit: 60, windowSeconds: 60 * 10 },
 } as const satisfies Record<string, RateLimit>;
 
 /**

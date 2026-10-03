@@ -47,6 +47,21 @@ export type AiUsage = {
 export type GenerateOptions = {
   /** Called once per model call, including a retry. */
   onUsage?: (usage: AiUsage) => void;
+  /**
+   * Wording from a draft that was refused after it was written
+   * (`lib/story/guard`), to be named in the prompt for the second attempt.
+   */
+  rejected?: readonly string[];
+  /**
+   * The refused draft called the animal he or she when the owner had not
+   * said which, so the second attempt is told so in as many words.
+   */
+  guessedSex?: boolean;
+  /**
+   * This call is already a second attempt, so the provider should not spend
+   * a retry of its own on top of it.
+   */
+  isRetry?: boolean;
 };
 
 /**

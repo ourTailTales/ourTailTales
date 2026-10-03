@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 
+import { failedNextPath, safeNextPath } from "@/app/auth/callback/safe-next";
 import { createAuthServerClient } from "@/lib/supabase/auth-server";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
-  const requestedNext = url.searchParams.get("next") ?? "/create";
-  const next = requestedNext.startsWith("/") ? requestedNext : "/create";
+  const next = safeNextPath(url.searchParams.get("next"), url.origin);
 
   if (code) {
     const supabase = await createAuthServerClient();
@@ -14,5 +14,7 @@ export async function GET(request: Request) {
     if (!error) return NextResponse.redirect(new URL(next, url.origin));
   }
 
-  return NextResponse.redirect(new URL("/create?authError=callback", url.origin));
+  return NextResponse.redirect(
+    new URL(failedNextPath(next, url.origin), url.origin),
+  );
 }

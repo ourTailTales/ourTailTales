@@ -7,6 +7,7 @@ import {
   captureServerException,
   postHogDistinctId,
 } from "@/lib/posthog-server";
+import { LIMITS, enforceRateLimit } from "@/lib/rate-limit";
 import {
   DURATION_TOO_LONG_MESSAGE,
   VIDEO_MEMORY_MAX_DURATION_MS,
@@ -15,6 +16,7 @@ import {
 } from "@/lib/video-memory/config";
 import { effectiveUploadLimitBytes } from "@/lib/video-memory/storage-limit";
 import { STORAGE_BUCKET, supabaseAdmin } from "@/lib/supabase/server";
+import { videoMemoriesDisabledResponse } from "@/lib/video-memory/flag";
 
 const requestSchema = z.object({
   fileName: z.string().min(1).max(200),
@@ -25,11 +27,28 @@ const requestSchema = z.object({
 });
 
 export async function POST(request: Request): Promise<Response> {
+  const disabled = videoMemoriesDisabledResponse();
+  if (disabled) return disabled;
+
   try {
+    // Per address first, before anything touches the database: a draft is
+    // free to mint, so the draft budget alone is one a caller can reset.
+    const limited = await enforceRateLimit(request, LIMITS.videoAuthorize);
+    if (limited) return limited;
+
     const draft = await resolveDraft(request);
     if (!draft) {
       return Response.json({ error: "Unknown draft." }, { status: 401 });
     }
+
+    // And per draft, so one book behind a pool of addresses still gets one
+    // budget.
+    const draftLimited = await enforceRateLimit(
+      request,
+      LIMITS.videoAuthorize,
+      `draft:${draft.id}`,
+    );
+    if (draftLimited) return draftLimited;
 
     const parsed = requestSchema.safeParse(await request.json());
     if (!parsed.success) {

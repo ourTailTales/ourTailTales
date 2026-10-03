@@ -28,6 +28,10 @@ import {
   storedPriceBreakdown,
   storyPages,
   tierForChapterCount,
+  MAX_COPIES,
+  clampCopies,
+  copiesTotal,
+  extraCopyPrice,
 } from "@/lib/pricing";
 
 describe("book pricing", () => {
@@ -283,6 +287,30 @@ describe("the estimate shown before a word is written", () => {
     ] as const) {
       expect(bookPrice(chapters)).toBe(price);
       expect(luluInteriorPages(chapters)).toBe(chapters * 10 + FIXED_INTERIOR_PAGES);
+    }
+  });
+});
+
+describe("extra copies of one book", () => {
+  it("charges the first copy in full and each further copy at 20% off", () => {
+    expect(extraCopyPrice(49.99)).toBe(39.99);
+    expect(copiesTotal(49.99, 1)).toBe(49.99);
+    expect(copiesTotal(49.99, 2)).toBe(89.98);
+    expect(copiesTotal(49.99, 5)).toBe(209.95);
+  });
+
+  it("never prices fewer than one copy or more than the cap", () => {
+    expect(clampCopies(0)).toBe(1);
+    expect(clampCopies(-3)).toBe(1);
+    expect(clampCopies(null)).toBe(1);
+    expect(clampCopies(2.9)).toBe(2);
+    expect(clampCopies(99)).toBe(MAX_COPIES);
+    expect(copiesTotal(49.99, 99)).toBe(copiesTotal(49.99, MAX_COPIES));
+  });
+
+  it("keeps an extra copy above its print cost at every book length", () => {
+    for (const chapters of [5, 12, 30, MAX_CHAPTERS]) {
+      expect(extraCopyPrice(bookPrice(chapters))).toBeGreaterThan(printCost(chapters));
     }
   });
 });

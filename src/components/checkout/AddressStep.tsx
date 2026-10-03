@@ -4,11 +4,13 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { Field, StepCard, inputClass, primaryButton } from "@/components/checkout/ui";
+import { stateCode } from "@/components/checkout/us-states";
 import { captureClientException } from "@/lib/analytics";
+import { EXTRA_COPY_DISCOUNT, MAX_COPIES, copiesTotal, extraCopyPrice, formatUsd } from "@/lib/pricing";
 import { postHogHeaders } from "@/lib/posthog-client";
 import type { ShippingAddress } from "@/types/order";
 
-const US_STATE_PATTERN = /^[A-Za-z]{2}$/;
+const US_ZIP_PATTERN = /^\d{5}(-\d{4})?$/;
 
 const EMPTY: ShippingAddress = {
   name: "",
@@ -35,18 +37,24 @@ export function AddressStep({
   orderToken,
   email: savedEmail,
   address: savedAddress,
+  unitPrice,
+  quantity: savedQuantity,
   next,
 }: {
   orderId: string;
   orderToken: string;
   email: string | null;
   address: ShippingAddress | null;
+  /** The price of one copy, so further copies can be priced beside the choice. */
+  unitPrice: number;
+  quantity: number;
   /** Where the delivery step lives, with this order's credentials on it. */
   next: string;
 }) {
   const router = useRouter();
   const [email, setEmail] = useState(savedEmail ?? "");
   const [address, setAddress] = useState<ShippingAddress>(savedAddress ?? EMPTY);
+  const [quantity, setQuantity] = useState(savedQuantity);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,10 +73,19 @@ export function AddressStep({
       setError(`Please add ${missing} before we look up delivery.`);
       return;
     }
-    if (!US_STATE_PATTERN.test(address.state)) {
-      setError("Please use a two-letter state code, such as CA.");
+    // A code or a full name, whichever was typed or autofilled. Saved as the
+    // code either way.
+    const state = stateCode(address.state);
+    if (!state) {
+      setError("Please enter a US state, such as CA or California.");
       return;
     }
+    if (!US_ZIP_PATTERN.test(address.postcode.trim())) {
+      setError("Please enter a ZIP code like 78701.");
+      return;
+    }
+    // Shown as the code from here on, so what is on screen is what was saved.
+    patch({ state });
 
     setBusy(true);
     try {
@@ -82,7 +99,12 @@ export function AddressStep({
         body: JSON.stringify({
           orderId,
           email: email.trim(),
-          address: { ...address, state: address.state.toUpperCase() },
+          quantity,
+          address: {
+            ...address,
+            state,
+            postcode: address.postcode.trim(),
+          },
         }),
       });
       const data = (await response.json().catch(() => ({}))) as { error?: string };
@@ -162,12 +184,11 @@ export function AddressStep({
           <Field label="State">
             <input
               value={address.state}
-              onChange={(event) =>
-                patch({ state: event.target.value.toUpperCase().slice(0, 2) })
-              }
+              // Kept as typed. Autofill often supplies the full name, and
+              // cutting it to two letters made "Arizona" into "AR".
+              onChange={(event) => patch({ state: event.target.value })}
               autoComplete="address-level1"
               placeholder="CA"
-              maxLength={2}
               className={inputClass}
             />
           </Field>
@@ -183,8 +204,44 @@ export function AddressStep({
         </div>
       </div>
 
+      <fieldset className="mt-6 rounded-xl border border-line bg-cloud px-4 py-4">
+        <legend className="px-1 text-sm font-medium text-ink-soft">
+          How many copies?
+        </legend>
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              aria-label="One copy fewer"
+              disabled={quantity <= 1}
+              onClick={() => setQuantity((current) => Math.max(1, current - 1))}
+              className="h-11 w-11 rounded-lg border border-line bg-white text-lg text-ink disabled:opacity-40"
+            >
+              −
+            </button>
+            <output aria-live="polite" className="w-6 text-center text-lg font-medium text-ink">
+              {quantity}
+            </output>
+            <button
+              type="button"
+              aria-label="One copy more"
+              disabled={quantity >= MAX_COPIES}
+              onClick={() => setQuantity((current) => Math.min(MAX_COPIES, current + 1))}
+              className="h-11 w-11 rounded-lg border border-line bg-white text-lg text-ink disabled:opacity-40"
+            >
+              +
+            </button>
+          </div>
+          <p className="text-sm leading-6 text-ink-soft">
+            {quantity === 1
+              ? `Add a copy for family for ${formatUsd(extraCopyPrice(unitPrice))}. That is ${Math.round(EXTRA_COPY_DISCOUNT * 100)}% off.`
+              : `${quantity} copies for ${formatUsd(copiesTotal(unitPrice, quantity))}. Each extra copy is ${Math.round(EXTRA_COPY_DISCOUNT * 100)}% off.`}
+          </p>
+        </div>
+      </fieldset>
+
       {error ? (
-        <p role="alert" className="mt-4 text-sm text-red-600">
+        <p role="alert" className="mt-4 text-sm text-red-700">
           {error}
         </p>
       ) : null}
@@ -204,7 +261,7 @@ export function AddressStep({
 /** The first required field still empty, named the way the form labels it. */
 function missingAddressField(address: ShippingAddress): string | null {
   if (!address.name.trim()) return "your name";
-  if (!address.phone.trim()) return "a phone number";
+  if (address.phone.replace(/\D/g, "").length < 7) return "a phone number with its area code";
   if (!address.street1.trim()) return "your street address";
   if (!address.city.trim()) return "your city";
   if (!address.state.trim()) return "your state";

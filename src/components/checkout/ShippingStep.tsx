@@ -30,6 +30,7 @@ export function ShippingStep({
   videoMemoryPrice,
   addressHref,
   next,
+  notice,
 }: {
   orderId: string;
   orderToken: string;
@@ -42,6 +43,8 @@ export function ShippingStep({
   videoMemoryPrice: number;
   addressHref: string;
   next: string;
+  /** Why the customer was sent back here, when they were. */
+  notice?: string | null;
 }) {
   const router = useRouter();
   const [options, setOptions] = useState<ShippingOption[] | null>(null);
@@ -58,7 +61,7 @@ export function ShippingStep({
     let cancelled = false;
     void (async () => {
       try {
-        const quoted = await quote(orderId, email, address);
+        const quoted = await quote(orderId, orderToken, email, address);
         if (cancelled) return;
         setOptions(quoted.options);
         setAddressWarning(quoted.addressWarning);
@@ -83,7 +86,7 @@ export function ShippingStep({
     return () => {
       cancelled = true;
     };
-  }, [address, email, orderId]);
+  }, [address, email, orderId, orderToken]);
 
   const chosen = options?.find((option) => option.level === level) ?? null;
   const needsConfirm = Boolean(addressWarning || suggestedAddress);
@@ -104,18 +107,8 @@ export function ShippingStep({
     setError(null);
     setBusy(true);
     try {
-      // The choice is saved before the intent is created, so coming back to
-      // this page finds the speed that was chosen rather than the cheapest.
-      await fetch("/api/orders/shipping", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-order-token": orderToken,
-          ...postHogHeaders(),
-        },
-        body: JSON.stringify({ orderId, level }),
-      });
-
+      // Setting up the payment saves the chosen speed with the address, so
+      // coming back to this page finds it.
       const response = await fetch("/api/stripe/payment-intent", {
         method: "POST",
         headers: {
@@ -151,6 +144,44 @@ export function ShippingStep({
     }
   };
 
+  // One tap rather than a trip back to retype what is already on screen.
+  const applySuggested = async (): Promise<void> => {
+    if (!suggestedAddress) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/orders/shipping", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-order-token": orderToken,
+          ...postHogHeaders(),
+        },
+        body: JSON.stringify({
+          orderId,
+          address: {
+            ...address,
+            street1: suggestedAddress.street1 ?? address.street1,
+            street2: suggestedAddress.street2 ?? address.street2,
+            city: suggestedAddress.city ?? address.city,
+            state: suggestedAddress.state ?? address.state,
+            postcode: suggestedAddress.postcode ?? address.postcode,
+          },
+        }),
+      });
+      if (!response.ok) throw new Error("That address could not be saved.");
+      setOptions(null);
+      setSuggestedAddress(null);
+      setAddressWarning(null);
+      router.refresh();
+    } catch (saveError) {
+      captureClientException(saveError);
+      setError("That address could not be saved. Please edit it instead.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <StepCard title="Delivery">
       <p className="mt-2 text-sm text-ink-soft">
@@ -161,6 +192,15 @@ export function ShippingStep({
           Edit address
         </Link>
       </p>
+
+      {notice ? (
+        <p
+          role="status"
+          className="mt-3 rounded-lg border border-periwinkle/30 bg-periwinkle-wash/50 px-3 py-2 text-sm text-periwinkle-deep"
+        >
+          {notice}
+        </p>
+      ) : null}
 
       {addressWarning ? (
         <p className="mt-3 rounded-lg border border-periwinkle/30 bg-periwinkle-wash/50 px-3 py-2 text-sm text-periwinkle-deep">
@@ -182,9 +222,14 @@ export function ShippingStep({
               .join(", ")}
           </p>
           <p className="mt-3">
-            <Link href={addressHref} className={linkButton}>
-              Go back and use it
-            </Link>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void applySuggested()}
+              className={linkButton}
+            >
+              Use this address
+            </button>
           </p>
         </div>
       ) : null}
@@ -290,6 +335,7 @@ export function ShippingStep({
 /** What Lulu will carry it for, and what it thinks of the address. */
 async function quote(
   orderId: string,
+  orderToken: string,
   email: string | null,
   address: ShippingAddress,
 ): Promise<{
@@ -299,7 +345,11 @@ async function quote(
 }> {
   const response = await fetch("/api/lulu/quote", {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...postHogHeaders() },
+    headers: {
+      "Content-Type": "application/json",
+      "x-order-token": orderToken,
+      ...postHogHeaders(),
+    },
     body: JSON.stringify({ orderId, email: email ?? "", address }),
   });
   const data = (await response.json()) as {

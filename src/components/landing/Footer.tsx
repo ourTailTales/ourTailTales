@@ -13,7 +13,7 @@ export function Footer() {
         <BrandMark href="/" size="sm" className="text-white/80" />
         <div className="flex flex-col gap-2 sm:items-end">
           <p className="text-xs leading-5 text-white/50">
-            Photos stay on your device until you order. {brand.domain}
+            {brand.domain}
           </p>
           <nav
             aria-label="Legal"

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { Funnel } from "@/components/Funnel";
+import { videoMemoriesEnabled } from "@/lib/video-memory/flag";
 
 // The same per-request rendering the editor needs: this reads ?email= too,
 // because the editor hands it straight over when somebody finishes a book.
@@ -23,5 +24,5 @@ export const metadata: Metadata = {
  * a route of its own now — and the one after it, `/checkout`, already was.
  */
 export default function FinishPage() {
-  return <Funnel step="finish" />;
+  return <Funnel step="finish" videoMemoriesEnabled={videoMemoriesEnabled()} />;
 }

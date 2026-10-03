@@ -67,9 +67,11 @@ export async function prepareOrder(args: {
     interiorPages: totalPages,
     email: args.email,
     draftId: args.draftId ?? undefined,
-  });
+  }, args.draftId && args.draftSecret
+    ? { "x-draft-id": args.draftId, authorization: `Bearer ${args.draftSecret}` }
+    : {});
 
-  args.onStatus(`Laying out ${totalPages} print pages — this can take a minute…`);
+  args.onStatus(`Laying out ${totalPages} print pages. This can take a minute…`);
   const interior = await renderInteriorPdf({
     pages: args.pages,
     chapters: args.chapters,

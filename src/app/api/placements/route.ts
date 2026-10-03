@@ -4,6 +4,7 @@ import { resolveDraft } from "@/lib/drafts/resolve";
 import { routeError } from "@/lib/env";
 import { defaultVideoMemoryBox, meetsMinimumQrSize } from "@/lib/video-memory/geometry";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { videoMemoriesDisabledResponse } from "@/lib/video-memory/flag";
 
 const requestSchema = z.object({
   videoAssetId: z.string().uuid(),
@@ -13,6 +14,9 @@ const requestSchema = z.object({
 });
 
 export async function POST(request: Request): Promise<Response> {
+  const disabled = videoMemoriesDisabledResponse();
+  if (disabled) return disabled;
+
   try {
     const draft = await resolveDraft(request);
     if (!draft) return Response.json({ error: "Unknown draft." }, { status: 401 });

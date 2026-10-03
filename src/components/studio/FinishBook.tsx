@@ -7,7 +7,11 @@ import { ClaimAndBuyDigital } from "@/components/ClaimAndBuyDigital";
 import { orderSummary } from "@/lib/order/summary";
 import { digitalPriceFor, formatUsd } from "@/lib/pricing";
 import { placedMemoriesReadyForCheckout } from "@/lib/video-memory/checkout-ready";
+import { useVideoMemoriesEnabled } from "@/lib/video-memory/flag-context";
 import { useOurTailTalesStore } from "@/store/useOurTailTalesStore";
+import type { VideoMemoryPlacement } from "@/types/video-memory";
+
+const NO_PLACEMENTS: VideoMemoryPlacement[] = [];
 
 /**
  * What happens after the book is finished.
@@ -39,7 +43,11 @@ export function FinishBook({
   const meta = useOurTailTalesStore((state) => state.meta);
   const pages = useOurTailTalesStore((state) => state.pages);
   const chapterCount = useOurTailTalesStore((state) => state.chapterCount);
-  const placements = useOurTailTalesStore((state) => state.placements);
+  const videoMemoriesEnabled = useVideoMemoriesEnabled();
+  const storedPlacements = useOurTailTalesStore((state) => state.placements);
+  // With Video Memories off, anything a draft still holds is treated as
+  // absent: nothing is listed, nothing is priced and nothing gates checkout.
+  const placements = videoMemoriesEnabled ? storedPlacements : NO_PLACEMENTS;
   const videoAssets = useOurTailTalesStore((state) => state.videoAssets);
   const draftId = useOurTailTalesStore((state) => state.draftId);
   const draftSecret = useOurTailTalesStore((state) => state.draftSecret);
@@ -141,6 +149,7 @@ export function FinishBook({
               value={formatUsd(summary.videoMemoryPrice)}
             />
           ) : null}
+          <Row label="Clean PDF of the book" value="Included" muted />
           <Row label="Shipping" value="Quoted at checkout" muted />
           <div className="mt-1 border-t border-page-line pt-3">
             <Row
@@ -186,8 +195,9 @@ export function FinishBook({
       <section className="rounded-2xl border border-line bg-white p-5 shadow-lift sm:p-6">
         <h2 className="font-display text-xl text-ink">Or keep it as a file</h2>
         <p className="mt-1 text-sm leading-6 text-ink-soft">
-          The free copy carries a small watermark across each page. The clean
-          one does not, and is yours to print or share however you like.
+          The clean PDF comes free with the hardcover. On its own, the free
+          copy carries a small watermark across each page. The clean one does
+          not, and is yours to print or share however you like.
         </p>
         <div className="mt-4 flex flex-col gap-3 sm:flex-row">
           <button

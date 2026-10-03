@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 
 import { useDialogA11y } from "@/lib/a11y/useDialog";
+import { TEASER_PAGE_COUNT } from "@/lib/book/teaser";
 
 /**
  * Mounted only while open, so each visit starts from a clean state.
@@ -80,7 +81,7 @@ export function EmailSampleModal({
           Where should we send it?
         </h2>
         <p className="mt-2 text-sm leading-6 text-ink-soft">
-          We&rsquo;ll email you the first ten pages of your book as a PDF,
+          We&rsquo;ll email you the first {TEASER_PAGE_COUNT} pages of your book as a PDF,
           cover included, plus the link that opens the rest.
         </p>
 
@@ -113,8 +114,7 @@ export function EmailSampleModal({
         </label>
 
         <p className="mt-2 text-xs text-ink-faint">
-          We use your address to send your book and order updates. Your photos
-          never leave your device. Only the finished PDF is stored.
+          We use your address to send your book and order updates.
         </p>
 
         {message && (

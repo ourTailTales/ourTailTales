@@ -5,6 +5,7 @@ import { useRef, type ChangeEvent } from "react";
 
 import { isLikelyMedia } from "@/lib/photo/process";
 import { MIN_PHOTOS_FOR_BOOK } from "@/lib/pricing";
+import { useVideoMemoriesEnabled } from "@/lib/video-memory/flag-context";
 import { useOurTailTalesStore } from "@/store/useOurTailTalesStore";
 
 /**
@@ -24,7 +25,7 @@ export function AddMediaControl({
   readyCount,
   videoCount,
   compact = false,
-  photosOnly = false,
+  photosOnly: photosOnlyRequested = false,
 }: {
   onFiles: (files: File[]) => void;
   processing: boolean;
@@ -34,6 +35,9 @@ export function AddMediaControl({
   /** Photographs alone — videos are added in the page's Videos tab. */
   photosOnly?: boolean;
 }) {
+  // With Video Memories off, every one of these is a photos control.
+  const videoMemoriesEnabled = useVideoMemoriesEnabled();
+  const photosOnly = photosOnlyRequested || !videoMemoriesEnabled;
   const photosRef = useRef<HTMLInputElement>(null);
   const folderRef = useRef<HTMLInputElement>(null);
   const readProgress = useOurTailTalesStore((state) => state.progress);
@@ -48,7 +52,7 @@ export function AddMediaControl({
     event.target.value = "";
   };
 
-  const mediaCount = readyCount + videoCount;
+  const mediaCount = readyCount + (videoMemoriesEnabled ? videoCount : 0);
   const remaining = Math.max(0, MIN_PHOTOS_FOR_BOOK - mediaCount);
   const hasMedia = mediaCount > 0;
 
@@ -122,15 +126,22 @@ export function AddMediaControl({
           {hasMedia ? (
             <>
               {readyCount.toLocaleString()} usable{" "}
-              {readyCount === 1 ? "photo" : "photos"} ·{" "}
-              {videoCount.toLocaleString()} usable{" "}
-              {videoCount === 1 ? "video" : "videos"}
+              {readyCount === 1 ? "photo" : "photos"}
+              {videoMemoriesEnabled
+                ? ` · ${videoCount.toLocaleString()} usable ${
+                    videoCount === 1 ? "video" : "videos"
+                  }`
+                : ""}
               {remaining > 0
                 ? ` · ${remaining.toLocaleString()} more to start a book`
                 : ""}
             </>
           ) : (
-            <>At least {MIN_PHOTOS_FOR_BOOK} photos & videos to make a book.</>
+            <>
+              At least {MIN_PHOTOS_FOR_BOOK}{" "}
+              {videoMemoriesEnabled ? "photos & videos" : "photos"} to make a
+              book.
+            </>
           )}
         </p>
       )}

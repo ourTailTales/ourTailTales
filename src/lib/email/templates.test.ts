@@ -116,6 +116,40 @@ describe("brand voice", () => {
   });
 });
 
+describe("orderConfirmationEmailHtml", () => {
+  const html = orderConfirmationEmailHtml({
+    petName: "Bailey",
+    orderId: "order-1",
+    total: "$55.48",
+    orderUrl: "https://ourtailtales.com/order/order-1?t=abc",
+  });
+
+  it("says what is true at the moment of payment and no more", () => {
+    expect(html).toContain(
+      "Thank you. Your payment is confirmed. We are getting your book ready to print. Printing and binding take a few days. We will email you again when it ships.",
+    );
+    expect(html).not.toContain("being sent to print");
+  });
+
+  it("states the reprint promise with its limit and where to write", () => {
+    expect(html).toContain(
+      "If the book arrives damaged or misprinted, email hello@ourtailtales.com within 30 days of delivery with a photo and we will reprint it free.",
+    );
+    expect(html).not.toContain("reply to this email");
+  });
+
+  it("shows the total and links to the order", () => {
+    expect(html).toContain("$55.48");
+    expect(html).toContain("https://ourtailtales.com/order/order-1?t=abc");
+  });
+
+  it("uses no dashes as pauses", () => {
+    expect(html).not.toContain("\u2014");
+    expect(html).not.toContain(" \u2013 ");
+    expect(html).not.toContain(" - ");
+  });
+});
+
 describe("shippingNotificationEmailHtml", () => {
   it("prefers the carrier link when there is one", () => {
     const html = shippingNotificationEmailHtml({

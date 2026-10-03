@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { chaptersForBankedBook } from "@/lib/drafts/banked-chapters";
 import { previewExpiryFrom } from "@/lib/drafts/expiry";
 import { resolveDraft } from "@/lib/drafts/resolve";
 import { routeError } from "@/lib/env";
@@ -83,8 +84,15 @@ export const maxDuration = 60;
  * `full` is the whole book, banked once the customer has an account. It lands
  * clean and is watermarked here, server-side: the renderer can stamp one too,
  * but a flag the browser controls is a flag the browser can drop.
+ *
+ * `order` is the whole book banked at hardcover checkout, with no account
+ * needed, so the clean PDF that comes with the hardcover exists by the time
+ * the payment lands. It writes the clean file and nothing else. Banking it as
+ * `full` would have swapped the draft's public link from the free pages to
+ * the whole watermarked book, which is the thing an account is asked for, and
+ * restarted the draft's expiry as a side effect.
  */
-const bankKindSchema = z.enum(["teaser", "full"]).optional().default("full");
+const bankKindSchema = z.enum(["teaser", "full", "order"]).optional().default("full");
 
 const finalizeSchema = z.object({
   petName: z.string().max(80).optional().default(""),
@@ -102,8 +110,8 @@ export async function POST(request: Request): Promise<Response> {
       return Response.json({ error: "Unknown draft." }, { status: 401 });
     }
 
-    // `kind` only picks which staging slot this upload gets — teaser and
-    // full never share one — not which final file it is trusted to become.
+    // `kind` only picks which staging slot this upload gets — no two kinds
+    // ever share one — not which final file it is trusted to become.
     // That trust is still earned at finalize, from the bytes themselves.
     const parsed = signSchema.safeParse(await request.json().catch(() => ({})));
     const kind = parsed.success ? parsed.data.kind : "full";
@@ -147,6 +155,7 @@ export async function PUT(request: Request): Promise<Response> {
 
     const supabase = supabaseAdmin();
     const teaser = parsed.data.kind === "teaser";
+    const forOrder = parsed.data.kind === "order";
     const stagingPath = draftIncomingPdfPath(draft.id, parsed.data.kind);
 
     const { data: uploaded, error: downloadError } = await supabase.storage
@@ -210,6 +219,48 @@ export async function PUT(request: Request): Promise<Response> {
         { error: "That is not the whole book. Please try again." },
         { status: 400 },
       );
+    } else if (forOrder) {
+      // The clean file only. Nothing a reader of the draft's link can see is
+      // written, and the bookkeeping below is kept just as narrow.
+      await write("clean", bytes);
+
+      const { data: existing, error: existingError } = await supabase
+        .from("book_drafts")
+        .select("digital_purchased_at")
+        .eq("id", draft.id)
+        .maybeSingle();
+      if (existingError) throw new Error(existingError.message);
+
+      const { error: updateError } = await supabase
+        .from("book_drafts")
+        .update({
+          clean_pdf_storage_path: draftPdfPath(draft.id, "clean"),
+          // What the clean file is priced and unlocked by, so it follows the
+          // file. Left alone on a draft already paid for.
+          ...(existing?.digital_purchased_at
+            ? {}
+            : {
+                chapter_count: chaptersForBankedBook(
+                  pages,
+                  parsed.data.chapterCount,
+                ),
+              }),
+          // `pdf_storage_path`, `pdf_stored_at`, `expires_at` and
+          // `watermarked` are deliberately not here.
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", draft.id);
+      if (updateError) throw new Error(updateError.message);
+
+      await supabase.storage
+        .from(PREVIEW_BUCKET)
+        .remove([stagingPath])
+        .then(
+          () => undefined,
+          () => undefined,
+        );
+
+      return Response.json({ draftId: draft.id, expiresAt: null });
     } else {
       await write("preview", await watermarkPdf(bytes));
       // The buyer's copy is written here too, so the file a purchase unlocks
@@ -225,7 +276,7 @@ export async function PUT(request: Request): Promise<Response> {
     // this must never re-watermark a bought book or revive its expiry.
     const { data: existing } = await supabase
       .from("book_drafts")
-      .select("digital_purchased_at")
+      .select("digital_purchased_at, clean_pdf_storage_path")
       .eq("id", draft.id)
       .maybeSingle();
     const purchased = Boolean(existing?.digital_purchased_at);
@@ -243,7 +294,14 @@ export async function PUT(request: Request): Promise<Response> {
         expires_at: purchased ? null : expiresAt.toISOString(),
         watermarked: !purchased && !teaser,
         pet_name: parsed.data.petName.trim(),
-        chapter_count: parsed.data.chapterCount ?? null,
+        // The digital price is read from this, so it is not taken on trust.
+        // A whole book is at least as many chapters as its pages need; a
+        // teaser re-banked after the whole book leaves the count alone.
+        ...(teaser
+          ? existing?.clean_pdf_storage_path
+            ? {}
+            : { chapter_count: parsed.data.chapterCount ?? null }
+          : { chapter_count: chaptersForBankedBook(pages, parsed.data.chapterCount) }),
         updated_at: now.toISOString(),
       })
       .eq("id", draft.id);

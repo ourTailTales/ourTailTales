@@ -28,6 +28,8 @@ function draftStorageKey(email: string | null | undefined): string {
 }
 
 export type VideoMemoryPublicConfig = {
+  /** The server-side `VIDEO_MEMORIES_ENABLED` flag. */
+  enabled: true;
   maxDurationMs: number;
   maxSourceBytes: number;
   packSize: number;
@@ -165,15 +167,19 @@ export async function ensureDraft(email?: string | null): Promise<StoredDraft> {
   return createDraft(email);
 }
 
-export async function fetchVideoMemoryConfig(): Promise<VideoMemoryPublicConfig> {
+/**
+ * The limits, or null when the server says Video Memories are off. With the
+ * feature off the route answers `{ enabled: false }` and nothing else.
+ */
+export async function fetchVideoMemoryConfig(): Promise<VideoMemoryPublicConfig | null> {
   const response = await fetch("/api/video-memory/config");
-  const data = (await response.json()) as VideoMemoryPublicConfig & {
-    error?: string;
-  };
+  const data = (await response.json()) as
+    | (VideoMemoryPublicConfig & { error?: string })
+    | { enabled: false; error?: string };
   if (!response.ok) {
     throw new Error(data.error ?? "Video Memory settings could not be loaded.");
   }
-  return data;
+  return data.enabled ? data : null;
 }
 
 export async function fetchVideoLibrary(

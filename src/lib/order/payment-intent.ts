@@ -37,3 +37,36 @@ export async function readPaymentClientSecret(
     return null;
   }
 }
+
+export type PaymentState = "none" | "open" | "confirming";
+
+/**
+ * Whether an unpaid-looking order has in fact been paid for.
+ *
+ * The order's status only moves when Stripe's webhook lands. A customer sent
+ * to their order page straight after paying usually gets there first, and was
+ * being told the order had not been paid and offered a link to pay again.
+ *
+ * Only ever called after the order's token has been checked.
+ */
+export async function readPaymentState(orderId: string): Promise<PaymentState> {
+  if (!supabaseConfigured()) return "none";
+
+  const { data } = await supabaseAdmin()
+    .from("orders")
+    .select("stripe_payment_intent_id")
+    .eq("id", orderId)
+    .maybeSingle();
+
+  const intentId = data?.stripe_payment_intent_id;
+  if (!intentId) return "none";
+
+  try {
+    const intent = await stripeClient().paymentIntents.retrieve(intentId);
+    return intent.status === "succeeded" || intent.status === "processing"
+      ? "confirming"
+      : "open";
+  } catch {
+    return "open";
+  }
+}

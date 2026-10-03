@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { LockKeyhole } from "lucide-react";
 
 import { AuthGate } from "@/components/auth/AuthGate";
@@ -17,6 +17,7 @@ import { AuthGate } from "@/components/auth/AuthGate";
 export function SavedBookSignIn() {
   const [open, setOpen] = useState(false);
   const router = useRouter();
+  const pathname = usePathname();
 
   return (
     <>
@@ -43,6 +44,10 @@ export function SavedBookSignIn() {
 
       {open && (
         <AuthGate
+          initialMode="signin"
+          // A confirmation email sent from here comes back to this book, not
+          // to the editor.
+          returnPath={pathname}
           onClose={() => setOpen(false)}
           onAuthenticated={() => {
             setOpen(false);

@@ -4,6 +4,7 @@ import { HowItWorks } from "@/components/landing/HowItWorks";
 import { LandingHero } from "@/components/landing/LandingHero";
 import { ProductListing } from "@/components/landing/ProductListing";
 import { Testimonials } from "@/components/landing/Testimonials";
+import { videoMemoriesEnabled } from "@/lib/video-memory/flag";
 
 export function LandingPage() {
   return (
@@ -12,7 +13,7 @@ export function LandingPage() {
       <LandingHero />
 
       {/* 3. How it works — now they believe it, so explain it */}
-      <HowItWorks />
+      <HowItWorks videoMemoriesEnabled={videoMemoriesEnabled()} />
 
       {/* 5. Hardcover upgrade — natural next step after free PDF */}
       <ProductListing />

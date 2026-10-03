@@ -39,8 +39,8 @@ export function LayoutThumbnail({
       onClick={onClick}
       role="radio"
       aria-checked={active}
-      aria-label={`${spec.label} cover${locked ? " — needs an account" : ""}`}
-      title={locked ? `${spec.label} — ${spec.description} Free account required.` : spec.description}
+      aria-label={`${spec.label} cover${locked ? ", needs an account" : ""}`}
+      title={locked ? `${spec.label}: ${spec.description} Free account required.` : spec.description}
       className={`group relative block w-full overflow-hidden rounded-lg border-2 text-left transition-all ${
         active
           ? "border-periwinkle shadow-md"

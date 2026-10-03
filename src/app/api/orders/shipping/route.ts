@@ -2,6 +2,11 @@ import { z } from "zod";
 
 import { routeError } from "@/lib/env";
 import { isOfferedShippingLevel } from "@/lib/lulu/client";
+import { MAX_COPIES } from "@/lib/pricing";
+import {
+  normaliseAddress,
+  shippingDetailsChanged,
+} from "@/lib/order/shipping-change";
 import { requireOrderToken } from "@/lib/order/token";
 import { supabaseAdmin } from "@/lib/supabase/server";
 
@@ -13,6 +18,15 @@ import { supabaseAdmin } from "@/lib/supabase/server";
  * the level chosen here is recalculated from Lulu when the payment is set up,
  * exactly as before, and an order that is no longer waiting to be paid for
  * cannot be touched.
+ *
+ * The price is locked when the payment is set up, so a change made here after
+ * that point unlocks it again: the stored shipping price is cleared, the
+ * payment page sends the customer back through delivery, and the payment
+ * webhook refuses to print an order whose paid amount does not match what the
+ * order now costs. Before this, the delivery speed or the address could be
+ * changed after the amount was fixed and the book went out at the new speed
+ * for the old price. Only a save that changes the address, the speed or the
+ * number of copies unlocks it; one that sends the same details back does not.
  *
  * Requires the order's token. An address is the one thing on an order that an
  * id alone must never be enough to change: without it, knowing an order id
@@ -39,6 +53,8 @@ const requestSchema = z.object({
     .max(32)
     .refine(isOfferedShippingLevel, "Unsupported shipping level.")
     .optional(),
+  /** Copies of the book. Changes the parcel, so it is settled before a quote. */
+  quantity: z.number().int().min(1).max(MAX_COPIES).optional(),
 });
 
 export async function POST(request: Request): Promise<Response> {
@@ -51,17 +67,19 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
 
-    const { orderId, email, address, level } = parsed.data;
+    const { orderId, email, address, level, quantity } = parsed.data;
     const unauthorized = requireOrderToken(request, orderId);
     if (unauthorized) return unauthorized;
 
     const supabase = supabaseAdmin();
-    const { data: order } = await supabase
+    const { data: order, error: orderReadError } = await supabase
       .from("orders")
-      .select("status")
+      .select("status, quantity")
       .eq("id", orderId)
       .maybeSingle();
 
+    // A database that could not answer is not an order that does not exist.
+    if (orderReadError) throw new Error(orderReadError.message);
     if (!order) {
       return Response.json({ error: "Unknown order." }, { status: 404 });
     }
@@ -72,13 +90,14 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
 
-    const { data: saved } = await supabase
+    const { data: saved, error: savedError } = await supabase
       .from("order_shipping")
       .select(
         "name, phone, street1, street2, city, state, postcode, country, shipping_level",
       )
       .eq("order_id", orderId)
       .maybeSingle();
+    if (savedError) throw new Error(savedError.message);
 
     if (!address && !saved) {
       return Response.json(
@@ -88,16 +107,7 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     const next = address
-      ? {
-          name: address.name,
-          phone: address.phone,
-          street1: address.street1,
-          street2: address.street2 || null,
-          city: address.city,
-          state: address.state.toUpperCase(),
-          postcode: address.postcode,
-          country: address.country,
-        }
+      ? normaliseAddress(address)
       : {
           name: saved!.name,
           phone: saved!.phone,
@@ -108,6 +118,48 @@ export async function POST(request: Request): Promise<Response> {
           postcode: saved!.postcode,
           country: saved!.country,
         };
+
+    // Decided before anything is written, against what is stored now.
+    const changed = shippingDetailsChanged(
+      {
+        address: saved ?? null,
+        level: saved?.shipping_level ?? null,
+        quantity: order.quantity,
+      },
+      { address, level, quantity },
+    );
+
+    // The price is unlocked first and the details saved second. The other way
+    // round, a failure between the two left the new address saved against the
+    // old locked price, and a retry then saw nothing to change.
+    const orderPatch: Record<string, string | number | null> = {};
+    if (email) orderPatch.email = email.toLowerCase().trim();
+    if (quantity) orderPatch.quantity = quantity;
+    // A real change makes a locked amount stale, so the price is unlocked and
+    // the payment page sends the customer back through delivery. Written
+    // whether or not a payment has been set up yet: a payment being set up at
+    // this same moment would otherwise lock a price for the old details. A
+    // save that changes nothing leaves the price alone, so walking back
+    // through the address step cannot strand a payment page that is open.
+    if (changed) orderPatch.shipping_price = null;
+
+    if (Object.keys(orderPatch).length > 0) {
+      const { data: touched, error: orderError } = await supabase
+        .from("orders")
+        .update(orderPatch)
+        .eq("id", orderId)
+        .eq("status", "pending_payment")
+        .select("id");
+      if (orderError) throw new Error(orderError.message);
+      // Paid in the moment between the read above and this write. The new
+      // details must not be saved onto an order that has just been charged.
+      if (!touched || touched.length === 0) {
+        return Response.json(
+          { error: "This order is already on its way." },
+          { status: 409 },
+        );
+      }
+    }
 
     const { error: shippingError } = await supabase
       .from("order_shipping")
@@ -122,14 +174,6 @@ export async function POST(request: Request): Promise<Response> {
         { onConflict: "order_id" },
       );
     if (shippingError) throw new Error(shippingError.message);
-
-    if (email) {
-      const { error: emailError } = await supabase
-        .from("orders")
-        .update({ email: email.toLowerCase().trim() })
-        .eq("id", orderId);
-      if (emailError) throw new Error(emailError.message);
-    }
 
     return Response.json({ ok: true });
   } catch (error) {

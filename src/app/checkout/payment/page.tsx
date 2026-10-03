@@ -19,7 +19,7 @@ export default async function CheckoutPaymentPage({
 }: PageProps<"/checkout/payment">) {
   const access = await checkoutAccess(await searchParams);
   if (!access.ok) {
-    return <CheckoutRefused reason={access.reason} />;
+    return <CheckoutRefused reason={access.reason} orderHref={access.orderHref} />;
   }
 
   const { order, token, shipping } = access;
@@ -31,8 +31,11 @@ export default async function CheckoutPaymentPage({
   const clientSecret = await readPaymentClientSecret(order.id);
   if (!clientSecret) redirect(stepHref("shipping", order.id, token));
 
-  const total =
-    order.bookPrice + order.videoMemoryPrice + (order.shippingPrice ?? 0);
+  // No shipping price means the quote was unlocked by a change made after the
+  // amount was fixed. Delivery is where it is fixed again.
+  if (order.shippingPrice === null) redirect(stepHref("shipping", order.id, token));
+
+  const total = order.booksTotal + order.videoMemoryPrice + order.shippingPrice;
 
   return (
     <CheckoutShell
@@ -42,6 +45,7 @@ export default async function CheckoutPaymentPage({
     >
       <PaymentStep
         orderId={order.id}
+        orderToken={token}
         total={total}
         clientSecret={clientSecret}
         publishableKey={readEnv("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY") ?? null}

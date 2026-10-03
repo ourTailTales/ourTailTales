@@ -14,12 +14,14 @@ import { formatUsd } from "@/lib/pricing";
 /** The last step: the card, and nothing else to decide. */
 export function PaymentStep({
   orderId,
+  orderToken,
   total,
   clientSecret,
   publishableKey,
   shippingHref,
 }: {
   orderId: string;
+  orderToken: string;
   total: number;
   clientSecret: string;
   publishableKey: string | null;
@@ -63,7 +65,12 @@ export function PaymentStep({
           },
         }}
       >
-        <PayForm orderId={orderId} total={total} />
+        <PayForm
+          orderId={orderId}
+          orderToken={orderToken}
+          total={total}
+          shippingHref={shippingHref}
+        />
       </Elements>
       <p className="mt-4">
         <Link href={shippingHref} className={linkButton}>
@@ -74,7 +81,19 @@ export function PaymentStep({
   );
 }
 
-function PayForm({ orderId, total }: { orderId: string; total: number }) {
+function PayForm({
+  orderId,
+  orderToken,
+  total,
+  shippingHref,
+}: {
+  orderId: string;
+  orderToken: string;
+  total: number;
+  shippingHref: string;
+}) {
+  // The order page refuses a link without the token.
+  const orderPath = `/order/${orderId}?t=${encodeURIComponent(orderToken)}`;
   const stripe = useStripe();
   const elements = useElements();
   const router = useRouter();
@@ -86,10 +105,26 @@ function PayForm({ orderId, total }: { orderId: string; total: number }) {
     setBusy(true);
     setError(null);
 
+    // Asked the moment before charging. This page can be open, or come back
+    // from the browser's cache, after the address or the number of copies was
+    // changed somewhere else. The amount it holds is then out of date, and
+    // paying it would put the order on hold.
+    const payable = await orderPayable(orderId, orderToken);
+    if (payable === null) {
+      setBusy(false);
+      setError("We could not check your order. You have not been charged. Please try again.");
+      return;
+    }
+    if (!payable) {
+      setError("Your order details changed. Taking you back to confirm delivery.");
+      router.replace(`${shippingHref}&changed=1`);
+      return;
+    }
+
     const { error: confirmError } = await stripe.confirmPayment({
       elements,
       confirmParams: {
-        return_url: `${window.location.origin}/order/${orderId}`,
+        return_url: `${window.location.origin}${orderPath}`,
       },
       redirect: "if_required",
     });
@@ -102,7 +137,7 @@ function PayForm({ orderId, total }: { orderId: string; total: number }) {
     }
 
     track("payment_succeeded", { total });
-    router.push(`/order/${orderId}`);
+    router.push(orderPath);
   };
 
   return (
@@ -117,13 +152,41 @@ function PayForm({ orderId, total }: { orderId: string; total: number }) {
         {busy ? "Processing…" : `Pay ${formatUsd(total)}`}
       </button>
       {error ? (
-        <p role="alert" className="mt-3 text-sm text-periwinkle-deep">
+        <p role="alert" className="mt-3 text-sm text-red-700">
           {error}
         </p>
       ) : null}
-      <p className="mt-3 text-xs text-ink-faint">
-        We only start printing once your payment is confirmed.
+      <p className="mt-3 text-xs leading-5 text-ink-faint">
+        We only start printing once your payment is confirmed. If the book
+        arrives damaged or misprinted, tell us within 30 days of delivery and
+        we reprint it free. By paying you agree to our{" "}
+        <Link href="/terms" className="underline underline-offset-2">
+          Terms
+        </Link>
+        .
       </p>
     </div>
   );
+}
+
+/**
+ * Whether the payment on this page still matches the order. Null when the
+ * question could not be answered, which is not a yes.
+ */
+async function orderPayable(
+  orderId: string,
+  orderToken: string,
+): Promise<boolean | null> {
+  try {
+    const response = await fetch(
+      `/api/orders/payable?orderId=${encodeURIComponent(orderId)}`,
+      { headers: { "x-order-token": orderToken }, cache: "no-store" },
+    );
+    if (!response.ok) return null;
+    const data = (await response.json()) as { payable?: boolean };
+    return data.payable === true;
+  } catch (error) {
+    captureClientException(error);
+    return null;
+  }
 }

@@ -7,7 +7,7 @@ export type CheckoutStep = "address" | "shipping" | "payment";
 
 export type CheckoutAccess =
   | { ok: true; order: OrderView; token: string; shipping: SavedShipping | null }
-  | { ok: false; reason: CheckoutRefusal };
+  | { ok: false; reason: CheckoutRefusal; orderHref?: string };
 
 export type CheckoutRefusal =
   | "not_configured"
@@ -39,7 +39,11 @@ export async function checkoutAccess(
   const order = await readOrder(orderId);
   if (!order) return { ok: false, reason: "unknown_order" };
   if (order.status !== "pending_payment") {
-    return { ok: false, reason: "already_ordered" };
+    return {
+      ok: false,
+      reason: "already_ordered",
+      orderHref: `/order/${order.id}?t=${encodeURIComponent(token)}`,
+    };
   }
   if (order.hasVideoMemories && !order.hasFrozenRevision) {
     return { ok: false, reason: "memories_preparing" };

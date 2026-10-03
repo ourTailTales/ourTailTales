@@ -35,7 +35,9 @@ let qualityCanvas: OffscreenCanvas | null = null;
  *
  * Produces metadata, a tiny grayscale perceptual hash, a cheap quality score,
  * and a compressed ~256px browsing thumbnail. The decoded bitmap is closed
- * before returning, and the original file is never uploaded or modified.
+ * before returning, and the original file is not modified. Nothing is sent
+ * from here. Later steps do upload: a 512px preview of each photo goes to the
+ * server to write the story, and the finished book files carry the photos.
  */
 export async function processFile(
   id: string,

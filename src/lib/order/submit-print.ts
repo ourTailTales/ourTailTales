@@ -18,14 +18,29 @@ export async function signDownload(path: string): Promise<string> {
 }
 
 export async function markNeedsReview(orderId: string, reason: string): Promise<void> {
-  await supabaseAdmin()
+  const { error } = await supabaseAdmin()
     .from("orders")
     .update({ status: "needs_review", review_reason: reason })
     .eq("id", orderId);
 
   // Every one of these is a customer who has paid and whose book has stopped.
   // Writing a column and nothing else meant nobody found out until they asked.
-  await alertOps("An order needs review", { order: orderId, reason });
+  // Sent whether or not the write landed: a hold that could not be recorded is
+  // the one a person most needs to hear about.
+  await alertOps("An order needs review", {
+    order: orderId,
+    reason,
+    ...(error
+      ? { note: `The hold could NOT be written to the order: ${error.message}` }
+      : {}),
+  });
+
+  // supabase-js returns its errors rather than throwing them, so this used to
+  // pass silently and the caller carried on as though the order were held.
+  if (error) {
+    console.error("[ourTailTales] Could not mark an order for review", orderId, error);
+    throw new Error(`Could not mark order ${orderId} for review: ${error.message}`);
+  }
 }
 
 export async function submitPaidOrderToLulu(orderId: string): Promise<void> {
@@ -33,7 +48,7 @@ export async function submitPaidOrderToLulu(orderId: string): Promise<void> {
   const { data: order, error } = await supabase
     .from("orders")
     .select(
-      "id, email, pet_name, total_pages, interior_path, cover_path, lulu_print_job_id",
+      "id, email, pet_name, total_pages, quantity, interior_path, cover_path, lulu_print_job_id",
     )
     .eq("id", orderId)
     .maybeSingle();
@@ -114,7 +129,7 @@ export async function submitPaidOrderToLulu(orderId: string): Promise<void> {
 
   const printJob = await createPrintJob({
     orderId,
-    title: order.pet_name ? `${order.pet_name} — ourTailTales` : "ourTailTales",
+    title: order.pet_name ? `${order.pet_name} · ourTailTales` : "ourTailTales",
     pageCount: order.total_pages,
     interiorUrl,
     coverUrl,
@@ -130,6 +145,7 @@ export async function submitPaidOrderToLulu(orderId: string): Promise<void> {
       country: "US",
     } satisfies ShippingAddress,
     shippingLevel: shipping.shipping_level,
+    quantity: Math.min(Math.max(Number(order.quantity ?? 1), 1), 5),
   });
 
   await recordPrintJob(orderId, printJob);

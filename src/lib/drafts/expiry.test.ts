@@ -3,8 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   DRAFT_TTL_DAYS,
   daysUntilExpiry,
-  expiryHeadline,
-  expiryLabel,
+  formatExpiryDate,
   previewExpiryFrom,
 } from "@/lib/drafts/expiry";
 
@@ -27,30 +26,10 @@ describe("daysUntilExpiry", () => {
   });
 });
 
-describe("expiryLabel", () => {
-  it("reads naturally at the boundaries", () => {
-    expect(expiryLabel(new Date("2026-09-23T11:00:00Z"), now)).toBe("Expires today");
-    expect(expiryLabel(new Date("2026-09-24T06:00:00Z"), now)).toBe("Expires tomorrow");
-    expect(expiryLabel(new Date("2026-10-23T12:00:00Z"), now)).toBe("Expires in 30 days");
-  });
-
-  it("states the fact without manufacturing urgency", () => {
-    const label = expiryLabel(new Date("2026-09-24T06:00:00Z"), now).toLowerCase();
-    expect(label).not.toContain("hurry");
-    expect(label).not.toContain("last chance");
-    expect(label).not.toContain("!");
-  });
-});
-
-describe("expiryHeadline", () => {
-  const now = new Date("2026-09-24T12:00:00Z");
-
-  it("shouts the day count", () => {
-    expect(expiryHeadline(new Date("2026-09-29T12:00:00Z"), now)).toBe(
-      "EXPIRES IN 5 DAYS",
-    );
-    expect(expiryHeadline(new Date("2026-09-25T06:00:00Z"), now)).toBe(
-      "EXPIRES TOMORROW",
+describe("formatExpiryDate", () => {
+  it("prints the absolute date in UTC", () => {
+    expect(formatExpiryDate(new Date("2026-10-24T01:00:00Z"))).toBe(
+      "October 24, 2026",
     );
   });
 });

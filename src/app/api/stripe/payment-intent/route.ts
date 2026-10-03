@@ -11,8 +11,9 @@ import {
   calculatePrintJobCost,
   isOfferedShippingLevel,
 } from "@/lib/lulu/client";
-import { bookPrice } from "@/lib/pricing";
-import { stripeClient, toMinorUnits } from "@/lib/stripe";
+import { expectedOrderAmount } from "@/lib/order/amount";
+import { clampCopies, copiesTotal } from "@/lib/pricing";
+import { fulfilmentModeMismatch, stripeClient, toMinorUnits } from "@/lib/stripe";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import type { ShippingAddress } from "@/types/order";
 import { videosEligibleForArchival } from "@/lib/archival/can-archive";
@@ -74,6 +75,19 @@ export async function POST(request: Request): Promise<Response> {
     const unauthorized = requireOrderToken(request, parsed.data.orderId);
     if (unauthorized) return unauthorized;
 
+    // Asked before anybody is charged. The same check used to run only after
+    // the payment had been taken, which left a real customer with a receipt
+    // and a book that could not be sent to print.
+    if (fulfilmentModeMismatch()) {
+      console.error(
+        "[ourTailTales] Refusing to take payment: Stripe is live but LULU_ENV is not production.",
+      );
+      return Response.json(
+        { error: "Hardcover orders are not open yet. Please check back soon." },
+        { status: 503 },
+      );
+    }
+
     const {
       orderId,
       email,
@@ -95,7 +109,7 @@ export async function POST(request: Request): Promise<Response> {
     const { data: order, error } = await supabase
       .from("orders")
       .select(
-        "id, chapter_count, total_pages, status, stripe_payment_intent_id, interior_path, cover_path, frozen_interior_path, book_snapshot, lulu_print_job_id",
+        "id, chapter_count, book_price, quantity, total_pages, status, stripe_payment_intent_id, interior_path, cover_path, frozen_interior_path, book_snapshot, lulu_print_job_id",
       )
       .eq("id", orderId)
       .maybeSingle();
@@ -103,6 +117,12 @@ export async function POST(request: Request): Promise<Response> {
     if (error) throw new Error(error.message);
     if (!order) {
       return Response.json({ error: "Unknown order." }, { status: 404 });
+    }
+    if (order.status !== "pending_payment") {
+      return Response.json(
+        { error: "This order has already been paid for." },
+        { status: 409 },
+      );
     }
     if (order.lulu_print_job_id) {
       return Response.json(
@@ -139,6 +159,7 @@ export async function POST(request: Request): Promise<Response> {
       address: address as ShippingAddress,
       shippingLevel,
       email,
+      quantity: clampCopies(order.quantity),
     });
 
     const needsAddressConfirm = addressNeedsConfirmation(
@@ -164,7 +185,18 @@ export async function POST(request: Request): Promise<Response> {
         ) * 100,
       ) / 100;
 
-    const book = bookPrice(order.chapter_count);
+    const quantity = clampCopies(order.quantity);
+    // The price stored when the order was opened, not one worked out again
+    // from the chapter count. The payment webhook checks what was paid against
+    // the stored price, so charging from anything else lets the two disagree
+    // the day the rates change, and every order open across that deploy would
+    // be paid for and then held.
+    const unitPrice = Number(order.book_price);
+    if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
+      throw new Error(`Order ${orderId} has no stored book price.`);
+    }
+    // Every copy together. `book_price` on the order stays the price of one.
+    const book = copiesTotal(unitPrice, quantity);
     const videoMemoryPrice = centsToUsd(quote.totalCents);
 
     let estimatedBytes = 0;
@@ -193,24 +225,51 @@ export async function POST(request: Request): Promise<Response> {
       }
     }
 
-    const amount = toMinorUnits(book + videoMemoryPrice + shippingPrice);
+    // The same helper the webhook checks the payment with, over the values
+    // about to be stored, so the charge and its check cannot differ.
+    const amount = expectedOrderAmount({
+      book_price: unitPrice,
+      quantity,
+      video_memory_total_cents: quote.totalCents,
+      shipping_price: shippingPrice,
+    });
+    if (amount === null) throw new Error(`Order ${orderId} could not be priced.`);
 
     const stripe = stripeClient();
-    const paymentIntent = order.stripe_payment_intent_id
-      ? await stripe.paymentIntents.update(order.stripe_payment_intent_id, {
-          amount,
-          receipt_email: email,
-          metadata: analyticsMetadata,
-        })
-      : await stripe.paymentIntents.create({
-          amount,
+    let intentId = order.stripe_payment_intent_id;
+    if (!intentId) {
+      // Created from what can never change on this order, under a key that is
+      // the order and nothing else. A double submit of the delivery step, or a
+      // retry after our own write failed, gets the same intent back. Stripe
+      // refuses a reused key whose parameters differ, so nothing that can
+      // differ between two tries (the email, the delivery speed, the copies,
+      // and so the real amount) is sent here. The amount is the price of one
+      // copy as a stand-in; the update below sets the real one before the
+      // client secret ever leaves this server.
+      const created = await stripe.paymentIntents.create(
+        {
+          amount: toMinorUnits(unitPrice),
           currency: "usd",
-          // Let Stripe decide which methods to show for this account.
-          automatic_payment_methods: { enabled: true },
-          receipt_email: email,
-          description: `ourTailTales hardcover (${order.chapter_count} chapters)`,
-          metadata: analyticsMetadata,
-        });
+          // Cards only, which still covers Apple Pay and Google Pay. A bank
+          // debit can take days to settle and can bounce after the book has
+          // been printed; pay-later methods add the same delay. Neither is
+          // worth it for a made-to-order book.
+          payment_method_types: ["card"],
+          metadata: { orderId },
+        },
+        { idempotencyKey: `order-intent-${orderId}` },
+      );
+      intentId = created.id;
+    }
+
+    const paymentIntent = await stripe.paymentIntents.update(intentId, {
+      amount,
+      receipt_email: email,
+      // Refreshed every time, so the number of copies on the receipt is the
+      // number being paid for.
+      description: `ourTailTales hardcover (${order.chapter_count} chapters${quantity > 1 ? `, ${quantity} copies` : ""})`,
+      metadata: analyticsMetadata,
+    });
 
     const { error: orderUpdateError } = await supabase
       .from("orders")
@@ -258,6 +317,7 @@ export async function POST(request: Request): Promise<Response> {
     await captureServerEvent(distinctId, "payment_intent_created", {
       total: book + videoMemoryPrice + shippingPrice,
       book_price: book,
+      copies: quantity,
       shipping_price: shippingPrice,
       video_memory_price: videoMemoryPrice,
       video_memory_count: quote.includedUniqueVideoCount,

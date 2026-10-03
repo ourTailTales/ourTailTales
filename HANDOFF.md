@@ -64,7 +64,13 @@ exist. All migrations are now applied (§3).
   mark on the draft row, which the plan's predicate missed.
 
 ### Phase 5 — no code
-Flag is `src/components/Funnel.tsx` (`enableVideoMemories={false}`). All four
+Video Memories are behind one server-side flag: env `VIDEO_MEMORIES_ENABLED`,
+read by `videoMemoriesEnabled()` in `src/lib/video-memory/flag.ts`. Off unless
+exactly `"true"`. While off: no Videos tab, no video upload, no landing copy;
+`/api/videos/**`, `/api/placements/**` and `/api/orders/freeze` return 404;
+`/api/video-memory/config` returns `{ enabled: false }`; cron skips the video
+jobs; checkout ignores any placed videos. Server pages pass the flag to
+`Funnel`, which provides it to client components (`flag-context.tsx`). All four
 secrets are unset: `VIDEO_MEMORY_WRAP_KEY`, `TURBO_PAYMENT_KEY`, `ARWEAVE_JWK`,
 `ARWEAVE_PLAYER_TX`. `encrypt.ts` needs exactly 32 bytes of hex and its own
 comment warns that losing the key after archival but before QR printing strands
@@ -74,7 +80,7 @@ videos permanently. **Generate it once and back it up.**
 - **Cron consolidation.** Hobby allows 2 cron entries; there were 5.
   `src/app/api/cron/daily/` runs every job in one invocation to a 45s budget
   (60s `maxDuration`), isolating failures and skipping the Video Memory jobs
-  while unconfigured. Individual routes still work for manual runs.
+  while the flag is off or their keys are unset. Individual routes still work for manual runs.
 - **Analytics leak fixed.** PostHog captures `$current_url` verbatim, so
   `/book/<id>?k=<secret>` was shipping the key to every paid book into analytics.
   `src/lib/analytics-redact.ts` + `sanitize_properties`.
@@ -115,6 +121,28 @@ delay rather than block. **Unresolved — re-check.**
 holds the test-mode secret on production+preview.
 
 ---
+
+### Added 3 October 2026 (audit fixes)
+
+- **Migration `20261003090000_order_quantity.sql`** adds `orders.quantity`
+  (1 to 5, default 1). Apply it before deploying: the code selects the column
+  with no fallback. It was added directly to the shared database on 3 October,
+  so it is live there but is not in Supabase's recorded migration list.
+- **Extra copies.** One order can carry up to five copies of a book. The first
+  is full price, each further one is `EXTRA_COPY_DISCOUNT` off
+  (`src/lib/pricing.ts`). `book_price` stays the price of one copy.
+- **Operator routes**, both `Authorization: Bearer $CRON_SECRET`:
+  - `POST /api/admin/orders/<id>/resubmit` sends a paid order that is held with
+    no print job to the printer. It checks Stripe first and refuses a refunded
+    or disputed payment or a wrong amount (`?force=amount` skips the amount
+    check only).
+  - `POST /api/admin/orders/<id>/release` puts a held order that already has a
+    print job back to `submitted`.
+- **`GET /api/orders/payable`** (order token) is what the Pay button asks
+  before charging.
+- **Env:** `OPS_ALERT_EMAIL` (where stuck paid orders are emailed),
+  `VIDEO_MEMORIES_ENABLED` (off unless `true`), optional `ORDER_TOKEN_SECRET`.
+- The order page needs `?t=<token>`. Every link we send carries it.
 
 ## 4. Blocked — needs a human
 

@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
 
+import { PROMPT_EXAMPLE_LINES } from "@/lib/ai/examples";
+import { PROFILE_SYSTEM_PROMPT, buildProfilePrompt } from "@/lib/ai/profile-prompt";
 import {
   buildStoryPrompt,
+  guessesTheSex,
   mentionsTheCamera,
+  ownerPronoun,
   soundsLikeACaption,
   storySystemPrompt,
 } from "@/lib/ai/prompt";
+import { matchedExample, matchedExampleInOpening, normalizeLine } from "@/lib/story/guard";
 import type { StoryRequest } from "@/types/story";
 
 function chapterOf(overrides: Partial<StoryRequest> = {}): StoryRequest {
@@ -351,5 +356,289 @@ describe("captioning a page the model cannot see", () => {
     const prompt = storySystemPrompt();
     expect(prompt).toContain("numbered from 1");
     expect(prompt).toContain("Out into the sunny green yard");
+  });
+});
+
+describe("the prompts' own examples", () => {
+  const prompt = storySystemPrompt();
+
+  it("are built from the one list the post-check reads", () => {
+    for (const example of PROMPT_EXAMPLE_LINES) {
+      expect(prompt).toContain(example);
+    }
+  });
+
+  it("quote no line or fragment that the post-check does not know about", () => {
+    // Anything in quotation marks that is two words or more could be lifted
+    // as a title or a caption. It has to be a line on the examples list (so
+    // the post-check refuses it), a piece of one (quoted to point at what is
+    // wrong with it), or wording the rules name in order to forbid it.
+    const everyTense = [true, false, undefined]
+      .map((stillHere) => storySystemPrompt({ stillHere }))
+      .join("\n");
+    const quoted = [...`${everyTense}\n${PROFILE_SYSTEM_PROMPT}`.matchAll(/"([^"\n]+)"/g)]
+      .map((match) => match[1]!)
+      .filter((line) => normalizeLine(line).split(" ").length >= 2);
+    expect(quoted.length).toBeGreaterThan(30);
+
+    const examples = PROMPT_EXAMPLE_LINES.map((example) => ` ${normalizeLine(example)} `);
+    for (const line of quoted) {
+      const known =
+        matchedExample(line) !== null ||
+        matchedExampleInOpening(line) !== null ||
+        examples.some((example) => example.includes(` ${normalizeLine(line)} `)) ||
+        FORBIDDEN_WORDING.includes(line);
+      expect(known, line).toBe(true);
+    }
+  });
+
+  it("carry no ready-made title, date label or caption outside the quoted lines", () => {
+    const everything = [true, false, undefined]
+      .map((stillHere) => storySystemPrompt({ stillHere }))
+      .concat(PROFILE_SYSTEM_PROMPT, buildStoryPrompt(chapterOf({ dateLabel: "", lifespan: "" })))
+      .join("\n");
+
+    let rest = everything;
+    for (const example of PROMPT_EXAMPLE_LINES) rest = rest.split(example).join("");
+
+    // The ones a review found, by name.
+    for (const gone of [
+      "Spring 2016",
+      "Early Days",
+      "busy, watchful, underfoot, asleep on everything, stuck indoors",
+      "asleep on everything",
+      "stuck indoors",
+      "pleased with themselves",
+      "deeply unimpressed",
+    ]) {
+      expect(rest.toLowerCase()).not.toContain(gone.toLowerCase());
+    }
+
+    // And the shapes they came in. With the examples taken out, nothing is
+    // left in Title Case, and no year is named anywhere: a date label is
+    // described, never shown.
+    expect(rest.match(/\b[A-Z][a-z]+(?:,? [A-Z][a-z]+)+\b/g)).toBeNull();
+    expect(rest.match(/\b(1[89]|20)\d{2}\b/g)).toBeNull();
+    expect(rest).not.toMatch(/\be\.g\./);
+    expect(storySystemPrompt()).toContain(
+      "a season and a year, or a month and a year, taken from this period's own dates",
+    );
+  });
+
+  it("are marked as reference lines before any of them is quoted", () => {
+    const marker = prompt.indexOf("REFERENCE LINES");
+    expect(marker).toBeGreaterThan(-1);
+    for (const example of PROMPT_EXAMPLE_LINES) {
+      expect(prompt.indexOf(example)).toBeGreaterThan(marker);
+    }
+    expect(prompt).toContain("changing the name, a word or two, or the order still counts");
+  });
+
+  it("no longer hand over sample lines for the pages that matter most", () => {
+    expect(prompt).not.toContain("The good sit, held for one whole second");
+    expect(prompt).not.toContain("Ears up, entirely sure of himself");
+    expect(prompt).not.toContain("Pretty even half asleep");
+    expect(prompt).not.toContain("tennis ball");
+    expect(prompt).not.toContain("red collar vanished");
+  });
+});
+
+// Wording the rules quote in order to forbid it or to show a plain noun: none
+// of it is a line a book could print whole. Adding a quoted phrase to the
+// prompts means adding it here or to `lib/ai/examples`, on purpose.
+const FORBIDDEN_WORDING = [
+  "X, Y, and Z",
+  "as if he'd earned it",
+  "brought nothing better than…",
+  "nothing more/better than",
+  "letting the day slow down",
+  "settling in",
+  "content to",
+  "drift(ed)",
+  "each new",
+  "any time",
+  "at rest",
+  "where it ends",
+  "the last…",
+  "will be missed",
+  "always remembered",
+  "the blanket",
+  "the pillow",
+];
+
+describe("only what can be seen", () => {
+  it("lets an object be named only when it is visible in the attached pictures", () => {
+    const system = storySystemPrompt();
+    expect(system).toContain("Only what can actually be seen");
+    expect(system).toContain("clearly visible in the pictures attached to this request");
+    expect(system).toContain("Write about time passing instead");
+    expect(system).toContain('return an empty caption ("")');
+    expect(buildStoryPrompt(chapterOf())).toContain(
+      "leave a page's caption empty rather than inventing one",
+    );
+  });
+
+  it("does not pass the profile's accessories on as fact about this chapter", () => {
+    const prompt = buildStoryPrompt(
+      chapterOf({
+        profile: {
+          appearance: "a caramel dog",
+          accessories: [{ item: "harness", color: "blue" }],
+          motifs: [],
+        },
+      }),
+    );
+    expect(prompt).toContain("blue harness");
+    expect(prompt).toContain("Mention one only if you can see it for yourself");
+  });
+
+  it("has the profile step return empty lists when nothing is visible", () => {
+    expect(PROFILE_SYSTEM_PROMPT).toContain("Return an empty list if nothing is clearly worn");
+    expect(PROFILE_SYSTEM_PROMPT).toContain("Return an empty list if nothing recurs");
+    expect(PROFILE_SYSTEM_PROMPT).not.toMatch(/tennis ball|red collar|green couch/);
+    expect(
+      buildProfilePrompt({ petName: "Biscuit", thumbnails: ["a"] }),
+    ).toContain("Empty lists are the right answer");
+  });
+});
+
+describe("the animal's sex", () => {
+  it("is never guessed when the owner has not said", () => {
+    expect(storySystemPrompt()).toContain("Never guess whether the animal is male or female");
+    const prompt = buildStoryPrompt(chapterOf());
+    expect(prompt).toContain("Nobody has said whether Biscuit is male or female");
+    expect(prompt).toContain('"they", "them", "their"');
+  });
+
+  it("follows the owner's own note when it uses one", () => {
+    expect(ownerPronoun("She hates the vacuum.")).toBe("she");
+    expect(ownerPronoun("Never let anyone near his bowl")).toBe("he");
+    expect(ownerPronoun("She never forgave him for the bath")).toBeNull();
+    expect(ownerPronoun("Terrified of the vacuum.")).toBeNull();
+    expect(ownerPronoun(undefined)).toBeNull();
+    expect(buildStoryPrompt(chapterOf({ notes: "She hates the vacuum." }))).toContain(
+      'The owner calls Biscuit "she"',
+    );
+  });
+
+  it.each([
+    ["A good boy.", "he"],
+    ["Such a good boy, terrified of the vacuum", "he"],
+    ["The best girl", "she"],
+    ["Our girl. Hates the vacuum.", "she"],
+    ["Male, about six when we got them", "he"],
+    ["female tabby", "she"],
+    ["BEST BOY", "he"],
+  ] as const)("takes boy, girl, male and female as the owner saying so: %s", (notes, expected) => {
+    expect(ownerPronoun(notes)).toBe(expected);
+    expect(buildStoryPrompt(chapterOf({ notes }))).toContain(
+      `The owner calls Biscuit "${expected}"`,
+    );
+  });
+
+  it("does not read boy or girl into a longer word, or settle on both", () => {
+    expect(ownerPronoun("My boyfriend found them by the road")).toBeNull();
+    expect(ownerPronoun("Loved by every girlfriend I ever had")).toBeNull();
+    expect(ownerPronoun("A good boy and a good girl, both of them")).toBeNull();
+  });
+
+  it.each([
+    "My late husband's dog. He passed in 2020.",
+    "My wife found them at the shelter and she cried the whole way home",
+    "Dad's dog really. He walked them every morning.",
+    "My mom's cat until she moved abroad",
+    "Belonged to my brother before he moved",
+    "A friend gave them to us when she moved abroad",
+    "My daughter picked the name. She was four.",
+    "Grandpa's shadow. He never went anywhere alone.",
+  ])("does not take a person's he or she for the pet's: %s", (notes) => {
+    expect(ownerPronoun(notes)).toBeNull();
+    expect(ownerPronoun(notes, "Biscuit")).toBeNull();
+    expect(buildStoryPrompt(chapterOf({ notes }))).toContain(
+      "Nobody has said whether Biscuit is male or female",
+    );
+  });
+
+  it("still takes it when boy or girl settles it, whoever else is mentioned", () => {
+    expect(ownerPronoun("Dad's good boy")).toBe("he");
+    expect(ownerPronoun("Finn is a good boy. My wife spoils him.")).toBe("he");
+    expect(ownerPronoun("The best girl. My husband adores her.")).toBe("she");
+  });
+
+  it("says nothing when boy or girl and the pronouns disagree", () => {
+    // "They" is the safe way to be wrong. A book gendered the wrong way is not.
+    expect(ownerPronoun("Oh boy, she loves the snow.")).toBeNull();
+    expect(ownerPronoun("Boy does she hate the mailman.")).toBeNull();
+    expect(ownerPronoun("He's my little girl's best friend.")).toBeNull();
+    expect(ownerPronoun("She was my boy's shadow from day one.")).toBeNull();
+    expect(ownerPronoun("My late husband's dog. He passed in 2020. The best girl.")).toBeNull();
+    expect(ownerPronoun("My wife says she is a male version of her old cat")).toBeNull();
+  });
+
+  it("does not take a relative's pronoun for the pet's", () => {
+    expect(ownerPronoun("Willow came to us after my aunt died. She was 82.")).toBeNull();
+  });
+
+  it("still takes it when the note ties the pronoun to the pet by name", () => {
+    expect(ownerPronoun("My husband's dog. Biscuit is a menace and she knows it.", "Biscuit")).toBe(
+      "she",
+    );
+    expect(ownerPronoun("Biscuit, he never forgave my sister for the bath", "Biscuit")).toBe("he");
+    expect(ownerPronoun("Mum's favourite. Biscuit loved his walks.", "Biscuit")).toBe("he");
+    // The pronoun after the name is somebody else's.
+    expect(ownerPronoun("Biscuit was my husband's dog and he adored them", "Biscuit")).toBeNull();
+    // Not without the name, and not from another sentence.
+    expect(ownerPronoun("My husband's dog. Biscuit is a menace and she knows it.")).toBeNull();
+    expect(ownerPronoun("Biscuit was my husband's. She is missed.", "Biscuit")).toBeNull();
+    // A name with a character in it that means something to a pattern.
+    expect(ownerPronoun("My wife's cat. Mr. B (the boss) is loud and he knows it", "Mr. B (the boss)")).toBe("he");
+  });
+
+  it("knows a best friend is usually the pet", () => {
+    expect(ownerPronoun("She is my best friend")).toBe("she");
+    expect(ownerPronoun("He was our partner in crime.")).toBe("he");
+    expect(ownerPronoun("Biscuit is my best friend. She hates the vacuum.", "Biscuit")).toBe("she");
+    // But a friend who is somebody else is somebody else.
+    expect(ownerPronoun("My best friend's dog. He travels a lot.")).toBeNull();
+  });
+
+  it("recognises a line that guesses", () => {
+    expect(guessesTheSex("Entirely sure of himself", null)).toBe(true);
+    expect(guessesTheSex("Entirely sure of himself", "he")).toBe(false);
+    expect(guessesTheSex("Entirely sure of himself", "she")).toBe(true);
+    expect(guessesTheSex("The heat got to them in the end", null)).toBe(false);
+    expect(guessesTheSex("Here for the weather", null)).toBe(false);
+  });
+});
+
+describe("a second attempt", () => {
+  it("names the wording that was refused", () => {
+    const prompt = buildStoryPrompt(chapterOf(), { rejected: ["Too Hot To Bother"] });
+    expect(prompt).toContain("Your last draft for this period was thrown away");
+    expect(prompt).toContain('"Too Hot To Bother"');
+  });
+
+  it("says nothing on a first attempt", () => {
+    expect(buildStoryPrompt(chapterOf())).not.toContain("thrown away");
+    expect(buildStoryPrompt(chapterOf(), { rejected: [] })).not.toContain("thrown away");
+    expect(buildStoryPrompt(chapterOf())).not.toContain("The last draft");
+  });
+
+  it("says so when the refused draft guessed he or she, so the retry is not the same prompt", () => {
+    const first = buildStoryPrompt(chapterOf());
+    const retry = buildStoryPrompt(chapterOf(), { guessedSex: true });
+    expect(retry).not.toBe(first);
+    expect(retry).toContain(
+      "The last draft called the animal he or she. The owner did not say. Use the name or they.",
+    );
+    expect(retry).not.toContain("thrown away");
+    // No name to use when none was collected.
+    expect(buildStoryPrompt(chapterOf({ petName: "" }), { guessedSex: true })).toContain(
+      "The owner did not say. Use they.",
+    );
+    // And the right correction when the owner did say.
+    expect(
+      buildStoryPrompt(chapterOf({ notes: "The best girl." }), { guessedSex: true }),
+    ).toContain('The last draft called the animal he. The owner says "she".');
   });
 });

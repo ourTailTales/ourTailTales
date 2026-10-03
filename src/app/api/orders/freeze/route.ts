@@ -7,6 +7,7 @@ import { includedUniqueVideoIds } from "@/lib/video-memory/count";
 import { centsToUsd, videoMemoryQuote } from "@/lib/video-memory/pricing";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import type { FrozenBookRevision } from "@/types/video-memory";
+import { videoMemoriesDisabledResponse } from "@/lib/video-memory/flag";
 
 const placementSchema = z.object({
   id: z.string(),
@@ -46,6 +47,9 @@ const requestSchema = z.object({
 });
 
 export async function POST(request: Request): Promise<Response> {
+  const disabled = videoMemoriesDisabledResponse();
+  if (disabled) return disabled;
+
   try {
     const parsed = requestSchema.safeParse(await request.json());
     if (!parsed.success) {

@@ -15,9 +15,10 @@ export const metadata: Metadata = {
 export default async function CheckoutShippingPage({
   searchParams,
 }: PageProps<"/checkout/shipping">) {
-  const access = await checkoutAccess(await searchParams);
+  const params = await searchParams;
+  const access = await checkoutAccess(params);
   if (!access.ok) {
-    return <CheckoutRefused reason={access.reason} />;
+    return <CheckoutRefused reason={access.reason} orderHref={access.orderHref} />;
   }
 
   const { order, token, shipping } = access;
@@ -44,6 +45,13 @@ export default async function CheckoutShippingPage({
         videoMemoryPrice={order.videoMemoryPrice}
         addressHref={stepHref("address", order.id, token)}
         next={stepHref("payment", order.id, token)}
+        // Set by the payment page when it sends somebody back rather than
+        // take a payment whose amount is out of date.
+        notice={
+          params.changed === "1"
+            ? "Your order details changed. Please confirm delivery again before you pay."
+            : null
+        }
       />
     </CheckoutShell>
   );

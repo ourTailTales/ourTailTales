@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { resolveStoryProvider } from "@/lib/ai/provider";
 import { recordAiUsage } from "@/lib/ai/usage";
+import { generateCheckedStory } from "@/lib/story/guard";
 import { routeError } from "@/lib/env";
 import { LIMITS, enforceRateLimit } from "@/lib/rate-limit";
 
@@ -9,8 +10,9 @@ import { LIMITS, enforceRateLimit } from "@/lib/rate-limit";
  * Chapter title and blurb generation.
  *
  * This handler knows nothing about which model writes the copy — it validates
- * the chapter, hands it to whichever provider `AI_PROVIDER` names, and returns
- * the draft. The provider key stays in this process; the representative
+ * the chapter, hands it to whichever provider `AI_PROVIDER` names, checks what
+ * came back against the prompts' own examples and the rest of the book, and
+ * returns the draft. The provider key stays in this process; the representative
  * thumbnails are forwarded to the model and never written to disk or Supabase.
  */
 
@@ -84,8 +86,9 @@ const requestSchema = z.object({
     })
     .optional(),
   // What the rest of the book already said, so this chapter is not the one
-  // that reaches for the same line again. Capped at what a fifty-chapter
-  // book could actually produce.
+  // that reaches for the same line again — named in the prompt, and enforced
+  // on the captions and title that come back. Client-supplied, so capped at
+  // what a fifty-chapter book could actually produce.
   alreadyUsed: z
     .object({
       titles: z.array(z.string().max(80)).max(50),
@@ -108,7 +111,10 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     const provider = await resolveStoryProvider();
-    const draft = await provider.generateStory(parsed.data, request.signal, {
+    // Checked after it is written: a line the prompts quote as an example, a
+    // caption the book already has, or one repeated within this chapter never
+    // leaves this route (`lib/story/guard`).
+    const draft = await generateCheckedStory(provider, parsed.data, request.signal, {
       onUsage: (usage) => void recordAiUsage(request, usage),
     });
 

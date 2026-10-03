@@ -52,7 +52,7 @@ export async function validateCustomCoverFile(
     } catch {
       return {
         ok: false,
-        message: "That PDF could not be read — try re-exporting it and upload again.",
+        message: "That PDF could not be read. Export it again and upload it.",
       };
     }
     if (pdf.getPageCount() < 1) {
@@ -65,7 +65,7 @@ export async function validateCustomCoverFile(
     ) {
       return {
         ok: false,
-        message: `That PDF is ${inches(width)}″ × ${inches(height)}″ this book needs exactly ${inches(target.width)}″ × ${inches(target.height)}″ (one flat page: front, spine, and back).`,
+        message: `That PDF is ${inches(width)}″ × ${inches(height)}″. This book needs exactly ${inches(target.width)}″ × ${inches(target.height)}″ (one flat page: front, spine, and back).`,
       };
     }
     return { ok: true, kind, widthPt: width, heightPt: height };
@@ -84,7 +84,7 @@ export async function validateCustomCoverFile(
   if (!widthOk || !heightOk) {
     return {
       ok: false,
-      message: `That image is ${size.width}×${size.height}px — at ${targetPpi} DPI this book needs ${targetWidthPx}×${targetHeightPx}px (${inches(target.width)}″ × ${inches(target.height)}″).`,
+      message: `That image is ${size.width}×${size.height}px. At ${targetPpi} DPI this book needs ${targetWidthPx}×${targetHeightPx}px (${inches(target.width)}″ × ${inches(target.height)}″).`,
     };
   }
   return { ok: true, kind, widthPt: target.width, heightPt: target.height };

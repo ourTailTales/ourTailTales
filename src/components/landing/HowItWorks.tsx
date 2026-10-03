@@ -4,11 +4,14 @@ import Image from "next/image";
 import type { ReactElement } from "react";
 
 import { EmailCaptureCta } from "@/components/landing/EmailCaptureCta";
+import { TEASER_PAGE_COUNT } from "@/lib/book/teaser";
 
 const steps = [
   {
     title: "Send your pet's photos & videos",
-    description: "Camera roll, Google Photos, iCloud. Any album, any order.",
+    // Shown while Video Memories are off (`VIDEO_MEMORIES_ENABLED`).
+    titleWithoutVideos: "Send your pet's photos",
+    description: "Pick them from your phone or computer. Any album, any order.",
     icon: "upload",
   },
   {
@@ -17,8 +20,8 @@ const steps = [
     icon: "logo",
   },
   {
-    title: "Get the free PDF",
-    description: "Delivered straight to your inbox. No cost, no card.",
+    title: `Get the first ${TEASER_PAGE_COUNT} pages free`,
+    description: `The first ${TEASER_PAGE_COUNT} pages arrive free by email. No cost, no card.`,
     icon: "pdf",
   },
 ] as const;
@@ -71,7 +74,12 @@ function StepIcon({ icon }: { icon: (typeof steps)[number]["icon"] }) {
   );
 }
 
-export function HowItWorks() {
+export function HowItWorks({
+  videoMemoriesEnabled = false,
+}: {
+  /** The server-side flag, read by the server component that renders this. */
+  videoMemoriesEnabled?: boolean;
+}) {
   return (
     <section aria-labelledby="how-heading" className="w-full" style={{ backgroundColor: "#faf7f2" }}>
       <div className="mx-auto max-w-6xl px-5 py-16 sm:px-8 sm:py-20">
@@ -122,7 +130,9 @@ export function HowItWorks() {
                 )}
 
                 <h3 className="mt-4 font-display text-lg font-bold text-page-ink">
-                  {step.title}
+                  {!videoMemoriesEnabled && "titleWithoutVideos" in step
+                    ? step.titleWithoutVideos
+                    : step.title}
                 </h3>
                 <p className="mt-2 max-w-[15rem] text-sm leading-6 text-page-ink-soft">
                   {step.description}

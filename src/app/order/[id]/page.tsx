@@ -3,8 +3,11 @@ import type { Metadata } from "next";
 
 import { BrandMark } from "@/components/BrandMark";
 import { readOrder, type OrderView } from "@/lib/order/read";
-import { mintOrderToken } from "@/lib/order/token";
-import { formatUsd, storedPriceBreakdown } from "@/lib/pricing";
+import { AutoRefresh } from "@/components/checkout/AutoRefresh";
+import { includedPdfUrl, pdfCopyExpected } from "@/lib/order/included-pdf";
+import { readPaymentState, type PaymentState } from "@/lib/order/payment-intent";
+import { orderTokenValid } from "@/lib/order/token";
+import { extraCopyPrice, formatUsd, storedPriceBreakdown } from "@/lib/pricing";
 import {
   VIDEO_MEMORIES_PROCESSING_CUSTOMER,
   VIDEO_MEMORIES_STUCK_CUSTOMER,
@@ -54,9 +57,26 @@ const ORDER: OrderStatus[] = [
   "delivered",
 ];
 
-export default async function OrderPage({ params }: PageProps<"/order/[id]">) {
+/**
+ * One order, for whoever holds its link.
+ *
+ * The link carries the order's token as well as its id. The id alone used to
+ * be enough, and for an unpaid order this page then minted the token and
+ * printed it in a link, so anybody who learned an id could open the checkout,
+ * read the name, phone and address on it, and change where the book went.
+ */
+export default async function OrderPage({
+  params,
+  searchParams,
+}: PageProps<"/order/[id]">) {
   const { id } = await params;
-  const order = await readOrder(id);
+  const query = await searchParams;
+  const token = typeof query.t === "string" ? query.t : null;
+  const allowed = Boolean(token && orderTokenValid(id, token));
+  const order = allowed ? await readOrder(id) : null;
+  const payment: PaymentState =
+    order?.status === "pending_payment" ? await readPaymentState(order.id) : "none";
+  const pdfUrl = order ? await includedPdfUrl(order.id, order.status) : null;
 
   return (
     <main className="mx-auto w-full max-w-2xl flex-1 px-5 pb-24 pt-10 sm:pt-16">
@@ -84,7 +104,7 @@ export default async function OrderPage({ params }: PageProps<"/order/[id]">) {
           </p>
         </section>
       ) : (
-        <OrderDetail order={order} />
+        <OrderDetail order={order} token={token ?? ""} payment={payment} pdfUrl={pdfUrl} />
       )}
     </main>
   );
@@ -96,7 +116,19 @@ const ARCHIVAL_STAGES = new Set<FulfillmentStage>([
   "preparing_print",
 ]);
 
-function OrderDetail({ order }: { order: OrderView }) {
+function OrderDetail({
+  order,
+  token,
+  payment,
+  pdfUrl,
+}: {
+  order: OrderView;
+  token: string;
+  payment: PaymentState;
+  /** A short-lived link to the clean PDF that comes with the hardcover. */
+  pdfUrl: string | null;
+}) {
+  const extraCopies = order.quantity - 1;
   const currentIndex = ORDER.indexOf(order.status);
   const needsAttention =
     order.status === "needs_review" ||
@@ -117,7 +149,7 @@ function OrderDetail({ order }: { order: OrderView }) {
     <>
       <section className="mt-10">
         <h1 className="font-display text-3xl text-ink">
-          {order.petName ? `${order.petName}'s book` : "Your book"}
+          {order.petName ? `${order.petName}\u2019s book` : "Your book"}
         </h1>
         <p className="mt-2 text-sm text-ink-soft">
           {order.chapterCount} chapters · {order.storyPages} story pages plus 4
@@ -125,12 +157,18 @@ function OrderDetail({ order }: { order: OrderView }) {
         </p>
       </section>
 
-      {order.status === "pending_payment" && (
+      {order.status === "pending_payment" && payment === "confirming" && (
+        <Callout tone="warn" title="Payment received">
+          <AutoRefresh />
+          Thank you. We are confirming your order now. This page updates by
+          itself in a moment, and a confirmation email is on its way.
+        </Callout>
+      )}
+
+      {order.status === "pending_payment" && payment !== "confirming" && (
         <Callout tone="warn" title="This order hasn't been paid yet">
           <Link
-            href={`/checkout?order=${order.id}&t=${encodeURIComponent(
-              mintOrderToken(order.id),
-            )}`}
+            href={`/checkout?order=${order.id}&t=${encodeURIComponent(token)}`}
             className="underline decoration-line underline-offset-4"
           >
             Finish checkout
@@ -156,7 +194,7 @@ function OrderDetail({ order }: { order: OrderView }) {
             ? VIDEO_MEMORIES_STUCK_CUSTOMER
             : canceled
               ? "Nothing more will be printed or charged."
-              : "Something on this order needed a person to look at it. Your book is safe and has not been sent to print."}{" "}
+              : "Something on this order needed a person to look at it. Your book is safe and is not being printed yet."}{" "}
           We&rsquo;ll email you at {order.email ?? "your address"}. You don&rsquo;t
           need to do anything, and you won&rsquo;t be charged twice.
         </Callout>
@@ -223,6 +261,29 @@ function OrderDetail({ order }: { order: OrderView }) {
         </ol>
       )}
 
+      {pdfUrl && (
+        <section className="mt-8 rounded-2xl border border-line bg-white p-6 shadow-lift">
+          <h2 className="font-display text-lg text-ink">Your PDF copy</h2>
+          <p className="mt-2 text-sm leading-6 text-ink-soft">
+            The clean PDF of the book comes with your hardcover. Save a copy
+            somewhere of your own.
+          </p>
+          <a
+            href={pdfUrl}
+            className="mt-4 inline-flex min-h-11 items-center rounded-xl bg-periwinkle px-5 text-sm font-semibold text-white transition-colors hover:bg-periwinkle-deep"
+          >
+            Download the PDF
+          </a>
+        </section>
+      )}
+
+      {!pdfUrl && pdfCopyExpected(order.status) && (
+        <p className="mt-8 text-sm leading-6 text-ink-faint">
+          Your PDF copy is not ready yet. If it has not appeared here in a few
+          minutes, email hello@ourtailtales.com and we will send it to you.
+        </p>
+      )}
+
       <dl className="mt-10 space-y-2.5 rounded-2xl border border-line bg-white p-6 text-sm shadow-lift">
         <Row label="Book" value={formatUsd(order.bookPrice)} />
         {/* The bands the chapters were billed at, so the receipt explains its
@@ -239,6 +300,12 @@ function OrderDetail({ order }: { order: OrderView }) {
             indented
           />
         ))}
+        {extraCopies > 0 && (
+          <Row
+            label={`${extraCopies} more ${extraCopies === 1 ? "copy" : "copies"} at ${formatUsd(extraCopyPrice(order.bookPrice))} each`}
+            value={formatUsd(order.booksTotal - order.bookPrice)}
+          />
+        )}
         {order.hasVideoMemories && (
           <Row
             label={`Video Memories × ${order.videoMemoryPackCount}`}
@@ -249,7 +316,7 @@ function OrderDetail({ order }: { order: OrderView }) {
           label="Shipping"
           value={
             order.shippingPrice === null
-              ? "—"
+              ? "Not chosen yet"
               : formatUsd(order.shippingPrice)
           }
         />
@@ -257,7 +324,7 @@ function OrderDetail({ order }: { order: OrderView }) {
         <Row
           label="Total"
           value={formatUsd(
-            order.bookPrice +
+            order.booksTotal +
               order.videoMemoryPrice +
               (order.shippingPrice ?? 0),
           )}
@@ -266,8 +333,8 @@ function OrderDetail({ order }: { order: OrderView }) {
       </dl>
 
       <p className="mt-6 text-xs leading-5 text-ink-faint">
-        Order reference {order.id.slice(0, 8)}. Your print files are deleted a
-        week after your book ships; your original photos never left your device.
+        Order reference {order.id.slice(0, 8)}. Questions about this order?
+        Email hello@ourtailtales.com.
       </p>
     </>
   );
@@ -284,6 +351,7 @@ function Callout({
 }) {
   return (
     <section
+      role="status"
       className={`mt-8 rounded-2xl border p-6 ${
         tone === "warn" ? "border-periwinkle/30 bg-periwinkle-wash/40" : "border-line"
       }`}

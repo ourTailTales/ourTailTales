@@ -4,6 +4,7 @@ import { Lock } from "lucide-react";
 
 import { possessivePetName } from "@/lib/book/pagination";
 import { TEASER_PAGE_COUNT } from "@/lib/book/teaser";
+import { DRAFT_TTL_DAYS } from "@/lib/drafts/expiry";
 
 /**
  * What a signed-out reader meets at page eleven.
@@ -61,7 +62,7 @@ export function LockedWall({
       </button>
 
       <p className="mt-3 text-xs text-page-ink-faint">
-        Free. Your photos stay on your device.
+        Free. Your preview link works for {DRAFT_TTL_DAYS} days.
       </p>
     </div>
   );

@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+  type ReactNode,
+} from "react";
 
 import { AlbumSize } from "@/components/studio/AlbumSize";
 import { BookStudio } from "@/components/studio/BookStudio";
@@ -11,12 +18,16 @@ import { nextBookStep } from "@/lib/book/progress";
 import { filesFromDataTransfer } from "@/lib/photo/process";
 import { bookSpec } from "@/lib/pricing";
 import { track } from "@/lib/analytics";
+import { useVideoMemoriesEnabled } from "@/lib/video-memory/flag-context";
 import {
   describeWait,
   secondsRemaining,
   summarizeAlbum,
   useOurTailTalesStore,
+  type AlbumVideoPreview,
 } from "@/store/useOurTailTalesStore";
+
+const NO_ALBUM_VIDEOS: AlbumVideoPreview[] = [];
 
 /**
  * Who, then the album, then the wait, then the book.
@@ -68,7 +79,11 @@ export function BookFlow({
   const funnelState = useOurTailTalesStore((state) => state.funnelState);
   const petName = useOurTailTalesStore((state) => state.meta.petName);
   const photos = useOurTailTalesStore((state) => state.photos);
-  const albumVideos = useOurTailTalesStore((state) => state.albumVideos);
+  const videoMemoriesEnabled = useVideoMemoriesEnabled();
+  const storedAlbumVideos = useOurTailTalesStore((state) => state.albumVideos);
+  // A draft saved while Video Memories were on can still hold videos. With the
+  // feature off they are not shown and not counted towards the album.
+  const albumVideos = videoMemoriesEnabled ? storedAlbumVideos : NO_ALBUM_VIDEOS;
   const progress = useOurTailTalesStore((state) => state.progress);
   const processingError = useOurTailTalesStore((state) => state.processingError);
   const chapters = useOurTailTalesStore((state) => state.chapters);
@@ -288,12 +303,19 @@ export function BookFlow({
       <div className="mx-auto w-full max-w-[90rem] px-5 py-6 sm:px-8 sm:py-8">
         {showIntake ? (
           <>
+            {/* Before a book exists this was the one screen with nowhere to
+                say anything, so a sign-in link that failed and videos that
+                were left out both went unmentioned. At the top until the
+                animal is confirmed, then with the album step, which is where
+                the page has travelled to by then. */}
+            {notice && !intakeDone ? <FlowNotice>{notice}</FlowNotice> : null}
             <PetIntake onDone={() => setIntakeDone(true)} confirmed={intakeDone} />
             {intakeDone ? (
               <div
                 ref={uploadRef}
                 className="flex animate-fade-up scroll-mt-6 flex-col justify-center border-t border-page-line/70 py-10"
               >
+                {notice ? <FlowNotice>{notice}</FlowNotice> : null}
                 <UploadMedia
                   heading={
                     petName.trim()
@@ -324,6 +346,7 @@ export function BookFlow({
           </>
         ) : uploadOpen && !reading ? (
           <div className="flex flex-col justify-center py-10">
+            {notice ? <FlowNotice>{notice}</FlowNotice> : null}
             <UploadMedia
               heading="Add more photos"
               onFiles={(files) => {
@@ -343,14 +366,7 @@ export function BookFlow({
           </div>
         ) : reading && finishing ? (
           <div className="animate-fade-up py-2">
-            {notice ? (
-              <p
-                role="alert"
-                className="mx-auto mb-5 w-full max-w-3xl rounded-xl border border-periwinkle/30 bg-periwinkle-wash/40 px-4 py-3 text-sm text-periwinkle-deep"
-              >
-                {notice}
-              </p>
-            ) : null}
+            {notice ? <FlowNotice>{notice}</FlowNotice> : null}
             <FinishBook
               onBack={onKeepEditing}
               onCheckout={onCheckout}
@@ -383,6 +399,8 @@ export function BookFlow({
             </div>
           </>
         ) : (
+          <>
+          {notice ? <FlowNotice>{notice}</FlowNotice> : null}
           <Waiting
             funnelState={funnelState}
             mediaCount={mediaCount}
@@ -398,6 +416,7 @@ export function BookFlow({
             petName={petName}
             error={processingError}
           />
+          </>
         )}
       </div>
     </section>
@@ -411,6 +430,23 @@ export function BookFlow({
  * steps: from the customer's side this is a single wait, and cutting it into
  * named stages only makes it feel longer than it is.
  */
+/**
+ * Something the customer needs to be told, on a screen with no book on it.
+ *
+ * The same words and the same look as the notice above the editor
+ * (`BookStudio`), which until now was the only place one could appear.
+ */
+function FlowNotice({ children }: { children: ReactNode }) {
+  return (
+    <p
+      role="alert"
+      className="mx-auto mb-5 w-full max-w-3xl rounded-xl border border-periwinkle/30 bg-periwinkle-wash/40 px-4 py-3 text-sm text-periwinkle-deep"
+    >
+      {children}
+    </p>
+  );
+}
+
 function Waiting({
   funnelState,
   mediaCount,
@@ -547,8 +583,8 @@ function Waiting({
           {writing
             ? "Every chapter comes from the photos you gave us. You can change all of it afterwards."
             : under
-              ? `About ${under} left. This happens on your own device — nothing is uploaded.`
-              : "This happens on your own device. Nothing is uploaded."}
+              ? `About ${under} left. This happens on your own device.`
+              : "This happens on your own device."}
         </p>
       </div>
 

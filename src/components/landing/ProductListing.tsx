@@ -5,24 +5,44 @@ import {
   BASE_CHAPTERS,
   BASE_PRICE,
   CHAPTER_TIERS,
+  EXTRA_COPY_DISCOUNT,
   MIN_PHOTOS_FOR_BOOK,
   formatUsd,
 } from "@/lib/pricing";
+import { videoMemoriesEnabled } from "@/lib/video-memory/flag";
 
-const hardcoverFeatures = [
+const EXTRA_COPY_PERCENT = Math.round(EXTRA_COPY_DISCOUNT * 100);
+
+/**
+ * "$4.99 each, $3.99 after chapter 12": every paid band's real rate, so the
+ * line never quotes only the cheapest one.
+ */
+const extraChapterRates = CHAPTER_TIERS.filter((tier) => tier.ratePerChapter > 0)
+  .map((tier, index) =>
+    index === 0
+      ? `${formatUsd(tier.ratePerChapter)} each`
+      : `${formatUsd(tier.ratePerChapter)} after chapter ${tier.fromChapter - 1}`,
+  )
+  .join(", ");
+
+/** Video Memory copy only appears while `VIDEO_MEMORIES_ENABLED` is on. */
+const buildHardcoverFeatures = (videoMemories: boolean) => [
   "8.5 × 8.5 in square casewrap, matte cover",
+  "The clean PDF of the book, included free",
+  `Extra copies for family at ${EXTRA_COPY_PERCENT}% off`,
   "Custom cover with their photo, name, and years",
   "Layouts you choose: full bleed, two up, three up, or four on a page",
-  "Optional Video Memory pages with a printed QR code",
-  `Starts at ${MIN_PHOTOS_FOR_BOOK} photos & videos`,
+  ...(videoMemories
+    ? ["Optional Video Memory pages with a printed QR code"]
+    : []),
+  `Starts at ${MIN_PHOTOS_FOR_BOOK} ${videoMemories ? "photos & videos" : "photos"}`,
   // The one line the tier table was worth: a longer book is not a different
   // product, it is more chapters at a price that is stated up front.
-  `Longer story? Extra chapters from ${formatUsd(
-    CHAPTER_TIERS.at(-1)!.ratePerChapter,
-  )} each`,
+  `Longer story? Extra chapters ${extraChapterRates}`,
 ] as const;
 
 export function ProductListing() {
+  const hardcoverFeatures = buildHardcoverFeatures(videoMemoriesEnabled());
   return (
     <section aria-labelledby="hardcover-heading" className="relative w-full" style={{ backgroundColor: "#faf7f2" }}>
       {/* Dot grid pattern overlay */}
@@ -36,7 +56,7 @@ export function ProductListing() {
       />
       <div className="relative mx-auto max-w-5xl px-5 py-16 sm:px-8 sm:py-20">
 
-        {/* Upgrade framing — not a spec sheet */}
+        {/* Upgrade framing, not a spec sheet */}
         <div className="mb-10">
           <p className="text-sm font-semibold uppercase tracking-widest text-periwinkle">
             Ready to hold it in your hands?
@@ -45,7 +65,7 @@ export function ProductListing() {
             id="hardcover-heading"
             className="mt-2 font-display text-3xl font-bold text-page-ink sm:text-4xl"
           >
-            Love the free PDF? Order the hardcover.
+            Love the free preview? Order the hardcover.
           </h2>
           <p className="mt-3 max-w-xl text-base leading-7 text-page-ink-soft">
             The same story, printed, bound, and sitting on your shelf forever. A real book
@@ -59,12 +79,13 @@ export function ProductListing() {
               {formatUsd(BASE_PRICE)}
             </p>
             <p className="mt-1 text-sm text-page-ink-soft">
-              Includes {BASE_CHAPTERS} chapters · no hidden fees
+              Includes {BASE_CHAPTERS} chapters. Shipping is added at checkout.
             </p>
 
             <p className="mt-3 inline-flex items-center gap-2 rounded-full bg-periwinkle/10 px-3.5 py-1.5 text-sm font-semibold text-periwinkle-deep">
               <span aria-hidden>✓</span>
-              Free reprint if it arrives damaged or misprinted
+              Free reprint if it arrives damaged or misprinted, within 30 days of
+              delivery
             </p>
 
             <p className="mt-6 text-sm font-semibold text-page-ink">Here&rsquo;s everything included:</p>

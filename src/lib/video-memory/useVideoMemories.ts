@@ -23,6 +23,7 @@ import {
   type VideoMemoryPublicConfig,
 } from "@/lib/video-memory/client";
 import { isAcceptableVideoDuration } from "@/lib/video-memory/duration";
+import { useVideoMemoriesEnabled } from "@/lib/video-memory/flag-context";
 import { includedUniqueVideoCount } from "@/lib/video-memory/count";
 import { packMeterView, type PackMeterView } from "@/lib/video-memory/pack-meter";
 import { wouldOpenNewPack } from "@/lib/video-memory/pricing";
@@ -88,12 +89,21 @@ export function useVideoMemories(): VideoMemories {
   const setVideoLibrary = useOurTailTalesStore((state) => state.setVideoLibrary);
   const setNotice = useOurTailTalesStore((state) => state.setVideoNotice);
 
+  // The server-side flag, handed down from the page. Off means this hook
+  // makes no request at all: every Video Memory route answers 404.
+  const enabled = useVideoMemoriesEnabled();
+
   const [config, setConfig] = useState<VideoMemoryPublicConfig | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // No draft while off, and every change below starts from the draft, so
+  // none of them can reach the network.
   const draft = useMemo<StoredDraft | null>(
-    () => (draftId && draftSecret ? { draftId, secret: draftSecret } : null),
-    [draftId, draftSecret],
+    () =>
+      enabled && draftId && draftSecret
+        ? { draftId, secret: draftSecret }
+        : null,
+    [enabled, draftId, draftSecret],
   );
 
   const refresh = useCallback(
@@ -107,6 +117,7 @@ export function useVideoMemories(): VideoMemories {
   );
 
   useEffect(() => {
+    if (!enabled) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -123,6 +134,9 @@ export function useVideoMemories(): VideoMemories {
           cachedConfig ?? fetchVideoMemoryConfig(),
         ]);
         if (cancelled) return;
+        // The page said on and the server says off: a deploy in between. Stop
+        // here rather than ask for a library that would come back 404.
+        if (!nextConfig) return;
         cachedConfig = nextConfig;
         setDraft(nextDraft.draftId, nextDraft.secret);
         setConfig(nextConfig);
@@ -142,7 +156,7 @@ export function useVideoMemories(): VideoMemories {
     return () => {
       cancelled = true;
     };
-  }, [setDraft, setVideoLibrary, setNotice]);
+  }, [enabled, setDraft, setVideoLibrary, setNotice]);
 
   const needsPoll = assets.some(
     (asset) => asset.status === "uploaded" || asset.status === "processing",

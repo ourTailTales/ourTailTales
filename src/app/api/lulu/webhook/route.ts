@@ -1,8 +1,10 @@
+import { alertOps } from "@/lib/ops/alert";
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { readEnv, routeError } from "@/lib/env";
 import { sendShippingNotificationEmail } from "@/lib/email/send";
 import { mapLuluStatus } from "@/lib/lulu/client";
+import { allowedFrom } from "@/lib/lulu/transitions";
 import { supabaseAdmin } from "@/lib/supabase/server";
 
 /**
@@ -83,16 +85,30 @@ export async function POST(request: Request): Promise<Response> {
       .from("orders")
       .update(update)
       .eq("lulu_print_job_id", String(printJobId))
-      // Only a row that was not already shipped comes back, so a repeated
-      // webhook cannot send the notification twice.
-      .neq("status", "shipped")
+      // Forward only. An event is applied to an order that is still behind
+      // it, so a repeated or late one cannot move a delivered book back to
+      // shipped, send the shipped email twice, or lift a hold that a refund,
+      // a dispute or a person put on the order.
+      .in("status", allowedFrom(status))
       .select("id, email, pet_name")
       .maybeSingle();
 
     if (error) throw new Error(error.message);
 
+    // A rejection or a cancellation at the printer stops a paid book, and
+    // nothing else looks at these orders again.
+    if (updated && (status === "rejected" || status === "canceled")) {
+      await alertOps(`The printer ${status} an order`, {
+        order: updated.id,
+        printJob: String(printJobId),
+        reason: payload.data?.status?.message ?? "no reason given",
+      });
+    }
+
     if (status === "shipped" && updated?.email) {
-      void sendShippingNotificationEmail({
+      // Awaited: a function that has answered may be frozen before an
+      // unawaited send leaves.
+      await sendShippingNotificationEmail({
         to: updated.email,
         petName: updated.pet_name ?? "",
         orderId: updated.id,

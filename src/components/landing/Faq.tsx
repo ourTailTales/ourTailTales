@@ -1,9 +1,11 @@
 import { EmailCaptureCta } from "@/components/landing/EmailCaptureCta";
+import { TEASER_PAGE_COUNT } from "@/lib/book/teaser";
+import { DRAFT_TTL_DAYS } from "@/lib/drafts/expiry";
 import {
   BASE_PRICE,
   BASE_CHAPTERS,
   CHAPTER_TIERS,
-  MAX_CHAPTERS,
+  EXTRA_COPY_DISCOUNT,
   MIN_PHOTOS_FOR_BOOK,
   MAX_STORY_PAGES_PER_CHAPTER,
   MIN_STORY_PAGES_PER_CHAPTER,
@@ -14,55 +16,67 @@ import {
   VIDEO_MEMORIES_PER_PACK,
   VIDEO_MEMORY_PACK_PRICE_CENTS,
 } from "@/lib/video-memory/config";
+import { videoMemoriesEnabled } from "@/lib/video-memory/flag";
 
-const faqs = [
+const EXTRA_COPY_PERCENT = Math.round(EXTRA_COPY_DISCOUNT * 100);
+
+/** "$4.99 each for chapters 6 to 12 and $3.99 each for chapters 13 to 50". */
+const extraChapterRates = CHAPTER_TIERS.filter((tier) => tier.ratePerChapter > 0)
+  .map(
+    (tier) =>
+      `${formatUsd(tier.ratePerChapter)} each for chapters ${tier.fromChapter} to ${tier.toChapter}`,
+  )
+  .join(" and ");
+
+/** Video Memory copy only appears while `VIDEO_MEMORIES_ENABLED` is on. */
+const buildFaqs = (videoMemories: boolean) => [
   {
     question: "Where do my photos go?",
     answer:
-      "They stay on your device while you build the book. Nothing is uploaded for printing until you place an order.",
+      `Your original photos are read on your own device. Small previews of them are sent to us to write the story. Your preview link works for ${DRAFT_TTL_DAYS} days. A free account saves the book to your library. The full print files are uploaded when you order.`,
   },
   {
     question: "How many photos do I need?",
     answer:
-      `At least ${MIN_PHOTOS_FOR_BOOK} usable photos or videos for the hardcover. Each chapter uses ${PHOTOS_PER_CHAPTER_TARGET.min}–${PHOTOS_PER_CHAPTER_TARGET.max} photos, so a larger album can support more chapters without repeating images.`,
+      `At least ${MIN_PHOTOS_FOR_BOOK} usable ${videoMemories ? "photos or videos" : "photos"} for the hardcover. Each chapter uses ${PHOTOS_PER_CHAPTER_TARGET.min} to ${PHOTOS_PER_CHAPTER_TARGET.max} photos, so a larger album can fill more chapters without repeating images.`,
   },
   {
     question: "What does the book cost?",
     answer:
-      `${formatUsd(BASE_PRICE)} covers the hardcover and its first ${BASE_CHAPTERS} chapters outright. Past that, chapters are bought one at a time and get cheaper the longer the book runs: ${CHAPTER_TIERS.filter(
-        (tier) => tier.ratePerChapter > 0,
-      )
-        .map(
-          (tier) =>
-            `${formatUsd(tier.ratePerChapter)} each for chapters ${tier.fromChapter}\u2013${
-              tier.toChapter === MAX_CHAPTERS ? MAX_CHAPTERS : tier.toChapter
-            }`,
-        )
-        .join(", ")}, up to ${MAX_CHAPTERS} chapters in all. Each rate applies only to the chapters inside its band. Every chapter runs ${MIN_STORY_PAGES_PER_CHAPTER}\u2013${MAX_STORY_PAGES_PER_CHAPTER} pages on ${PHOTOS_PER_CHAPTER_TARGET.min}\u2013${PHOTOS_PER_CHAPTER_TARGET.max} photos whichever band it falls in. Optional Video Memories are available in packs of ${VIDEO_MEMORIES_PER_PACK} QR-linked videos for ${formatUsd(VIDEO_MEMORY_PACK_PRICE_CENTS / 100)}. Paperback is coming soon.`,
+      `${formatUsd(BASE_PRICE)} covers the hardcover and its first ${BASE_CHAPTERS} chapters. Extra chapters are ${extraChapterRates}. Every chapter runs ${MIN_STORY_PAGES_PER_CHAPTER} to ${MAX_STORY_PAGES_PER_CHAPTER} pages. Shipping is added at checkout. Extra copies of the same book are ${EXTRA_COPY_PERCENT}% off.${
+        videoMemories
+          ? ` Optional Video Memories come in packs of ${VIDEO_MEMORIES_PER_PACK} QR-linked videos for ${formatUsd(VIDEO_MEMORY_PACK_PRICE_CENTS / 100)}.`
+          : ""
+      }`,
   },
   {
     question: "Can I edit the story?",
     answer:
       "Yes. After we draft the chapters from your album, you can change titles, opening words, photo order, and the cover photo before you order.",
   },
-  {
-    question: "What is a Video Memory?",
-    answer:
-      "A short video you place in the book. In print it appears as a page with a QR code so you can watch that moment again from your phone.",
-  },
+  ...(videoMemories
+    ? [
+        {
+          question: "What is a Video Memory?",
+          answer:
+            "A short video you place in the book. In print it appears as a page with a QR code so you can watch that moment again from your phone.",
+        },
+      ]
+    : []),
   {
     question: "What if my book arrives damaged or misprinted?",
     answer:
-      "We\'ll reprint it and send a new copy at no cost. You already see the entire book as a free preview before you order, so this covers the physical printing and shipping, not the story itself, since you\'ve already seen that.",
+      "Email us within 30 days of delivery with a photo. We reprint it and send a new copy at no cost. You can read the whole book before you order, so the reprint covers printing and shipping damage, not changes to the story.",
   },
   {
     question: "Can I get a free version before I pay anything?",
     answer:
-      "Yes. That\'s the whole point. Enter your email on the home page, drop your photos, and we build a free PDF story right in your browser. No credit card needed. Only order the hardcover once you\'ve seen it and love it.",
+      `Yes. Enter your email on the home page and add your photos, and we build a free preview of the story in minutes. The first ${TEASER_PAGE_COUNT} pages are free. The whole book opens with a free account. No credit card needed. Only order the hardcover once you have read it and love it.`,
   },
 ] as const;
 
 export function Faq() {
+  const faqs = buildFaqs(videoMemoriesEnabled());
   return (
     <section aria-labelledby="faq-heading" className="w-full" style={{ backgroundColor: "#faf7f2" }}>
       <div className="mx-auto max-w-[90rem] px-5 py-16 sm:px-8 sm:py-20">

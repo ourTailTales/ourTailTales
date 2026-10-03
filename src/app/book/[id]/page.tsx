@@ -4,7 +4,6 @@ import { notFound } from "next/navigation";
 import { Download, ExternalLink, LockKeyhole } from "lucide-react";
 
 import { BrandMark } from "@/components/BrandMark";
-import { ExpiryBanner } from "@/components/ExpiryBanner";
 import { SavedBookSignIn } from "@/components/auth/SavedBookSignIn";
 import { BookViewAnalytics } from "@/components/create/BookViewAnalytics";
 import { UpgradeActions } from "./UpgradeActions";
@@ -190,8 +189,7 @@ function FreeBookPreview({
           </h1>
           <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-page-ink-soft">
             Free previews are kept for 30 days. This one has passed that, so the
-            file has been deleted. Your photos never left your own device, so
-            nothing else was stored.
+            file has been deleted.
           </p>
           <Link
             href="/create"
@@ -218,20 +216,16 @@ function FreeBookPreview({
       </header>
 
       {draft.expiresAt && !draft.purchased && !settling ? (
-        <div className="mt-8">
-          <ExpiryBanner
-            expiresAt={draft.expiresAt}
-            petName={draft.petName ?? ""}
-            action={
-              <Link
-                href={`/claim/${draft.draftId}?k=${encodeURIComponent(secret)}`}
-                className="inline-flex min-h-11 items-center justify-center rounded-xl bg-periwinkle px-6 text-sm font-semibold text-white shadow-lift hover:bg-periwinkle-deep"
-              >
-                Create my free account
-              </Link>
-            }
-          />
-        </div>
+        <p className="mt-6 text-sm leading-6 text-page-ink-soft">
+          We keep this preview link for 30 days.{" "}
+          <Link
+            href={`/claim/${draft.draftId}?k=${encodeURIComponent(secret)}`}
+            className="font-semibold text-periwinkle underline decoration-page-line underline-offset-4 hover:text-periwinkle-deep"
+          >
+            A free account
+          </Link>{" "}
+          saves your book to your library.
+        </p>
       ) : null}
 
       <section className="mt-8 overflow-hidden rounded-[1.75rem] border border-white/80 bg-white/95 shadow-[0_24px_70px_-30px_rgb(25_32_58/0.55)]">

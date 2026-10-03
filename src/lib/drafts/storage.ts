@@ -24,6 +24,23 @@ export const DRAFT_PDF_KINDS: readonly DraftPdfKind[] = [
   "teaser",
 ];
 
+/**
+ * What a browser can say it is banking.
+ *
+ * `teaser` is the free first pages. `full` is the whole book for an account
+ * holder: it becomes both the watermarked preview and the clean file. `order`
+ * is the whole book banked at hardcover checkout so the PDF that comes with
+ * the book exists: it becomes the clean file and nothing else, so it never
+ * changes what the draft's public link shows.
+ */
+export type DraftBankKind = "teaser" | "full" | "order";
+
+export const DRAFT_BANK_KINDS: readonly DraftBankKind[] = [
+  "teaser",
+  "full",
+  "order",
+];
+
 export function draftPdfPath(draftId: string, kind: DraftPdfKind): string {
   return `drafts/${draftId}/${kind}.pdf`;
 }
@@ -46,7 +63,7 @@ export function draftPdfPath(draftId: string, kind: DraftPdfKind): string {
  */
 export function draftIncomingPdfPath(
   draftId: string,
-  bankKind: "teaser" | "full",
+  bankKind: DraftBankKind,
 ): string {
   return `drafts/${draftId}/incoming-${bankKind}.pdf`;
 }
@@ -55,8 +72,7 @@ export function draftIncomingPdfPath(
 export function allDraftPdfPaths(draftId: string): string[] {
   return [
     ...DRAFT_PDF_KINDS.map((kind) => draftPdfPath(draftId, kind)),
-    draftIncomingPdfPath(draftId, "teaser"),
-    draftIncomingPdfPath(draftId, "full"),
+    ...DRAFT_BANK_KINDS.map((kind) => draftIncomingPdfPath(draftId, kind)),
   ];
 }
 

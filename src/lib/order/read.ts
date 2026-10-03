@@ -1,4 +1,5 @@
 import { supabaseAdmin, supabaseConfigured } from "@/lib/supabase/server";
+import { clampCopies, copiesTotal } from "@/lib/pricing";
 import type { OrderStatus } from "@/types/order";
 import type { FulfillmentStage } from "@/types/video-memory";
 
@@ -10,7 +11,12 @@ export type OrderView = {
   chapterCount: number;
   storyPages: number;
   totalPages: number;
+  /** The price of one copy. */
   bookPrice: number;
+  /** Copies of the book on this order. */
+  quantity: number;
+  /** Every copy together: the first at full price, the rest discounted. */
+  booksTotal: number;
   shippingPrice: number | null;
   videoMemoryPrice: number;
   videoMemoryPackCount: number;
@@ -34,7 +40,7 @@ export async function readOrder(orderId: string): Promise<OrderView | null> {
   const { data, error } = await supabaseAdmin()
     .from("orders")
     .select(
-      "id, status, email, pet_name, chapter_count, story_pages, total_pages, book_price, shipping_price, video_memory_total_cents, video_memory_pack_count, selected_video_count, fulfillment_stage, lulu_print_job_id, lulu_status_message, review_reason, tracking_urls, interior_path, cover_path, frozen_interior_path, book_snapshot, created_at",
+      "id, status, email, pet_name, chapter_count, story_pages, total_pages, book_price, quantity, shipping_price, video_memory_total_cents, video_memory_pack_count, selected_video_count, fulfillment_stage, lulu_print_job_id, lulu_status_message, review_reason, tracking_urls, interior_path, cover_path, frozen_interior_path, book_snapshot, created_at",
     )
     .eq("id", orderId)
     .maybeSingle();
@@ -50,6 +56,8 @@ export async function readOrder(orderId: string): Promise<OrderView | null> {
     storyPages: data.story_pages,
     totalPages: data.total_pages,
     bookPrice: Number(data.book_price),
+    quantity: clampCopies(data.quantity),
+    booksTotal: copiesTotal(Number(data.book_price), clampCopies(data.quantity)),
     shippingPrice:
       data.shipping_price === null ? null : Number(data.shipping_price),
     videoMemoryPrice: Number(data.video_memory_total_cents ?? 0) / 100,

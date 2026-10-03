@@ -4,8 +4,9 @@ import { PREVIEW_BUCKET, supabaseAdmin } from "@/lib/supabase/server";
 /**
  * Daily reaping of free preview books.
  *
- * A free book is kept for 30 days. Any purchase — the $4.99 PDF or a hardcover
- * order — makes it permanent, so this only ever touches drafts that were never
+ * A free book is kept for 30 days. Any purchase, the digital PDF (priced at
+ * `DIGITAL_PRICE_RATE` of the hardcover price) or a hardcover order, makes it
+ * permanent, so this only ever touches drafts that were never
  * paid for.
  *
  * The stored PDFs are deleted and the row is anonymised rather than dropped:

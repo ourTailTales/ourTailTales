@@ -8,7 +8,7 @@ import {
   type PDFPage,
 } from "pdf-lib";
 
-import { drawExpiryNotice, drawFrontCoverPage } from "@/lib/book/cover-pdf";
+import { drawFrontCoverPage, drawPreviewKeptNote } from "@/lib/book/cover-pdf";
 import { designContext, designPage } from "@/lib/book/design";
 import { photoWindow, type Print } from "@/lib/book/design/primitives";
 import { drawDesign, hex } from "@/lib/book/design-pdf";
@@ -74,9 +74,9 @@ export type InteriorRenderOptions = {
   /** Close on a page saying what the rest of the book holds. */
   lockedNotice?: LockedNotice;
   /**
-   * Stamp "EXPIRES IN N DAYS" across the top of the front cover. Free
-   * previews only: the file is the one copy of the book many people keep,
-   * and it has to say plainly that the book behind it will not wait.
+   * Print one small line at the top of the front cover saying how long the
+   * preview is kept. Free previews only: the file is the one copy of the
+   * book many people keep, so it says plainly when the link stops working.
    */
   expiresAt?: Date;
   /**
@@ -166,9 +166,9 @@ export async function renderInteriorPdf(
     const page = addPage();
     await drawFrontCoverPage(pdf, page, { meta, targetPpi });
     if (expiresAt) {
-      await drawExpiryNotice(pdf, page, {
+      await drawPreviewKeptNote(pdf, page, {
         expiresAt,
-        // Inside the trim, so cropping never cuts the warning in half.
+        // Inside the trim, so cropping never cuts the line in half.
         top: PAGE_PT - (cropToTrim ? BLEED_PT : 0),
         left: cropToTrim ? BLEED_PT : 0,
         width: cropToTrim ? TRIM_PT : PAGE_PT,
@@ -267,7 +267,7 @@ function drawLockedPage(
   const pagesLine =
     notice.hiddenPages === 1 ? "1 more page" : `${notice.hiddenPages} more pages`;
 
-  drawCentered(page, `${chapters} — ${pagesLine} — are written and waiting.`, {
+  drawCentered(page, `${chapters} and ${pagesLine} are written and waiting.`, {
     font: fonts.sans,
     size: 12,
     color: colors.inkSoft,

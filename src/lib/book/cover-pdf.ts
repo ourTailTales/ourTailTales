@@ -30,7 +30,7 @@ import { verticalAlphaRampPng } from "@/lib/book/gradient-png";
 import { resolvePalette, type BookPalette } from "@/lib/book/palette";
 import { coverNameFont, drawable, loadBookFonts, type BookFonts } from "@/lib/book/pdf-fonts";
 import { brand, hexToRgb01 } from "@/lib/brand";
-import { expiryHeadline, formatExpiryDate } from "@/lib/drafts/expiry";
+import { formatExpiryDate } from "@/lib/drafts/expiry";
 import * as assetStore from "@/lib/photo/assetStore";
 import { rasterizeForPlacement } from "@/lib/photo/pipeline";
 import type { BookMeta, CoverFontId, CoverLayoutId } from "@/types/book";
@@ -641,59 +641,47 @@ function wrap(
   return lines;
 }
 
-const WARNING_RED = rgb(0.86, 0.15, 0.15);
-
 /**
- * "EXPIRES IN 30 DAYS", in big red letters across the top of the teaser's
- * cover, with a line under it saying how to keep the book.
+ * One small, calm line across the top of the teaser's cover saying how long
+ * the preview is kept and how to keep the book.
  *
- * A file cannot count down, so the headline is true on the day it was made
- * and the subtitle carries the absolute date, which stays true.
+ * A file cannot count down, so the line carries the absolute date, which
+ * stays true. Normal ink on a slim strip of paper: a note, not a warning.
  */
-export async function drawExpiryNotice(
+export function previewKeptNote(expiresAt: Date): string {
+  return `We keep this preview until ${formatExpiryDate(expiresAt)}. A free account saves your book to your library at ${brand.domain}.`;
+}
+
+export async function drawPreviewKeptNote(
   pdf: PDFDocument,
   page: PDFPage,
   args: { expiresAt: Date; top: number; left: number; width: number },
 ): Promise<void> {
   const { expiresAt, top, left, width } = args;
-  const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
   const regular = await pdf.embedFont(StandardFonts.Helvetica);
+  const note = previewKeptNote(expiresAt);
 
-  const headline = expiryHeadline(expiresAt);
-  const subtitle = `Create a free account at ${brand.domain} to save this book, it expires ${formatExpiryDate(expiresAt)}.`;
+  const maxWidth = width * 0.92;
+  let size = 9;
+  while (regular.widthOfTextAtSize(note, size) > maxWidth && size > 6) {
+    size -= 0.5;
+  }
 
-  const bandHeight = 92;
+  // Just tall enough to keep the line readable over a cover photo.
+  const stripHeight = 24;
   page.drawRectangle({
     x: left,
-    y: top - bandHeight,
+    y: top - stripHeight,
     width,
-    height: bandHeight,
+    height: stripHeight,
     color: PAPER,
-    opacity: 0.94,
+    opacity: 0.9,
   });
 
-  const maxWidth = width * 0.9;
-  let headlineSize = 40;
-  while (bold.widthOfTextAtSize(headline, headlineSize) > maxWidth && headlineSize > 18) {
-    headlineSize -= 1;
-  }
-  let subtitleSize = 11;
-  while (regular.widthOfTextAtSize(subtitle, subtitleSize) > maxWidth && subtitleSize > 7) {
-    subtitleSize -= 0.5;
-  }
-
-  const centerX = left + width / 2;
-  page.drawText(headline, {
-    x: centerX - bold.widthOfTextAtSize(headline, headlineSize) / 2,
-    y: top - 22 - headlineSize * 0.72,
-    size: headlineSize,
-    font: bold,
-    color: WARNING_RED,
-  });
-  page.drawText(subtitle, {
-    x: centerX - regular.widthOfTextAtSize(subtitle, subtitleSize) / 2,
-    y: top - bandHeight + 16,
-    size: subtitleSize,
+  page.drawText(note, {
+    x: left + width / 2 - regular.widthOfTextAtSize(note, size) / 2,
+    y: top - stripHeight / 2 - size * 0.35,
+    size,
     font: regular,
     color: INK,
   });

@@ -7,11 +7,11 @@ import type { CheckoutRefusal } from "@/lib/order/checkout-access";
 /** Why this checkout cannot be shown, in the same words on every step. */
 export function CheckoutRefused({
   reason,
-  orderId,
+  orderHref,
 }: {
   reason: CheckoutRefusal;
   /** Known when the order was found but is past paying for. */
-  orderId?: string | null;
+  orderHref?: string | null;
 }) {
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-5 pb-24 pt-10 sm:pt-16">
@@ -30,15 +30,15 @@ export function CheckoutRefused({
         </CheckoutNotice>
       ) : reason === "already_ordered" ? (
         <CheckoutNotice title="This order is already on its way">
-          {orderId ? (
+          {orderHref ? (
             <Link
-              href={`/order/${orderId}`}
+              href={orderHref}
               className="underline decoration-line underline-offset-4"
             >
               Check its progress
             </Link>
           ) : (
-            "Check the link in your confirmation email."
+            "Check the link in your confirmation email"
           )}
           .
         </CheckoutNotice>

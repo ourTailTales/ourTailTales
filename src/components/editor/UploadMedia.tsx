@@ -6,6 +6,7 @@ import { useRef, useState, type ChangeEvent } from "react";
 import { MediaLibraryModal } from "@/components/editor/MediaLibraryModal";
 import { isLikelyMedia } from "@/lib/photo/process";
 import { MIN_PHOTOS_FOR_BOOK } from "@/lib/pricing";
+import { useVideoMemoriesEnabled } from "@/lib/video-memory/flag-context";
 import {
   describeWait,
   secondsRemaining,
@@ -57,6 +58,7 @@ export function UploadMedia({
   onRemovePhoto: (id: string) => void;
   onRemoveVideo: (id: string) => void;
 }) {
+  const videoMemoriesEnabled = useVideoMemoriesEnabled();
   const photosRef = useRef<HTMLInputElement>(null);
   const folderRef = useRef<HTMLInputElement>(null);
   const [draftEmail, setDraftEmail] = useState(email ?? "");
@@ -108,14 +110,16 @@ export function UploadMedia({
         {missing === 0
           ? "That's enough to start. Add more any time."
           : photoCount === 0
-            ? `Add at least ${MIN_PHOTOS_FOR_BOOK} photos and videos. We sort them into chapters for you.`
+            ? `Add at least ${MIN_PHOTOS_FOR_BOOK} ${
+                videoMemoriesEnabled ? "photos and videos" : "photos"
+              }. We sort them into chapters for you.`
             : `${missing} more photo${missing === 1 ? "" : "s"} and we can start sorting them into chapters.`}
       </p>
 
       <input
         ref={photosRef}
         type="file"
-        accept="image/*,video/*"
+        accept={videoMemoriesEnabled ? "image/*,video/*" : "image/*"}
         multiple
         className="sr-only"
         onChange={handleChange}
@@ -140,7 +144,11 @@ export function UploadMedia({
           strokeWidth={1.75}
         />
         <span className="text-sm font-semibold text-page-ink">
-          {processing ? "Reading…" : "Choose photos and videos"}
+          {processing
+            ? "Reading…"
+            : videoMemoriesEnabled
+              ? "Choose photos and videos"
+              : "Choose photos"}
         </span>
         <span className="text-xs text-page-ink-faint">
           or drag them in anywhere on this page
@@ -258,7 +266,7 @@ function ReadingProgress({
         {left === null ? "" : ` · about ${describeWait(left)} left`}
       </p>
       <p className="text-xs leading-5 text-page-ink-faint">
-        This happens on your own device. Nothing is uploaded.
+        This happens on your own device.
       </p>
     </div>
   );

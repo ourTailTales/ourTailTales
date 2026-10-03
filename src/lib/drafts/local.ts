@@ -72,6 +72,8 @@ type StoredDraft = {
    */
   bookExpiresAt?: string | null;
   bookUrl?: string | null;
+  /** When the book was saved to an account. Absent until it has been. */
+  claimedAt?: string | null;
 };
 
 export type LocalSaveResult = {
@@ -96,6 +98,7 @@ export type RestoredLocalDraft = Pick<
   | "leadEmail"
   | "bookExpiresAt"
   | "bookUrl"
+  | "claimedAt"
 > & {
   photos: PhotoAsset[];
   albumVideos: {
@@ -114,6 +117,23 @@ export type RestoredLocalDraft = Pick<
 let activeDraftId: string | null = null;
 let activeDraftKey: string | null = null;
 let activePreviewPdf: Blob | null = null;
+
+/**
+ * Told whenever a save gives the book on screen its id.
+ *
+ * The id is the book's identity everywhere else (it is `book_projects.id`),
+ * and a book made in this tab only gets one at its first save, well after
+ * anything that restored it has finished. The store listens here so that
+ * moment is something a component can react to, rather than a value it has
+ * to remember to come back and read.
+ */
+let draftIdListener: ((localDraftId: string | null) => void) | null = null;
+
+export function onLocalDraftIdChange(
+  listener: ((localDraftId: string | null) => void) | null,
+): void {
+  draftIdListener = listener;
+}
 
 /**
  * One queue for every read and write, because the three variables above are
@@ -244,6 +264,7 @@ export async function persistLocalDraft(
     originalBook: state.originalBook ?? undefined,
     bookExpiresAt: state.bookExpiresAt?.toISOString() ?? null,
     bookUrl: state.bookUrl,
+    claimedAt: state.claimedAt,
   };
 
   const previousKey = activeDraftKey;
@@ -265,6 +286,7 @@ export async function persistLocalDraft(
 
   activeDraftId = localDraftId;
   activeDraftKey = key;
+  draftIdListener?.(localDraftId);
   return { localDraftId, missingPhotos };
   });
 }
@@ -383,6 +405,7 @@ export async function restoreLocalDraft(
     originalBook: stored.originalBook ?? null,
     bookExpiresAt: stored.bookExpiresAt ?? null,
     bookUrl: stored.bookUrl ?? null,
+    claimedAt: stored.claimedAt ?? null,
     missingPhotos,
   };
   });

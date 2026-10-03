@@ -21,7 +21,7 @@ Current reality:
 - The canonical codebase is a Next.js application at `/Users/myphu/Documents/GitHub/ourTailTales`.
 - The repository contains a substantial photo-to-book, checkout, Stripe, Lulu, authentication, free-preview, analytics, and experimental Video Memories implementation.
 - The landing-page path currently creates a free five-chapter preview and then gates viewing/saving behind authentication. It does not currently carry that user into the existing editor/checkout path.
-- Video Memories are represented in the UI copy and have extensive backend scaffolding, but the active editor explicitly passes `enableVideoMemories={false}`. Do not describe the feature as live.
+- Video Memories are represented in the UI copy and have extensive backend scaffolding, but the feature is off behind the server-side `VIDEO_MEMORIES_ENABLED` flag (`src/lib/video-memory/flag.ts`, default off). Do not describe the feature as live.
 - Local quality is healthy as of this handoff: lint passed, 17 Vitest files / 58 tests passed, and the production build passed on 2026-09-19.
 - Local success does not prove launch readiness. The most recent production audit found material configuration, database, access-control, checkout-connection, DNS, and operations gaps. Those findings are dated and must be rechecked before being reported as current.
 

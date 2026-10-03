@@ -5,7 +5,7 @@ import { PDFDocument } from "pdf-lib";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { COVER_LAYOUTS } from "@/lib/book/coverLayouts";
-import { renderCoverPdf } from "@/lib/book/cover-pdf";
+import { previewKeptNote, renderCoverPdf } from "@/lib/book/cover-pdf";
 import { setFontLoader } from "@/lib/book/pdf-fonts";
 import type { BookMeta, CoverLayoutId } from "@/types/book";
 
@@ -47,5 +47,21 @@ describe("printing a cover", () => {
       const blob = await renderCoverPdf({ meta: meta(layout.id), dimensions: DIMENSIONS });
       expect(blob.size).toBeGreaterThan(1000);
     }
+  });
+});
+
+describe("the note on a free preview's cover", () => {
+  const note = previewKeptNote(new Date("2026-10-24T01:00:00Z"));
+
+  it("says when the preview is kept until and how to keep the book", () => {
+    expect(note).toBe(
+      "We keep this preview until October 24, 2026. A free account saves your book to your library at ourtailtales.com.",
+    );
+  });
+
+  it("is a calm line, not a warning", () => {
+    expect(note).not.toMatch(/EXPIRES/i);
+    expect(note).not.toContain("!");
+    expect(note).not.toContain("\u2014");
   });
 });

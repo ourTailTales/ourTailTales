@@ -1,6 +1,7 @@
 import { authorizeCron } from "@/lib/cron/auth";
 import { fulfillOrders } from "@/lib/cron/fulfill-orders";
 import { routeError } from "@/lib/env";
+import { videoMemoriesEnabled } from "@/lib/video-memory/flag";
 
 /**
  * Kept as its own endpoint so this job can be run on demand while debugging.
@@ -10,6 +11,11 @@ import { routeError } from "@/lib/env";
 export async function GET(request: Request): Promise<Response> {
   const denied = authorizeCron(request);
   if (denied) return denied;
+
+  // A Video Memory job. Nothing to do while the feature is off.
+  if (!videoMemoriesEnabled()) {
+    return Response.json({ skipped: true, reason: "Video Memories are off" });
+  }
 
   try {
     return Response.json(await fulfillOrders());

@@ -13,7 +13,7 @@ interface EmailCaptureCtaProps {
   source: string;
   /** Unique id for the email input (labels must be unique across the page). */
   inputId: string;
-  /** Button label while idle (e.g. "Create their Book", "Get Their Free Story PDF"). */
+  /** Button label while idle (e.g. "Get their Free Story"). */
   buttonLabel: string;
   /** Visual theme: "dark" for the hero (over the photo banner), "light" for CTAs on a light background. */
   theme?: "dark" | "light";
@@ -57,6 +57,15 @@ export function EmailCaptureCta({
     const trimmedEmail = email.trim();
     identifyLead(trimmedEmail);
     track("lead_captured", { source });
+    // Kept on the server too. The address used to live only in the URL and in
+    // analytics, so anyone who left before their book was written was gone.
+    // Not awaited: a slow or failed save must never hold up making the book.
+    void fetch("/api/leads", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: trimmedEmail }),
+      keepalive: true,
+    }).catch(() => undefined);
     router.push(`/create?email=${encodeURIComponent(trimmedEmail)}`);
     setStatus("idle");
   };
@@ -94,7 +103,11 @@ export function EmailCaptureCta({
           {status === "working" ? "Starting…" : buttonLabel}
         </button>
       </div>
-      {error && <p className={errorClassName}>{error}</p>}
+      {error && (
+        <p role="alert" className={errorClassName}>
+          {error}
+        </p>
+      )}
     </div>
   );
 }

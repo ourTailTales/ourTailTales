@@ -42,7 +42,8 @@ const RESPONSE_SCHEMA: Schema = {
   properties: {
     title: {
       type: Type.STRING,
-      description: "A short, warm chapter title, ideally 2 to 6 words.",
+      description:
+        "A short, warm chapter title, ideally 2 to 5 words, written for this period and never one quoted in the instructions.",
     },
     dateLabel: {
       type: Type.STRING,
@@ -52,7 +53,7 @@ const RESPONSE_SCHEMA: Schema = {
     blurb: {
       type: Type.STRING,
       description:
-        "A warm, cohesive 25 to 40 word introduction (two or three sentences): one small story about the pet built on at most two connected details visible in the pictures. Never a list, never about the photographs.",
+        "A warm, cohesive 25 to 40 word introduction (two or three sentences) to this period of the pet's life, in your own words. Name a concrete thing only if it is clearly visible in the attached pictures; otherwise write about the season and the time passing. Never a list, never about the photographs, never a line quoted in the instructions.",
     },
     pages: {
       type: Type.ARRAY,
@@ -69,7 +70,7 @@ const RESPONSE_SCHEMA: Schema = {
           caption: {
             type: Type.STRING,
             description:
-              "Three to twelve words about this page, in the chapter's voice. On a page holding one of the attached photographs, a warm line about the animal in it. On every other page, only what the dates, the season, the place and the chapter's own story support — never a new detail about a picture you were not shown. No full stop needed.",
+              "Three to twelve words about this page, in the chapter's voice. On a page holding one of the attached photographs, a warm line about the animal in it. On every other page, only what the dates, the season, the place and the chapter's own story support — never a new detail about a picture you were not shown. Different from every other caption in the book, and never a line quoted in the instructions. An empty string when there is nothing true and particular to say: the page then prints its date. No full stop needed.",
           },
         },
         required: ["photos", "caption"],
@@ -224,7 +225,10 @@ export function createGeminiProvider(): StoryProvider {
         parseStoryDraft(
           await generate({
             kind: "chapter",
-            prompt: buildStoryPrompt(chapter),
+            prompt: buildStoryPrompt(chapter, {
+              rejected: options?.rejected,
+              guessedSex: options?.guessedSex,
+            }),
             thumbnails: chapter.thumbnails,
             systemInstruction: storySystemPrompt({ stillHere: chapter.stillHere }),
             responseSchema: RESPONSE_SCHEMA,
@@ -243,7 +247,9 @@ export function createGeminiProvider(): StoryProvider {
       const draft = await write();
       // One more try if it still writes a caption about the photographs; if
       // the second is no better, the first is kept rather than failing.
-      if (!soundsLikeACaption(draft.blurb) || signal?.aborted) return draft;
+      // Not when this call is itself a second attempt (`lib/story/guard`):
+      // one chapter is never worth more than three requests.
+      if (!soundsLikeACaption(draft.blurb) || signal?.aborted || options?.isRetry) return draft;
       const second = await write().catch(() => draft);
       return soundsLikeACaption(second.blurb) ? draft : second;
     },

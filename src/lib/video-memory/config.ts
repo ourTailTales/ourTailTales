@@ -15,7 +15,7 @@ export const VIDEO_MEMORY_MIN_QR_INCHES = 1.25;
 export const VIDEO_MEMORY_DEFAULT_QR_INCHES = 1.75;
 
 const DEFAULT_MAX_SOURCE_BYTES = 500 * 1024 * 1024;
-const DEFAULT_OPERATIONAL_MAX_ASSETS = 10_000;
+const DEFAULT_OPERATIONAL_MAX_ASSETS = 40;
 
 export function parsePositiveInt(value: string | undefined): number | undefined {
   if (!value) return undefined;

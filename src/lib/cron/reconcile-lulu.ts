@@ -1,8 +1,11 @@
+import { markNeedsReview } from "@/lib/order/submit-print";
 import {
   fetchPrintJob,
   findPrintJobByExternalId,
+  isMissingPrintJobError,
   mapLuluStatus,
 } from "@/lib/lulu/client";
+import { sendShippingNotificationEmail } from "@/lib/email/send";
 import { alertOps } from "@/lib/ops/alert";
 import { supabaseAdmin } from "@/lib/supabase/server";
 
@@ -38,7 +41,7 @@ export async function reconcileLulu(): Promise<Record<string, unknown>> {
   const { data: orders, error } = await supabase
     .from("orders")
     .select(
-      "id, status, lulu_print_job_id, review_reason, fulfillment_stage, selected_video_count",
+      "id, status, email, pet_name, lulu_print_job_id, review_reason, fulfillment_stage, selected_video_count",
     )
     .in("status", [...OPEN_STATUSES])
     .order("created_at", { ascending: true })
@@ -54,6 +57,12 @@ export async function reconcileLulu(): Promise<Record<string, unknown>> {
     checked += 1;
 
     try {
+      // What the row said when it was read, kept in step with the one write
+      // this loop makes ahead of the status update. Every later write is
+      // conditional on it, so anything that moved the order in the meantime
+      // (the printer's webhook, a refund, a person) wins.
+      let knownStatus: string = order.status;
+
       let printJob = order.lulu_print_job_id
         ? await fetchPrintJob(order.lulu_print_job_id)
         : null;
@@ -61,7 +70,7 @@ export async function reconcileLulu(): Promise<Record<string, unknown>> {
       if (!printJob) {
         printJob = await findPrintJobByExternalId(order.id);
         if (printJob) {
-          await supabase
+          const { data: adoptedRows, error: adoptError } = await supabase
             .from("orders")
             .update({
               lulu_print_job_id: String(printJob.id),
@@ -69,7 +78,13 @@ export async function reconcileLulu(): Promise<Record<string, unknown>> {
               submitted_at: new Date().toISOString(),
             })
             .eq("id", order.id)
-            .is("lulu_print_job_id", null);
+            .eq("status", knownStatus)
+            .is("lulu_print_job_id", null)
+            .select("id");
+          if (adoptError) throw new Error(adoptError.message);
+          // Somebody else got to this order first. Leave it to them.
+          if (!adoptedRows || adoptedRows.length === 0) continue;
+          knownStatus = "submitted";
           updated += 1;
         } else if (order.status === "paid") {
           const awaitingArchive =
@@ -84,7 +99,7 @@ export async function reconcileLulu(): Promise<Record<string, unknown>> {
             "[ourTailTales] Paid order missing Lulu job; needs review",
             order.id,
           );
-          await supabase
+          const { error: holdError } = await supabase
             .from("orders")
             .update({
               status: "needs_review",
@@ -94,6 +109,13 @@ export async function reconcileLulu(): Promise<Record<string, unknown>> {
             })
             .eq("id", order.id)
             .eq("status", "paid");
+          await alertOps("A paid order has no print job", {
+            order: order.id,
+            note: holdError
+              ? `The hold could NOT be written to the order: ${holdError.message}`
+              : "Check it, then POST /api/admin/orders/<id>/resubmit with the cron secret.",
+          });
+          if (holdError) throw new Error(holdError.message);
           needsReview += 1;
           continue;
         } else {
@@ -122,27 +144,77 @@ export async function reconcileLulu(): Promise<Record<string, unknown>> {
         update.review_reason = `Lulu rejected the job: ${
           printJob.status?.message ?? "no reason given"
         }`;
+      }
+
+      // Conditional on the status read above. The printer's webhook may have
+      // moved this order since, in which case it has already sent the shipped
+      // email, and a hold placed while this run was in flight must not be
+      // overwritten by what the printer said a moment earlier.
+      const { data: applied, error: updateError } = await supabase
+        .from("orders")
+        .update(update)
+        .eq("id", order.id)
+        .eq("status", knownStatus)
+        .select("id");
+
+      if (updateError) throw new Error(updateError.message);
+      if (!applied || applied.length === 0) continue;
+      if (nextStatus !== order.status) updated += 1;
+
+      if (mapped === "rejected") {
         console.error(
           "[ourTailTales] Reconcile: Lulu rejected",
           order.id,
           printJob.status?.message,
         );
         needsReview += 1;
+        await alertOps("The printer rejected an order", {
+          order: order.id,
+          reason: printJob.status?.message ?? "no reason given",
+        });
       }
 
-      const { error: updateError } = await supabase
-        .from("orders")
-        .update(update)
-        .eq("id", order.id);
-
-      if (updateError) throw new Error(updateError.message);
-      if (nextStatus !== order.status) updated += 1;
+      // The shipped email used to be sent only from the printer's webhook. If
+      // that webhook was missed, or this job got here first, nobody was told
+      // their book was on its way. Sent only when the write above actually
+      // moved the row, which is what makes it fire once: the webhook's own
+      // update is conditional the same way, so only one of the two can win.
+      if (nextStatus === "shipped" && order.email) {
+        await sendShippingNotificationEmail({
+          to: order.email,
+          petName: order.pet_name ?? "",
+          orderId: order.id,
+          trackingUrl: printJob.tracking_urls?.[0] ?? null,
+        }).catch((sendError: unknown) => {
+          console.error("[ourTailTales] Shipping email failed", order.id, sendError);
+        });
+      }
     } catch (jobError) {
       console.error(
         "[ourTailTales] Reconcile failed for order",
         order.id,
         jobError,
       );
+      // A job the printer no longer knows will never answer differently. Left
+      // alone it failed here every night for good while the customer's page
+      // went on saying "Sent to the printer".
+      //
+      // Only when the printer itself said so: a 404 for this order's own print
+      // job. Matching on the text of the message also caught a failed sign-in
+      // and 404s from other calls, which on a bad night would have put every
+      // open order on hold at once.
+      if (isMissingPrintJobError(jobError, order.lulu_print_job_id)) {
+        try {
+          await markNeedsReview(
+            order.id,
+            "The printer has no record of this print job. It is being checked by hand.",
+          );
+          needsReview += 1;
+        } catch (holdError) {
+          // Already alerted and logged. One order must not stop the rest.
+          console.error("[ourTailTales] Could not hold a lost job", order.id, holdError);
+        }
+      }
     }
   }
 
@@ -174,7 +246,7 @@ export async function reconcileLulu(): Promise<Record<string, unknown>> {
 async function adoptLostJobs(
   supabase: ReturnType<typeof supabaseAdmin>,
 ): Promise<number> {
-  const { data: orders } = await supabase
+  const { data: orders, error: readError } = await supabase
     .from("orders")
     .select("id")
     .eq("status", "needs_review")
@@ -182,6 +254,10 @@ async function adoptLostJobs(
     .not("paid_at", "is", null)
     .order("created_at", { ascending: false })
     .limit(SIDE_PASS_LIMIT);
+  if (readError) {
+    console.error("[ourTailTales] Could not look for lost print jobs", readError);
+    return 0;
+  }
 
   let adopted = 0;
   for (const order of orders ?? []) {
@@ -227,13 +303,17 @@ async function flagStalledArchives(
     Date.now() - ARCHIVE_STALL_DAYS * 24 * 60 * 60 * 1000,
   ).toISOString();
 
-  const { data: stuck } = await supabase
+  const { data: stuck, error: readError } = await supabase
     .from("orders")
     .select("id, fulfillment_stage, paid_at")
     .eq("status", "paid")
     .lt("paid_at", cutoff)
     .in("fulfillment_stage", ["pending_archive", "archiving", "preparing_print"])
     .limit(SIDE_PASS_LIMIT);
+  if (readError) {
+    console.error("[ourTailTales] Could not look for stalled archives", readError);
+    return 0;
+  }
 
   if (!stuck || stuck.length === 0) return 0;
 

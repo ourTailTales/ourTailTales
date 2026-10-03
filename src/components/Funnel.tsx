@@ -24,16 +24,26 @@ import {
 } from "@/lib/photo/process";
 import { makeVideoPreview } from "@/lib/photo/videoPreview";
 import { previewExpiryFrom } from "@/lib/drafts/expiry";
-import { persistLocalDraft } from "@/lib/drafts/local";
+import { getLocalDraftId, persistLocalDraft } from "@/lib/drafts/local";
 import { saveBookProject } from "@/lib/books/cloud";
 import { bankBook } from "@/lib/drafts/upload";
 import { generateChapterStory } from "@/lib/story/client";
+import { withoutUsedCaptions } from "@/lib/story/lines";
 import { generatePetProfile } from "@/lib/story/profile";
+import { bankCleanBookForOrder } from "@/lib/drafts/claim";
 import { prepareOrder } from "@/lib/order/prepare";
 import { bookSpec } from "@/lib/pricing";
 import { placedMemoriesReadyForCheckout } from "@/lib/video-memory/checkout-ready";
-import { draftHeaders, loadStoredDraft } from "@/lib/video-memory/client";
-import { photoMapOf, useOurTailTalesStore } from "@/store/useOurTailTalesStore";
+import { draftHeaders, ensureDraft, loadStoredDraft } from "@/lib/video-memory/client";
+import { VideoMemoriesFlagProvider } from "@/lib/video-memory/flag-context";
+import {
+  exhaustedPartialClaims,
+  photoMapOf,
+  useOurTailTalesStore,
+  type ClaimOutcome,
+} from "@/store/useOurTailTalesStore";
+import { shouldAutoClaim } from "@/components/auth/auto-claim";
+import { useSessionEmail } from "@/components/auth/useSessionEmail";
 import { useIsAuthenticated } from "@/hooks/useIsAuthenticated";
 import { authConfigured } from "@/lib/supabase/auth-browser";
 
@@ -69,12 +79,32 @@ let hydratedFor: string | null = null;
  */
 let viewTracked = false;
 
+/**
+ * A save to the account that has been asked for and not yet announced.
+ *
+ * The save itself is tracked in the store (`claim`), which both mounts of
+ * this component read: the editor and the finish step. This only covers the
+ * moment before that, while a book that has never been saved locally is
+ * given an id, so two callers cannot both start one.
+ */
+let claimStarting = false;
+
+const CLAIM_SAVING_NOTICE = "Saving the whole book to your library…";
+const CLAIM_FAILED_NOTICE =
+  "Your book is open, but saving it to your library did not work. It is still here in this browser. Try reloading.";
+
 export function Funnel({
   embedded = false,
   step = "edit",
+  videoMemoriesEnabled = false,
 }: {
   embedded?: boolean;
   step?: FunnelStep;
+  /**
+   * The server-side `VIDEO_MEMORIES_ENABLED` flag, read by the page that
+   * renders this. Off means videos are treated as absent everywhere below.
+   */
+  videoMemoriesEnabled?: boolean;
 }) {
   const router = useRouter();
   const store = useOurTailTalesStore();
@@ -88,6 +118,7 @@ export function Funnel({
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const isAuthenticated = useIsAuthenticated();
+  const sessionEmail = useSessionEmail();
 
   // Supabase Auth with no keys in this environment means there is nothing to
   // sign in to, and a wall nobody can climb is worse than no wall.
@@ -241,16 +272,29 @@ export function Funnel({
 
   const handleFiles = useCallback(
     (files: File[], target?: { chapterId: string; pageIndex: number }) => {
-      const { images, videos } = partitionMedia(files);
+      const media = partitionMedia(files);
+      const images = media.images;
+      // With Video Memories off a video has nowhere to go, so it is left out
+      // here, at the one place every upload path passes through.
+      const videos = videoMemoriesEnabled ? media.videos : [];
       if (images.length === 0 && videos.length === 0) {
         // Dropping a folder of PDFs or raw files used to do nothing at all,
         // silently, which looks exactly like a broken page.
         if (files.length > 0) {
           setNotice(
-            "Those files are not photos or videos, so there was nothing to add.",
+            videoMemoriesEnabled
+              ? "Those files are not photos or videos, so there was nothing to add."
+              : "Those files are not photos, so there was nothing to add.",
           );
         }
         return;
+      }
+      if (!videoMemoriesEnabled && media.videos.length > 0) {
+        setNotice(
+          media.videos.length === 1
+            ? "We could not use 1 video. Only photos go in the book."
+            : `We could not use ${media.videos.length} videos. Only photos go in the book.`,
+        );
       }
 
       // Only while the book is sitting still.
@@ -338,7 +382,9 @@ export function Funnel({
           setNotice(
             images.length > 0
               ? "Those pictures are too small to print, so they were kept in the album rather than put on the page."
-              : "Only photos can go on a page. Videos are added in the Videos tab.",
+              : videoMemoriesEnabled
+                ? "Only photos can go on a page. Videos are added in the Videos tab."
+                : "Only photos can go on a page.",
           );
         }
 
@@ -359,7 +405,7 @@ export function Funnel({
         });
       });
     },
-    [store, save],
+    [store, save, videoMemoriesEnabled],
   );
 
   /** Set while chapters are being written, so the customer can stop it. */
@@ -420,7 +466,15 @@ export function Funnel({
             usedPhrasesSoFar(chapterId),
           );
           actions.setChapterPlaces(chapterId, places);
-          actions.applyChapterStory(chapterId, story, spotlightIds);
+          // Read again now that it is written: the chapter being written
+          // alongside this one may have finished in the meantime, and neither
+          // could see the other's lines. Whichever finishes second gives up
+          // the captions the book already has; its title is left alone.
+          actions.applyChapterStory(
+            chapterId,
+            withoutUsedCaptions(story, usedPhrasesSoFar(chapterId).captions),
+            spotlightIds,
+          );
         } catch (error) {
           const stopped = storyRun.current?.signal.aborted === true;
           actions.setChapterAiStatus(
@@ -560,61 +614,199 @@ export function Funnel({
    * into their library. Banking has to happen before anyone can buy the clean
    * PDF — the checkout route refuses until it has.
    */
-  const claimBook = useCallback(async (): Promise<void> => {
-    const state = useOurTailTalesStore.getState();
-    if (state.pages.length === 0) return;
+  const claimBook = useCallback(
+    async (draftId: string): Promise<ClaimOutcome> => {
+      const state = useOurTailTalesStore.getState();
 
-    const pdf = await renderCleanBookPdf({
-      pages: state.pages,
-      chapters: state.chapters,
-      meta: state.meta,
-      photos: photoMapOf(state.photos),
-    });
+      // Everything below is slow, and the customer is free to start over or
+      // open another address while it runs. Re-reading the store afterwards
+      // and trusting it used to save an empty or different book and mark the
+      // new one as kept. So the book is named once, here, and nothing is
+      // written unless the book on screen is still that one.
+      const stillThisBook = (): boolean => {
+        const now = useOurTailTalesStore.getState();
+        return (
+          now.localDraftId === draftId &&
+          getLocalDraftId() === draftId &&
+          now.pages.length > 0
+        );
+      };
+      if (!stillThisBook()) return "abandoned";
 
-    // Best effort, deliberately. This is a local cache of the rendered book,
-    // and it now rejects when the browser refuses the write. Awaited bare, a
-    // full disk aborted this function before the book was banked, so the
-    // emailed link never resolved and the PDF could not be sold: a cache
-    // failure took out the sale.
-    await save(pdf);
+      const pdf = await renderCleanBookPdf({
+        pages: state.pages,
+        chapters: state.chapters,
+        meta: state.meta,
+        photos: photoMapOf(state.photos),
+      });
+      if (!stillThisBook()) return "abandoned";
 
-    const banked = await bankBook({
-      pdf,
-      petName: state.meta.petName,
-      chapterCount: state.chapterCount,
-      kind: "full",
-      email: state.leadEmail,
-    }).catch((error: unknown) => {
-      captureClientException(error);
-      return null;
-    });
-    if (banked) useOurTailTalesStore.getState().setBookUrl(banked.url);
+      // Best effort, deliberately. This is a local cache of the rendered book,
+      // and it now rejects when the browser refuses the write. Awaited bare, a
+      // full disk aborted this function before the book was banked, so the
+      // emailed link never resolved and the PDF could not be sold: a cache
+      // failure took out the sale.
+      await save(pdf);
+      if (!stillThisBook()) return "abandoned";
 
-    const saved = useOurTailTalesStore.getState();
-    await saveBookProject({
-      meta: saved.meta,
-      chapters: saved.chapters,
-      pages: saved.pages,
-      photos: saved.photos,
-    });
-    track("free_book_saved", { chapters: saved.chapterCount });
-  }, [save]);
+      const banked = await bankBook({
+        pdf,
+        petName: state.meta.petName,
+        chapterCount: state.chapterCount,
+        kind: "full",
+        email: state.leadEmail,
+      }).catch((error: unknown) => {
+        captureClientException(error);
+        return null;
+      });
+      if (!stillThisBook()) return "abandoned";
+      if (banked) useOurTailTalesStore.getState().setBookUrl(banked.url);
+
+      const saved = useOurTailTalesStore.getState();
+      await saveBookProject({
+        meta: saved.meta,
+        chapters: saved.chapters,
+        pages: saved.pages,
+        photos: saved.photos,
+      });
+      track("free_book_saved", { chapters: saved.chapterCount });
+      if (!stillThisBook()) return "abandoned";
+
+      // Only once it is both banked and in the library. A book that got half
+      // way is tried again when it is next opened signed in, and only once
+      // more: see `exhaustedPartialClaims`.
+      if (!banked) return "partial";
+      useOurTailTalesStore.getState().setClaimedAt(new Date().toISOString());
+      await save();
+      return "claimed";
+    },
+    [save],
+  );
+
+  /**
+   * Saves the book on screen to the account, once.
+   *
+   * Asked for from two places: the sign-in dialog the moment it succeeds, and
+   * the effect below for anyone who arrives already signed in. Whichever comes
+   * second finds the first already running and leaves it to it.
+   *
+   * What is happening is kept in the store, not here. Every page is readable
+   * the instant the session exists; rendering and banking the whole book
+   * takes longer and happens behind them, usually across the move from the
+   * editor to the finish step, which is a second mount of this component. A
+   * failure reported to the first mount's state was never seen.
+   */
+  const runClaim = useCallback((): void => {
+    const start = useOurTailTalesStore.getState();
+    if (start.pages.length === 0 || start.claimedAt) return;
+    if (claimStarting || start.claim?.phase === "saving") return;
+    claimStarting = true;
+
+    void (async () => {
+      let draftId: string | null = null;
+      let outcome: ClaimOutcome = "failed";
+      try {
+        // A book that has never been written to this browser has no id yet,
+        // and the id is what the save is recorded against. One local save
+        // gives it one. With an id already there, nothing is awaited before
+        // the store is told, so a second caller cannot slip in between.
+        if (!useOurTailTalesStore.getState().localDraftId) await save();
+        draftId = useOurTailTalesStore.getState().localDraftId;
+        if (!draftId) throw new Error("The book has no local draft to save.");
+
+        useOurTailTalesStore.getState().beginClaim(draftId);
+        claimStarting = false;
+        outcome = await claimBook(draftId);
+      } catch (error) {
+        captureClientException(error);
+        outcome = "failed";
+      }
+      claimStarting = false;
+      if (draftId) {
+        useOurTailTalesStore.getState().endClaim(draftId, outcome);
+      } else {
+        // Never got as far as the store. This mount is all there is to tell.
+        setNotice(CLAIM_FAILED_NOTICE);
+      }
+    })();
+  }, [claimBook, save]);
 
   const handleAuthenticated = useCallback(() => {
     setAuthOpen(false);
-    // Every page is readable the instant the session exists. Rendering and
-    // banking the whole book takes longer than that and happens behind them,
-    // so this says what is going on rather than leaving a silent minute.
-    setNotice("Saving the whole book to your library…");
-    void claimBook()
-      .then(() => setNotice(null))
-      .catch((error: unknown) => {
-        captureClientException(error);
-        setNotice(
-          "Your book is open, but saving it to your library did not work. It is still here in this browser. Try reloading.",
-        );
-      });
-  }, [claimBook]);
+    // They signed in from this book, on purpose, so it is saved to the
+    // account they chose even if the book was made under another address.
+    runClaim();
+  }, [runClaim]);
+
+  /**
+   * A session and a finished book that was never saved to it: save it now.
+   *
+   * Saving used to happen only in the callback of the sign-in dialog. Anyone
+   * who signed in somewhere else (the page the welcome email links to, a
+   * confirmation link, a password reset) arrived here signed in with their
+   * book on screen and nothing ever kept it, so it still expired.
+   *
+   * It reacts to the book, not only to arriving: a book made while already
+   * signed in reaches the editor long after this first ran. And it is once
+   * per book, by the book's own id, so a second book made after starting
+   * over is saved as well. `shouldAutoClaim` has the rest of the rules,
+   * including whose book it has to be.
+   *
+   * With no local book there is nothing to save and the normal start shows:
+   * that is what another device looks like, since photos never leave the
+   * browser that made the book.
+   */
+  const {
+    funnelState,
+    leadEmail,
+    localDraftId,
+    claimedAt,
+    claim,
+    claimAttemptedFor,
+  } = store;
+  const pageCount = store.pages.length;
+  useEffect(() => {
+    if (!localReady || !isAuthenticated) return;
+    // A save for another book is still finishing. This runs again when it
+    // ends, because `claim` changes.
+    if (claim?.phase === "saving") return;
+    if (
+      !shouldAutoClaim({
+        sessionEmail,
+        leadEmail,
+        funnelState,
+        pageCount,
+        draftId: localDraftId,
+        claimedAt,
+        attemptedFor: [...claimAttemptedFor, ...exhaustedPartialClaims()],
+      })
+    ) {
+      return;
+    }
+    runClaim();
+  }, [
+    localReady,
+    isAuthenticated,
+    sessionEmail,
+    leadEmail,
+    funnelState,
+    pageCount,
+    localDraftId,
+    claimedAt,
+    claim,
+    claimAttemptedFor,
+    runClaim,
+  ]);
+
+  // Derived from the store rather than set as a notice: it shows on whichever
+  // mount is on screen, only for the book it is about, and ending the save
+  // cannot wipe an unrelated notice that arrived while it ran.
+  const claimNotice =
+    claim && claim.draftId === localDraftId
+      ? claim.phase === "saving"
+        ? CLAIM_SAVING_NOTICE
+        : CLAIM_FAILED_NOTICE
+      : null;
 
   const handleUnlock = useCallback(() => {
     if (unlocked) return;
@@ -694,16 +886,50 @@ export function Funnel({
     setNotice(null);
     const state = useOurTailTalesStore.getState();
 
+    // With Video Memories off, anything a draft still holds is treated as
+    // absent: no readiness gate, no codes in the print file, and no call to
+    // `/api/orders/freeze`, which `prepareOrder` only makes for placements.
+    const placements = videoMemoriesEnabled ? state.placements : [];
+
     try {
-      if (state.placements.length > 0 && (!state.draftId || !state.draftSecret)) {
+      if (placements.length > 0 && (!state.draftId || !state.draftSecret)) {
         throw new Error(
           "Your Video Memories could not be saved. Please try again.",
         );
       }
-      if (!placedMemoriesReadyForCheckout(state.placements, state.videoAssets)) {
+      if (!placedMemoriesReadyForCheckout(placements, state.videoAssets)) {
         throw new Error(
           "Every placed Video Memory must be ready before checkout. Unused videos can keep preparing.",
         );
+      }
+
+      // The clean PDF comes with the hardcover. It is banked onto the draft
+      // this order is tied to, and whichever of the payment webhook and the
+      // order page sees it first unlocks it.
+      //
+      // The draft is settled first, because the order has to name the same
+      // one the bank writes to. The bank itself then runs beside the order
+      // rather than ahead of it: it renders the whole book a second time, and
+      // nobody should wait on that to reach checkout. Best effort throughout.
+      // A failure here costs the PDF copy, never the printed book.
+      let draftId = state.draftId;
+      let draftSecret = state.draftSecret;
+      if (placements.length === 0) {
+        try {
+          // The button goes busy before the first wait, so a second tap
+          // cannot start a second order.
+          state.setExporting("Setting up your order…");
+          const draft = await ensureDraft(state.leadEmail);
+          draftId = draft.draftId;
+          draftSecret = draft.secret;
+          // Not awaited, here or below. It carries on after the move to the
+          // checkout page, and it reports its own failure.
+          void bankCleanBookForOrder().catch((bankError: unknown) => {
+            captureClientException(bankError);
+          });
+        } catch (draftError) {
+          captureClientException(draftError);
+        }
       }
 
       const { orderId, orderToken } = await prepareOrder({
@@ -713,9 +939,9 @@ export function Funnel({
         chapterCount: state.chapterCount,
         photos: photoMapOf(state.photos),
         email: state.leadEmail,
-        draftId: state.draftId,
-        draftSecret: state.draftSecret,
-        placements: state.placements,
+        draftId,
+        draftSecret,
+        placements,
         customCover: state.customCover,
         onStatus: (message) => state.setExporting(message),
       });
@@ -734,7 +960,7 @@ export function Funnel({
           : "Your book could not be prepared for printing.",
       );
     }
-  }, [router]);
+  }, [router, videoMemoriesEnabled]);
 
   // A failed confirmation link lands back here with ?authError=. Derived
   // rather than stored: the parameter was previously set by the auth callback
@@ -808,12 +1034,12 @@ export function Funnel({
       onKeepEditing={() => router.push(withEmail("/create"))}
       unlocked={unlocked}
       downloading={downloadingPdf}
-      notice={notice ?? authErrorNotice}
+      notice={notice ?? claimNotice ?? authErrorNotice}
     />
   );
 
   return (
-    <>
+    <VideoMemoriesFlagProvider enabled={videoMemoriesEnabled}>
       {embedded ? (
         <section
           id="create-free-book"
@@ -870,7 +1096,7 @@ export function Funnel({
           initialEmail={store.leadEmail}
         />
       )}
-    </>
+    </VideoMemoriesFlagProvider>
   );
 }
 

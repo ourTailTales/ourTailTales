@@ -45,7 +45,11 @@ import type {
 } from "@/types/photo";
 import type { VideoAsset, VideoMemoryPlacement } from "@/types/video-memory";
 import { loadStoredDraft } from "@/lib/video-memory/client";
-import { clearLocalDraft, restoreLocalDraft } from "@/lib/drafts/local";
+import {
+  clearLocalDraft,
+  onLocalDraftIdChange,
+  restoreLocalDraft,
+} from "@/lib/drafts/local";
 
 export type FunnelState =
   | "idle"
@@ -91,6 +95,18 @@ type State = {
   bookUrl: string | null;
   /** When the banked free preview stops being kept, or null once there's an account. */
   bookExpiresAt: Date | null;
+  /**
+   * When this book was saved to an account, or null if it never has been.
+   * `bookUrl` cannot say: the free preview sets it too.
+   */
+  claimedAt: string | null;
+  /**
+   * The id of the local draft this book is saved under, which is also its id
+   * in the account library. Null until the first save. A new book after
+   * "Start over" gets a new one, so this is what tells two books apart when
+   * the address is the same.
+   */
+  localDraftId: string | null;
   /** Local-draft save state, shown in the header as a saved/saving indicator. */
   saveStatus: "saved" | "saving" | "error";
   /** Customer-uploaded print-ready cover, used instead of the designed one when set. */
@@ -103,6 +119,80 @@ type State = {
    */
   originalBook: BookSnapshot | null;
 };
+
+/**
+ * Saving a book to the account, as seen from anywhere.
+ *
+ * Kept here rather than in the component that starts it: the editor and the
+ * finish step are two mounts of that component, and a save started on one is
+ * usually still running, or has just failed, when the other is on screen.
+ * These belong to the tab, not to a book, so starting over or opening another
+ * address does not wipe them the way it wipes `State`.
+ */
+type ClaimState = {
+  /** The save in progress, or the last one that failed. Named by draft id. */
+  claim: { draftId: string; phase: "saving" | "failed" } | null;
+  /** Draft ids a save has already been started for since the page loaded. */
+  claimAttemptedFor: string[];
+};
+
+const initialClaimState: ClaimState = {
+  claim: null,
+  claimAttemptedFor: [],
+};
+
+/** How a save to the account ended. */
+export type ClaimOutcome =
+  /** In the library and banked. */
+  | "claimed"
+  /** In the library, but the whole-book file could not be banked. */
+  | "partial"
+  /** The book on screen changed while it was being saved, so nothing was recorded. */
+  | "abandoned"
+  | "failed";
+
+const PARTIAL_CLAIMS_KEY = "ott.partialClaims";
+/** One automatic retry of a half-finished save per tab session, then leave it. */
+const MAX_PARTIAL_CLAIMS = 2;
+
+function readPartialClaims(): Record<string, number> {
+  try {
+    const raw = window.sessionStorage.getItem(PARTIAL_CLAIMS_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : null;
+    if (!parsed || typeof parsed !== "object") return {};
+    const counts: Record<string, number> = {};
+    for (const [id, count] of Object.entries(parsed)) {
+      if (typeof count === "number") counts[id] = count;
+    }
+    return counts;
+  } catch {
+    // No window (server render) or storage refused. Nothing is remembered.
+    return {};
+  }
+}
+
+function notePartialClaim(draftId: string): void {
+  try {
+    const counts = readPartialClaims();
+    counts[draftId] = (counts[draftId] ?? 0) + 1;
+    window.sessionStorage.setItem(PARTIAL_CLAIMS_KEY, JSON.stringify(counts));
+  } catch {
+    // Best effort: without it the save is simply tried again next load.
+  }
+}
+
+/**
+ * Draft ids whose save keeps ending half done: in the library, not banked.
+ *
+ * Rendering the whole book is the expensive part and it used to be redone on
+ * every page load for as long as banking kept failing. Session storage rather
+ * than the store, because a page load is exactly what clears the store.
+ */
+export function exhaustedPartialClaims(): string[] {
+  return Object.entries(readPartialClaims())
+    .filter(([, count]) => count >= MAX_PARTIAL_CLAIMS)
+    .map(([id]) => id);
+}
 
 export type BookSnapshot = {
   meta: BookMeta;
@@ -205,6 +295,12 @@ type Actions = {
   setDraft: (draftId: string, draftSecret: string) => void;
   setBookUrl: (bookUrl: string | null) => void;
   setBookExpiresAt: (bookExpiresAt: Date | null) => void;
+  setClaimedAt: (claimedAt: string | null) => void;
+  setLocalDraftId: (localDraftId: string | null) => void;
+  /** A save of this draft to the account has started. */
+  beginClaim: (draftId: string) => void;
+  /** It ended. Says so only for the book it was started for. */
+  endClaim: (draftId: string, outcome: ClaimOutcome) => void;
   setVideoLibrary: (
     assets: VideoAsset[],
     placements: VideoMemoryPlacement[],
@@ -222,7 +318,7 @@ type Actions = {
   reset: () => void;
 };
 
-export type OurTailTalesStore = State & Actions;
+export type OurTailTalesStore = State & ClaimState & Actions;
 
 const emptyProgress: ProcessingProgressState = {
   processed: 0,
@@ -311,6 +407,8 @@ const initialState: State = {
   draftSecret: null,
   bookUrl: null,
   bookExpiresAt: null,
+  claimedAt: null,
+  localDraftId: null,
   videoAssets: [],
   placements: [],
   videoNotice: null,
@@ -324,6 +422,7 @@ const initialState: State = {
 
 export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
   ...initialState,
+  ...initialClaimState,
 
   startProcessing: (total) =>
     set(() => ({
@@ -411,6 +510,9 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
       return {
         ...initialState,
         leadEmail: state.leadEmail,
+        // Unlike `reset`, this does not delete the local draft, so the next
+        // save goes into the same record under the same id.
+        localDraftId: state.localDraftId,
         draftId: stored?.draftId ?? null,
         draftSecret: stored?.secret ?? null,
       };
@@ -678,6 +780,30 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
 
   setBookExpiresAt: (bookExpiresAt) => set({ bookExpiresAt }),
 
+  setClaimedAt: (claimedAt) => set({ claimedAt }),
+
+  setLocalDraftId: (localDraftId) =>
+    set((state) => (state.localDraftId === localDraftId ? {} : { localDraftId })),
+
+  beginClaim: (draftId) =>
+    set((state) => ({
+      claim: { draftId, phase: "saving" },
+      claimAttemptedFor: state.claimAttemptedFor.includes(draftId)
+        ? state.claimAttemptedFor
+        : [...state.claimAttemptedFor, draftId],
+    })),
+
+  endClaim: (draftId, outcome) => {
+    if (outcome === "partial") notePartialClaim(draftId);
+    set((state) => {
+      // Something else has started since. Its status is not ours to change.
+      if (state.claim && state.claim.draftId !== draftId) return {};
+      // A failure is only worth saying for the book that is still on screen.
+      const failed = outcome === "failed" && state.localDraftId === draftId;
+      return { claim: failed ? { draftId, phase: "failed" } : null };
+    });
+  },
+
   setVideoLibrary: (videoAssets, placements) =>
     set({ videoAssets, placements }),
 
@@ -832,6 +958,8 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
         ? new Date(restored.bookExpiresAt)
         : null,
       bookUrl: restored.bookUrl ?? null,
+      claimedAt: restored.claimedAt ?? null,
+      localDraftId: restored.localDraftId,
     });
     return true;
   },
@@ -853,12 +981,23 @@ export const useOurTailTalesStore = create<OurTailTalesStore>((set, get) => ({
       const stored = loadStoredDraft(state.leadEmail);
       return {
         ...initialState,
+        // The next book is a different one, with its own id once it is saved,
+        // and is owed its own save to the account. A save still running for
+        // the book just discarded is left to finish: it checks which book is
+        // on screen before it records anything.
+        claimAttemptedFor: [],
+        claim: state.claim?.phase === "saving" ? state.claim : null,
         leadEmail: state.leadEmail,
         draftId: stored?.draftId ?? null,
         draftSecret: stored?.secret ?? null,
       };
     }),
 }));
+
+// A book made in this tab gets its id at its first save, not at restore.
+onLocalDraftIdChange((localDraftId) => {
+  useOurTailTalesStore.getState().setLocalDraftId(localDraftId);
+});
 
 /* --------------------------------- derivations -------------------------------- */
 

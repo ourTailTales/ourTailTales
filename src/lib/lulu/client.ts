@@ -43,11 +43,14 @@ async function accessToken(): Promise<string> {
     },
     body: new URLSearchParams({ grant_type: "client_credentials" }),
     cache: "no-store",
+    signal: AbortSignal.timeout(LULU_TIMEOUT_MS),
   });
 
   if (!response.ok) {
-    throw new Error(
+    throw new LuluError(
       `Lulu authentication failed (${response.status}). Check LULU_CLIENT_KEY and LULU_CLIENT_SECRET.`,
+      response.status,
+      TOKEN_PATH,
     );
   }
 
@@ -61,6 +64,53 @@ async function accessToken(): Promise<string> {
     expiresAt: Date.now() + data.expires_in * 1000 - TOKEN_SAFETY_WINDOW_MS,
   };
   return cachedToken.value;
+}
+
+/**
+ * A Lulu call that was answered with an error.
+ *
+ * Carries the status and the path that was asked for, so a caller can tell
+ * "this print job does not exist" from every other way a call can fail. The
+ * message alone could not: a failed sign-in and a 404 from some other endpoint
+ * read the same to anything matching on text.
+ */
+/** How long any one call to the printer may take. */
+const LULU_TIMEOUT_MS = 15_000;
+
+export class LuluError extends Error {
+  readonly status: number;
+  readonly path: string;
+
+  constructor(message: string, status: number, path: string) {
+    super(message);
+    this.name = "LuluError";
+    this.status = status;
+    this.path = path;
+  }
+}
+
+/** The path one print job is read from. */
+export function printJobPath(printJobId: string): string {
+  return `/print-jobs/${printJobId}/`;
+}
+
+/**
+ * Whether this error is Lulu saying it has no such print job.
+ *
+ * True only for a 404 on that job's own path. A sign-in failure, a 404 from
+ * the lookup by order id, or anything that is not a Lulu answer at all is a
+ * failure to ask, not an answer, and must never flag a healthy order.
+ */
+export function isMissingPrintJobError(
+  error: unknown,
+  printJobId: string | null | undefined,
+): boolean {
+  if (!printJobId) return false;
+  return (
+    error instanceof LuluError &&
+    error.status === 404 &&
+    error.path === printJobPath(printJobId)
+  );
 }
 
 async function luluFetch<T>(
@@ -79,11 +129,18 @@ async function luluFetch<T>(
     ...rest,
     headers,
     cache: "no-store",
+    // A stalled printer must fail as an error the caller can turn into a
+    // hold, not run the whole function out of time after the order is paid.
+    signal: rest.signal ?? AbortSignal.timeout(LULU_TIMEOUT_MS),
   });
 
   const text = await response.text();
   if (!response.ok) {
-    throw new Error(`Lulu ${path} failed (${response.status}): ${text.slice(0, 400)}`);
+    throw new LuluError(
+      `Lulu ${path} failed (${response.status}): ${text.slice(0, 400)}`,
+      response.status,
+      path,
+    );
   }
   return (text ? JSON.parse(text) : {}) as T;
 }
@@ -175,6 +232,7 @@ export type LuluShippingOption = {
 export async function fetchShippingOptions(
   pageCount: number,
   address: ShippingAddress,
+  quantity = 1,
 ): Promise<LuluShippingOption[]> {
   return luluFetch<LuluShippingOption[]>("/shipping-options/", {
     method: "POST",
@@ -184,7 +242,7 @@ export async function fetchShippingOptions(
         {
           page_count: pageCount,
           pod_package_id: luluPodPackageId(),
-          quantity: 1,
+          quantity,
         },
       ],
       shipping_address: {
@@ -227,6 +285,8 @@ export async function calculatePrintJobCost(args: {
   address: ShippingAddress;
   shippingLevel: string;
   email: string;
+  /** Copies of the book in the parcel. One unless the order says otherwise. */
+  quantity?: number;
 }): Promise<LuluCostCalculation> {
   return luluFetch<LuluCostCalculation>("/print-job-cost-calculations/", {
     method: "POST",
@@ -235,7 +295,7 @@ export async function calculatePrintJobCost(args: {
         {
           page_count: args.pageCount,
           pod_package_id: luluPodPackageId(),
-          quantity: 1,
+          quantity: args.quantity ?? 1,
         },
       ],
       shipping_address: toLuluAddress(args.address, args.email),
@@ -275,6 +335,8 @@ export async function createPrintJob(args: {
   address: ShippingAddress;
   email: string;
   shippingLevel: string;
+  /** Copies to print. One unless the order says otherwise. */
+  quantity?: number;
 }): Promise<LuluPrintJob> {
   const [contactEmail] = requireEnv("LULU_CONTACT_EMAIL");
 
@@ -287,7 +349,7 @@ export async function createPrintJob(args: {
         {
           external_id: `${args.orderId}-book`,
           title: args.title,
-          quantity: 1,
+          quantity: args.quantity ?? 1,
           pod_package_id: luluPodPackageId(),
           interior: { source_url: args.interiorUrl },
           cover: { source_url: args.coverUrl },
@@ -300,7 +362,7 @@ export async function createPrintJob(args: {
 }
 
 export async function fetchPrintJob(printJobId: string): Promise<LuluPrintJob> {
-  return luluFetch<LuluPrintJob>(`/print-jobs/${printJobId}/`, {
+  return luluFetch<LuluPrintJob>(printJobPath(printJobId), {
     method: "GET",
   });
 }
