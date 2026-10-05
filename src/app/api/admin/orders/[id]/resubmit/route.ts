@@ -67,7 +67,7 @@ export async function POST(
     const { data: order, error } = await supabase
       .from("orders")
       .select(
-        "id, status, paid_at, lulu_print_job_id, stripe_payment_intent_id, book_price, quantity, shipping_price, video_memory_total_cents, selected_video_count, fulfillment_stage, review_reason, draft_id, chapter_count",
+        "id, status, paid_at, lulu_print_job_id, stripe_payment_intent_id, book_price, quantity, shipping_price, tax_price, video_memory_total_cents, selected_video_count, fulfillment_stage, review_reason, draft_id, chapter_count",
       )
       .eq("id", id)
       .maybeSingle();

@@ -12,7 +12,12 @@ import {
   quietly,
 } from "@/lib/order/after-payment";
 import { AMOUNT_MISMATCH_REASON, expectedOrderAmount } from "@/lib/order/amount";
+import {
+  PRINT_FILE_MISMATCH_REASON,
+  checkFrozenInterior,
+} from "@/lib/order/print-file-check";
 import { markNeedsReview, submitPaidOrderToLulu } from "@/lib/order/submit-print";
+import { recordSalesTax, reverseSalesTax } from "@/lib/order/tax";
 import { alertOps } from "@/lib/ops/alert";
 import {
   captureServerEvent,
@@ -127,7 +132,7 @@ async function fulfill(paymentIntent: Stripe.PaymentIntent): Promise<void> {
   const { data: priced, error: pricedError } = await supabase
     .from("orders")
     .select(
-      "status, stripe_payment_intent_id, book_price, quantity, shipping_price, video_memory_total_cents, draft_id, chapter_count",
+      "status, stripe_payment_intent_id, book_price, quantity, shipping_price, tax_price, tax_calculation_id, video_memory_total_cents, draft_id, chapter_count",
     )
     .eq("id", orderId)
     .maybeSingle();
@@ -209,6 +214,22 @@ async function fulfill(paymentIntent: Stripe.PaymentIntent): Promise<void> {
   // answered may be frozen before an unawaited send leaves, but each step is
   // cut off rather than waited on for ever.
   const distinctId = paymentIntent.metadata?.posthogDistinctId || orderId;
+  // The tax the customer has just paid, put on Stripe's tax records. After
+  // the print job, because it is bookkeeping and the book is not.
+  if (priced.tax_calculation_id) {
+    await quietly("Sales tax record", async () => {
+      const transactionId = await recordSalesTax({
+        orderId,
+        calculationId: priced.tax_calculation_id,
+      });
+      if (!transactionId) return;
+      const { error } = await supabase
+        .from("orders")
+        .update({ tax_transaction_id: transactionId })
+        .eq("id", orderId);
+      if (error) throw new Error(error.message);
+    });
+  }
   await quietly("Order confirmation email", () => confirmByEmail(orderId), 10_000);
   // The clean PDF comes with the hardcover.
   await quietly("Included PDF unlock", () =>
@@ -273,6 +294,27 @@ async function sendToPrint(
 
   const revision = claimed.book_snapshot as FrozenBookRevision | null;
   const videos = revision ? videosEligibleForArchival(revision) : [];
+
+  // The frozen file, counted. With Video Memories the interior is rebuilt by
+  // our own server before it prints, so only the browser's file is checked.
+  if (videos.length === 0) {
+    let verdict: Awaited<ReturnType<typeof checkFrozenInterior>>;
+    try {
+      verdict = await checkFrozenInterior(orderId);
+    } catch (error) {
+      console.error("[ourTailTales] Could not check the print file", orderId, error);
+      verdict = { ok: false, pages: null, detail: "The print file could not be checked." };
+    }
+    if (!verdict.ok) {
+      await markNeedsReview(orderId, PRINT_FILE_MISMATCH_REASON);
+      await alertOps("A paid order's print file does not match the order", {
+        order: orderId,
+        detail: verdict.detail,
+        note: "Look at the interior file. If it is right, POST /api/admin/orders/<id>/resubmit with the cron secret to print it. If not, refund the order.",
+      });
+      return;
+    }
+  }
 
   if (videos.length === 0) {
     try {
@@ -356,7 +398,7 @@ async function moneyGoingBack(
   const supabase = supabaseAdmin();
   const { data: order, error } = await supabase
     .from("orders")
-    .select("id, status, lulu_print_job_id")
+    .select("id, status, lulu_print_job_id, tax_transaction_id")
     .eq("stripe_payment_intent_id", paymentIntentId)
     .maybeSingle();
 
@@ -372,6 +414,15 @@ async function moneyGoingBack(
       kind,
     });
     return;
+  }
+
+  // The tax goes back with the money, whatever state the book is in. A
+  // dispute is not a refund until it is lost, so only a refund reverses it.
+  if (kind === "refunded") {
+    await reverseSalesTax({
+      orderId: order.id,
+      transactionId: order.tax_transaction_id,
+    });
   }
 
   // A book already in the post is not a book we can stop, and overwriting a

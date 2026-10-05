@@ -1,3 +1,4 @@
+import { mayRebankPurchasedDraft } from "@/lib/drafts/banked-chapters";
 import { postHogHeaders } from "@/lib/posthog-client";
 import type { VideoAsset, VideoMemoryPlacement } from "@/types/video-memory";
 
@@ -120,6 +121,17 @@ export async function createDraft(email?: string | null): Promise<StoredDraft> {
   return draft;
 }
 
+/**
+ * Starts a new draft for this address and forgets the old one in this
+ * browser. Used when the stored draft is a book that has been bought and the
+ * book being saved is a different one. The bought book is still reachable
+ * from its own link.
+ */
+export async function replaceStoredDraft(email?: string | null): Promise<StoredDraft> {
+  clearStoredDraft(email);
+  return createDraft(email);
+}
+
 function clearStoredDraft(email?: string | null): void {
   if (typeof window === "undefined") return;
   try {
@@ -165,6 +177,47 @@ export async function ensureDraft(email?: string | null): Promise<StoredDraft> {
 
   clearStoredDraft(email);
   return createDraft(email);
+}
+
+/**
+ * The draft this book should be saved to.
+ *
+ * Usually the one this browser already holds. When that draft is a book that
+ * has been bought, and the book on screen is a different one (another pet, or
+ * longer than the one paid for), a new draft is started so the bought file is
+ * not replaced. Asked before a hardcover order is opened, because the order
+ * names the draft its PDF copy comes from and must name the right one. The
+ * server refuses the save either way; this only settles it early.
+ */
+export async function ensureDraftForBook(
+  email: string | null | undefined,
+  book: { petName: string; chapterCount: number },
+): Promise<StoredDraft> {
+  const draft = await ensureDraft(email);
+  try {
+    const response = await fetch("/api/drafts/status", {
+      method: "GET",
+      headers: draftHeaders(draft.draftId, draft.secret),
+    });
+    if (!response.ok) return draft;
+    const data = (await response.json()) as {
+      purchased?: { petName?: string; chapterCount?: number | null } | null;
+    };
+    if (
+      data.purchased &&
+      !mayRebankPurchasedDraft({
+        purchasedPetName: data.purchased.petName,
+        purchasedChapters: data.purchased.chapterCount,
+        petName: book.petName,
+        chapters: book.chapterCount,
+      })
+    ) {
+      return await replaceStoredDraft(email);
+    }
+  } catch {
+    // Not knowing is not a reason to start a new draft.
+  }
+  return draft;
 }
 
 /**

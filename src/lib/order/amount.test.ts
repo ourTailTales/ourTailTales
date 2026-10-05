@@ -91,4 +91,39 @@ describe("what an order should have been charged", () => {
       }),
     ).toBe(4999);
   });
+
+  it("adds sales tax when the order carries it", () => {
+    expect(
+      expectedOrderAmount({
+        book_price: 49.99,
+        quantity: 1,
+        video_memory_total_cents: null,
+        shipping_price: 5.49,
+        tax_price: 4.58,
+      }),
+    ).toBe(6006);
+  });
+
+  it("treats a missing or null tax as none", () => {
+    const base = {
+      book_price: 49.99,
+      quantity: 1,
+      video_memory_total_cents: null,
+      shipping_price: 5.49,
+    };
+    expect(expectedOrderAmount({ ...base, tax_price: null })).toBe(5548);
+    expect(expectedOrderAmount(base)).toBe(5548);
+  });
+
+  it("will not price an order whose tax is not a number", () => {
+    expect(
+      expectedOrderAmount({
+        book_price: 49.99,
+        quantity: 1,
+        video_memory_total_cents: null,
+        shipping_price: 5.49,
+        tax_price: "abc",
+      }),
+    ).toBeNull();
+  });
 });

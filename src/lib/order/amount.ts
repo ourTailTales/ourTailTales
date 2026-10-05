@@ -8,6 +8,11 @@ export type PricedOrder = {
   video_memory_total_cents: number | null;
   /** Null until delivery has been chosen, and again once it is unlocked. */
   shipping_price: number | string | null;
+  /**
+   * Sales tax, locked with the shipping price. Null or absent means none,
+   * which is every order placed before tax was collected.
+   */
+  tax_price?: number | string | null;
 };
 
 /**
@@ -28,11 +33,14 @@ export function expectedOrderAmount(order: PricedOrder): number | null {
   const unit = Number(order.book_price);
   const shipping = Number(order.shipping_price);
   if (!Number.isFinite(unit) || !Number.isFinite(shipping)) return null;
+  const tax = Number(order.tax_price ?? 0);
+  if (!Number.isFinite(tax) || tax < 0) return null;
 
   const total =
     copiesTotal(unit, clampCopies(order.quantity)) +
     Number(order.video_memory_total_cents ?? 0) / 100 +
-    shipping;
+    shipping +
+    tax;
   return Math.round(total * 100);
 }
 

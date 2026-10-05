@@ -35,7 +35,11 @@ import { clearPdfOwed, markPdfOwed, pdfIsOwed } from "@/lib/drafts/pdf-owed";
 import { prepareOrder } from "@/lib/order/prepare";
 import { bookSpec } from "@/lib/pricing";
 import { placedMemoriesReadyForCheckout } from "@/lib/video-memory/checkout-ready";
-import { draftHeaders, ensureDraft, loadStoredDraft } from "@/lib/video-memory/client";
+import {
+  draftHeaders,
+  ensureDraftForBook,
+  loadStoredDraft,
+} from "@/lib/video-memory/client";
 import { VideoMemoriesFlagProvider } from "@/lib/video-memory/flag-context";
 import {
   exhaustedPartialClaims,
@@ -972,7 +976,10 @@ export function Funnel({
           // The button goes busy before the first wait, so a second tap
           // cannot start a second order.
           state.setExporting("Setting up your order…");
-          const draft = await ensureDraft(state.leadEmail);
+          const draft = await ensureDraftForBook(state.leadEmail, {
+            petName: state.meta.petName,
+            chapterCount: state.chapterCount,
+          });
           draftId = draft.draftId;
           draftSecret = draft.secret;
           markPdfOwed(owedKey);

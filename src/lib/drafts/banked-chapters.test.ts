@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { chaptersForBankedBook } from "@/lib/drafts/banked-chapters";
+import {
+  chaptersForBankedBook,
+  mayRebankPurchasedDraft,
+} from "@/lib/drafts/banked-chapters";
 import {
   BASE_CHAPTERS,
   FIXED_INTERIOR_PAGES,
@@ -42,5 +45,49 @@ describe("the chapters a banked book is priced at", () => {
   it("never goes past the longest book", () => {
     expect(chaptersForBankedBook(file(5000), undefined)).toBe(MAX_CHAPTERS);
     expect(chaptersForBankedBook(file(10), MAX_CHAPTERS + 20)).toBe(MAX_CHAPTERS);
+  });
+});
+
+describe("saving onto a draft that has been paid for", () => {
+  const bought = { purchasedPetName: "Rocket", purchasedChapters: 5 };
+
+  it("allows the same book to be saved again", () => {
+    expect(mayRebankPurchasedDraft({ ...bought, petName: "Rocket", chapters: 5 })).toBe(true);
+    expect(mayRebankPurchasedDraft({ ...bought, petName: " rocket ", chapters: 5 })).toBe(true);
+  });
+
+  it("refuses a book for a different pet", () => {
+    expect(mayRebankPurchasedDraft({ ...bought, petName: "Luna", chapters: 5 })).toBe(false);
+  });
+
+  it("refuses a longer book than the one paid for", () => {
+    expect(mayRebankPurchasedDraft({ ...bought, petName: "Rocket", chapters: 12 })).toBe(false);
+  });
+
+  it("allows a shorter one", () => {
+    expect(
+      mayRebankPurchasedDraft({
+        purchasedPetName: "Rocket",
+        purchasedChapters: 12,
+        petName: "Rocket",
+        chapters: 5,
+      }),
+    ).toBe(true);
+  });
+
+  it("compares a teaser by name only", () => {
+    expect(mayRebankPurchasedDraft({ ...bought, petName: "Rocket", chapters: null })).toBe(true);
+    expect(mayRebankPurchasedDraft({ ...bought, petName: "Luna", chapters: null })).toBe(false);
+  });
+
+  it("does not refuse on a point the paid draft has no record of", () => {
+    expect(
+      mayRebankPurchasedDraft({
+        purchasedPetName: "",
+        purchasedChapters: null,
+        petName: "Luna",
+        chapters: 50,
+      }),
+    ).toBe(true);
   });
 });

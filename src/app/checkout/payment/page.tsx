@@ -35,7 +35,8 @@ export default async function CheckoutPaymentPage({
   // amount was fixed. Delivery is where it is fixed again.
   if (order.shippingPrice === null) redirect(stepHref("shipping", order.id, token));
 
-  const total = order.booksTotal + order.videoMemoryPrice + order.shippingPrice;
+  const total =
+    order.booksTotal + order.videoMemoryPrice + order.shippingPrice + order.taxPrice;
 
   return (
     <CheckoutShell

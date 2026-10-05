@@ -12,6 +12,7 @@ import {
   isOfferedShippingLevel,
 } from "@/lib/lulu/client";
 import { expectedOrderAmount } from "@/lib/order/amount";
+import { calculateSalesTax } from "@/lib/order/tax";
 import { clampCopies, copiesTotal } from "@/lib/pricing";
 import { fulfilmentModeMismatch, stripeClient, toMinorUnits } from "@/lib/stripe";
 import { supabaseAdmin } from "@/lib/supabase/server";
@@ -225,6 +226,17 @@ export async function POST(request: Request): Promise<Response> {
       }
     }
 
+    // Sales tax for the delivery address, on the books and the shipping.
+    // Zero unless Stripe Tax is switched on and the account is registered in
+    // the state the book is going to.
+    const salesTax = await calculateSalesTax({
+      orderId,
+      goodsCents: toMinorUnits(book) + quote.totalCents,
+      shippingCents: toMinorUnits(shippingPrice),
+      address,
+    });
+    const taxPrice = salesTax.amountCents / 100;
+
     // The same helper the webhook checks the payment with, over the values
     // about to be stored, so the charge and its check cannot differ.
     const amount = expectedOrderAmount({
@@ -232,6 +244,7 @@ export async function POST(request: Request): Promise<Response> {
       quantity,
       video_memory_total_cents: quote.totalCents,
       shipping_price: shippingPrice,
+      tax_price: taxPrice,
     });
     if (amount === null) throw new Error(`Order ${orderId} could not be priced.`);
 
@@ -270,7 +283,7 @@ export async function POST(request: Request): Promise<Response> {
     if (order.stripe_payment_intent_id) {
       const { error: unlockError } = await supabase
         .from("orders")
-        .update({ shipping_price: null })
+        .update({ shipping_price: null, tax_price: null, tax_calculation_id: null })
         .eq("id", orderId)
         .eq("status", "pending_payment");
       if (unlockError) throw new Error(unlockError.message);
@@ -313,6 +326,9 @@ export async function POST(request: Request): Promise<Response> {
       .update({
         email: email.toLowerCase().trim(),
         shipping_price: shippingPrice,
+        // Locked with the shipping price it was worked out on.
+        tax_price: salesTax.amountCents > 0 ? taxPrice : null,
+        tax_calculation_id: salesTax.calculationId,
         stripe_payment_intent_id: paymentIntent.id,
         selected_video_count: quote.includedUniqueVideoCount,
         video_memory_pack_count: quote.packCount,
@@ -333,10 +349,11 @@ export async function POST(request: Request): Promise<Response> {
     if (orderUpdateError) throw new Error(orderUpdateError.message);
 
     await captureServerEvent(distinctId, "payment_intent_created", {
-      total: book + videoMemoryPrice + shippingPrice,
+      total: amount / 100,
       book_price: book,
       copies: quantity,
       shipping_price: shippingPrice,
+      tax_price: taxPrice,
       video_memory_price: videoMemoryPrice,
       video_memory_count: quote.includedUniqueVideoCount,
       shipping_level: shippingLevel,
@@ -347,7 +364,8 @@ export async function POST(request: Request): Promise<Response> {
       bookPrice: book,
       videoMemoryPrice,
       shippingPrice,
-      total: book + videoMemoryPrice + shippingPrice,
+      taxPrice,
+      total: amount / 100,
     });
   } catch (error) {
     await captureServerException(

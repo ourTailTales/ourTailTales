@@ -18,6 +18,8 @@ export type OrderView = {
   /** Every copy together: the first at full price, the rest discounted. */
   booksTotal: number;
   shippingPrice: number | null;
+  /** Sales tax locked with the shipping price. Zero when none is charged. */
+  taxPrice: number;
   videoMemoryPrice: number;
   videoMemoryPackCount: number;
   selectedVideoCount: number;
@@ -42,7 +44,7 @@ export async function readOrder(orderId: string): Promise<OrderView | null> {
   const { data, error } = await supabaseAdmin()
     .from("orders")
     .select(
-      "id, status, email, pet_name, chapter_count, story_pages, total_pages, book_price, quantity, shipping_price, video_memory_total_cents, video_memory_pack_count, selected_video_count, fulfillment_stage, lulu_print_job_id, lulu_status_message, review_reason, tracking_urls, interior_path, cover_path, frozen_interior_path, book_snapshot, created_at, draft_id",
+      "id, status, email, pet_name, chapter_count, story_pages, total_pages, book_price, quantity, shipping_price, tax_price, video_memory_total_cents, video_memory_pack_count, selected_video_count, fulfillment_stage, lulu_print_job_id, lulu_status_message, review_reason, tracking_urls, interior_path, cover_path, frozen_interior_path, book_snapshot, created_at, draft_id",
     )
     .eq("id", orderId)
     .maybeSingle();
@@ -62,6 +64,9 @@ export async function readOrder(orderId: string): Promise<OrderView | null> {
     booksTotal: copiesTotal(Number(data.book_price), clampCopies(data.quantity)),
     shippingPrice:
       data.shipping_price === null ? null : Number(data.shipping_price),
+    // Only counted while the shipping price it was worked out on is locked.
+    taxPrice:
+      data.shipping_price === null ? 0 : Number(data.tax_price ?? 0),
     videoMemoryPrice: Number(data.video_memory_total_cents ?? 0) / 100,
     videoMemoryPackCount: data.video_memory_pack_count ?? 0,
     selectedVideoCount: data.selected_video_count ?? 0,

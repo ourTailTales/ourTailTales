@@ -2,6 +2,8 @@ import { draftSecretFromRequest } from "@/lib/drafts/token";
 import { resolveDraft } from "@/lib/drafts/resolve";
 import { bookUrl } from "@/lib/drafts/storage";
 import { routeError } from "@/lib/env";
+import { digitalTaxCode, salesTaxEnabled } from "@/lib/order/tax";
+import { alertOps } from "@/lib/ops/alert";
 import { BASE_CHAPTERS, digitalPriceFor } from "@/lib/pricing";
 import { LIMITS, enforceRateLimit } from "@/lib/rate-limit";
 import { stripeClient, toMinorUnits } from "@/lib/stripe";
@@ -88,35 +90,61 @@ export async function POST(request: Request): Promise<Response> {
     const returnUrl = bookUrl(draft.id, secret);
     const price = digitalPriceFor(row.chapter_count ?? BASE_CHAPTERS);
 
-    const session = await stripeClient().checkout.sessions.create({
-      mode: "payment",
-      line_items: [
-        {
-          quantity: 1,
-          price_data: {
-            currency: "usd",
-            unit_amount: toMinorUnits(price),
-            product_data: {
-              name: petName ? `${petName}’s book (full PDF)` : "Your book (full PDF)",
-              description:
-                "The complete book as a PDF, without the watermark, kept permanently.",
+    // With sales tax on, Stripe's own checkout page asks for the buyer's
+    // address, adds the tax for it and records it. It adds nothing in a state
+    // the account is not registered in.
+    const taxCode = digitalTaxCode();
+    const createSession = (withTax: boolean) =>
+      stripeClient().checkout.sessions.create({
+        mode: "payment",
+        ...(withTax ? { automatic_tax: { enabled: true } } : {}),
+        line_items: [
+          {
+            quantity: 1,
+            price_data: {
+              currency: "usd",
+              unit_amount: toMinorUnits(price),
+              ...(withTax ? { tax_behavior: "exclusive" as const } : {}),
+              product_data: {
+                name: petName ? `${petName}’s book (full PDF)` : "Your book (full PDF)",
+                description:
+                  "The complete book as a PDF, without the watermark, kept permanently.",
+                ...(withTax ? { tax_code: taxCode } : {}),
+              },
             },
           },
+        ],
+        // Carried through to the webhook, which is where access is actually
+        // granted. The secret rides along so the confirmation email can link
+        // straight back to the book.
+        // posthogDistinctId ties the purchase back to the browser that made
+        // the book, so it lands in the same person's conversion funnel.
+        metadata: {
+          draftId: draft.id,
+          draftSecret: secret,
+          ...(posthogDistinctId ? { posthogDistinctId } : {}),
         },
-      ],
-      // Carried through to the webhook, which is where access is actually
-      // granted. The secret rides along so the confirmation email can link
-      // straight back to the book.
-      // posthogDistinctId ties the purchase back to the browser that made
-      // the book, so it lands in the same person's conversion funnel.
-      metadata: {
-        draftId: draft.id,
-        draftSecret: secret,
-        ...(posthogDistinctId ? { posthogDistinctId } : {}),
-      },
-      success_url: `${returnUrl}&purchased=true`,
-      cancel_url: returnUrl,
-    });
+        success_url: `${returnUrl}&purchased=true`,
+        cancel_url: returnUrl,
+      });
+
+    let session: Awaited<ReturnType<typeof createSession>>;
+    if (salesTaxEnabled()) {
+      try {
+        session = await createSession(true);
+      } catch (taxError) {
+        // Stripe Tax not set up on the account is the usual cause. The sale
+        // goes ahead without tax and a person is told.
+        await alertOps("Sales tax could not be added to a PDF checkout", {
+          draft: draft.id,
+          error: taxError instanceof Error ? taxError.message : String(taxError),
+          note: "The checkout was opened with no sales tax. Check that Stripe Tax is set up on the account, or set STRIPE_TAX_ENABLED=false.",
+        });
+        session = await createSession(false);
+      }
+    } else {
+      session = await createSession(false);
+    }
 
     if (!session.url) {
       throw new Error("Stripe did not return a checkout URL.");

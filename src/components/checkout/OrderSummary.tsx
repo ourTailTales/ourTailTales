@@ -10,7 +10,10 @@ export function OrderSummary({
   /** Null until a delivery speed has been chosen. */
   shippingPrice: number | null;
 }) {
-  const total = order.booksTotal + order.videoMemoryPrice + (shippingPrice ?? 0);
+  // Tax is locked with the shipping price, so it only counts once that is.
+  const taxPrice = shippingPrice === null ? 0 : order.taxPrice;
+  const total =
+    order.booksTotal + order.videoMemoryPrice + (shippingPrice ?? 0) + taxPrice;
   const extraCopies = order.quantity - 1;
   // Chapters are billed band by band; the rate each band was charged at is
   // shown rather than folded into one number.
@@ -54,6 +57,7 @@ export function OrderSummary({
           label="Shipping"
           value={shippingPrice === null ? "Calculated next" : formatUsd(shippingPrice)}
         />
+        {taxPrice > 0 ? <Row label="Sales tax" value={formatUsd(taxPrice)} /> : null}
         <div className="border-t border-line pt-3" />
         <Row label="Total" value={formatUsd(total)} strong />
       </dl>

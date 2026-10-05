@@ -321,13 +321,17 @@ function OrderDetail({
               : formatUsd(order.shippingPrice)
           }
         />
+        {order.taxPrice > 0 && (
+          <Row label="Sales tax" value={formatUsd(order.taxPrice)} />
+        )}
         <div className="border-t border-line pt-3" />
         <Row
           label="Total"
           value={formatUsd(
             order.booksTotal +
               order.videoMemoryPrice +
-              (order.shippingPrice ?? 0),
+              (order.shippingPrice ?? 0) +
+              order.taxPrice,
           )}
           strong
         />

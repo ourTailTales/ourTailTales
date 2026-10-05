@@ -32,7 +32,7 @@ export async function GET(request: Request): Promise<Response> {
     const { data: order, error } = await supabaseAdmin()
       .from("orders")
       .select(
-        "status, shipping_price, stripe_payment_intent_id, book_price, quantity, video_memory_total_cents",
+        "status, shipping_price, tax_price, stripe_payment_intent_id, book_price, quantity, video_memory_total_cents",
       )
       .eq("id", orderId)
       .maybeSingle();

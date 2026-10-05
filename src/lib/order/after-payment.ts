@@ -21,7 +21,7 @@ export async function confirmByEmail(orderId: string): Promise<void> {
     const { data: order, error } = await supabaseAdmin()
       .from("orders")
       .select(
-        "id, email, pet_name, book_price, quantity, shipping_price, video_memory_total_cents",
+        "id, email, pet_name, book_price, quantity, shipping_price, tax_price, video_memory_total_cents",
       )
       .eq("id", orderId)
       .maybeSingle();
@@ -32,7 +32,8 @@ export async function confirmByEmail(orderId: string): Promise<void> {
     const total =
       copiesTotal(Number(order.book_price ?? 0), Number(order.quantity ?? 1)) +
       Number(order.video_memory_total_cents ?? 0) / 100 +
-      Number(order.shipping_price ?? 0);
+      Number(order.shipping_price ?? 0) +
+      Number(order.tax_price ?? 0);
 
     await sendOrderConfirmationEmail({
       to: order.email,

@@ -1,5 +1,10 @@
 import { bookUrl, claimUrl, type DraftBankKind } from "@/lib/drafts/storage";
-import { draftHeaders, ensureDraft } from "@/lib/video-memory/client";
+import {
+  draftHeaders,
+  ensureDraft,
+  replaceStoredDraft,
+  type StoredDraft,
+} from "@/lib/video-memory/client";
 
 export type BankedBook = {
   draftId: string;
@@ -25,17 +30,32 @@ export type BankedBook = {
  * the server keeps it as the clean file only and leaves the draft's public
  * link, its expiry and its watermark exactly as they were.
  */
-export async function bankBook(args: {
+type BankArgs = {
   pdf: Blob;
   petName: string;
   chapterCount: number;
   kind: DraftBankKind;
   /** Whose book this is. Two addresses in one browser get two drafts. */
   email: string | null;
-}): Promise<BankedBook> {
-  const draft = await ensureDraft(args.email);
-  const headers = draftHeaders(draft.draftId, draft.secret);
+};
 
+/** The server will not save this book onto a draft that has been bought. */
+class DraftPurchasedError extends Error {}
+
+export async function bankBook(args: BankArgs): Promise<BankedBook> {
+  const draft = await ensureDraft(args.email);
+  try {
+    return await bankOnto(draft, args);
+  } catch (error) {
+    if (!(error instanceof DraftPurchasedError)) throw error;
+    // The draft this browser holds is a book somebody paid for, and this is a
+    // different book. It gets a draft of its own, once.
+    return bankOnto(await replaceStoredDraft(args.email), args);
+  }
+}
+
+async function bankOnto(draft: StoredDraft, args: BankArgs): Promise<BankedBook> {
+  const headers = draftHeaders(draft.draftId, draft.secret);
   const signResponse = await fetch("/api/drafts/upload-pdf", {
     method: "POST",
     headers: { ...headers, "Content-Type": "application/json" },
@@ -68,7 +88,11 @@ export async function bankBook(args: {
   const finalized = (await finalizeResponse.json().catch(() => ({}))) as {
     expiresAt?: string | null;
     error?: string;
+    code?: string;
   };
+  if (finalizeResponse.status === 409 && finalized.code === "draft_purchased") {
+    throw new DraftPurchasedError(finalized.error ?? "This book has already been bought.");
+  }
   if (!finalizeResponse.ok) {
     throw new Error(finalized.error ?? "Your book could not be saved.");
   }

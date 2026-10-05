@@ -141,7 +141,12 @@ export async function POST(request: Request): Promise<Response> {
     // this same moment would otherwise lock a price for the old details. A
     // save that changes nothing leaves the price alone, so walking back
     // through the address step cannot strand a payment page that is open.
-    if (changed) orderPatch.shipping_price = null;
+    if (changed) {
+      orderPatch.shipping_price = null;
+      // Sales tax was worked out on the same details, so it goes with it.
+      orderPatch.tax_price = null;
+      orderPatch.tax_calculation_id = null;
+    }
 
     if (Object.keys(orderPatch).length > 0) {
       const { data: touched, error: orderError } = await supabase

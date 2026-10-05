@@ -1,6 +1,9 @@
 import { z } from "zod";
 
-import { chaptersForBankedBook } from "@/lib/drafts/banked-chapters";
+import {
+  chaptersForBankedBook,
+  mayRebankPurchasedDraft,
+} from "@/lib/drafts/banked-chapters";
 import { previewExpiryFrom } from "@/lib/drafts/expiry";
 import { resolveDraft } from "@/lib/drafts/resolve";
 import { routeError } from "@/lib/env";
@@ -174,6 +177,46 @@ export async function PUT(request: Request): Promise<Response> {
     if (pages === null || pages === 0) {
       return Response.json(
         { error: "Your book has not finished uploading yet." },
+        { status: 409 },
+      );
+    }
+
+    // A draft that has been paid for holds the buyer's book. Only a re-save
+    // of that same book, no longer than the one paid for, may be written onto
+    // it. Anything else used to replace the purchased file with a different
+    // book, which was then unwatermarked and permanent without being bought.
+    // The browser is told to start a new draft for it.
+    const { data: owned, error: ownedError } = await supabase
+      .from("book_drafts")
+      .select("digital_purchased_at, pet_name, chapter_count")
+      .eq("id", draft.id)
+      .maybeSingle();
+    if (ownedError) throw new Error(ownedError.message);
+    if (
+      owned?.digital_purchased_at &&
+      !mayRebankPurchasedDraft({
+        purchasedPetName: owned.pet_name,
+        purchasedChapters: owned.chapter_count,
+        petName: parsed.data.petName,
+        // A teaser is short by definition; its length says nothing about the
+        // book it is cut from, so only the name is compared for one.
+        chapters: teaser
+          ? null
+          : chaptersForBankedBook(pages, parsed.data.chapterCount),
+      })
+    ) {
+      await supabase.storage
+        .from(PREVIEW_BUCKET)
+        .remove([stagingPath])
+        .then(
+          () => undefined,
+          () => undefined,
+        );
+      return Response.json(
+        {
+          error: "This book has already been bought. A new one is saved separately.",
+          code: "draft_purchased",
+        },
         { status: 409 },
       );
     }
