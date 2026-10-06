@@ -3,6 +3,7 @@ import { cleanupAssets } from "@/lib/cron/cleanup-assets";
 import { expireDrafts } from "@/lib/cron/expire-drafts";
 import { fulfillOrders } from "@/lib/cron/fulfill-orders";
 import { processVideos } from "@/lib/cron/process-videos";
+import { reapAbandonedUploads } from "@/lib/cron/reap-uploads";
 import { reconcileLulu } from "@/lib/cron/reconcile-lulu";
 import { isConfigured, routeError } from "@/lib/env";
 import { videoMemoriesEnabled } from "@/lib/video-memory/flag";
@@ -11,7 +12,7 @@ import { videoMemoriesEnabled } from "@/lib/video-memory/flag";
  * Every scheduled job, in one invocation.
  *
  * The Vercel Hobby plan allows two cron entries, once a day each. Rather than
- * pay for more, all five jobs run here in sequence — one entry, one schedule,
+ * pay for more, every job runs here in sequence — one entry, one schedule,
  * the same work.
  *
  * Three properties make that safe. Every job is incremental (batch caps,
@@ -56,6 +57,7 @@ const JOBS: {
   { name: "expire-drafts", run: expireDrafts },
   { name: "cleanup-assets", run: cleanupAssets },
   { name: "reconcile-lulu", run: reconcileLulu },
+  { name: "reap-uploads", run: reapAbandonedUploads },
   {
     name: "process-videos",
     run: processVideos,

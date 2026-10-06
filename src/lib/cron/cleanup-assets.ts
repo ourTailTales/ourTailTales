@@ -1,4 +1,4 @@
-import { STORAGE_BUCKET, supabaseAdmin } from "@/lib/supabase/server";
+import { STORAGE_BUCKET, orderAssetPath, supabaseAdmin } from "@/lib/supabase/server";
 
 /**
  * Daily cleanup of print files.
@@ -54,11 +54,24 @@ export async function cleanupAssets(): Promise<Record<string, unknown>> {
 
   if (error) throw new Error(error.message);
 
-  const paths = orders.flatMap((order) =>
-    [order.interior_path, order.cover_path].filter(
-      (path): path is string => typeof path === "string" && path.length > 0,
+  // Every file an order can have, by name, not only the two the row points
+  // at. Once an order is paid the row points at the frozen copies, so the
+  // files the customer's browser uploaded were never removed and stayed for
+  // good, photographs included. Removing a path that is not there is not an
+  // error.
+  const paths = [
+    ...new Set(
+      orders.flatMap((order) => [
+        ...[order.interior_path, order.cover_path].filter(
+          (path): path is string => typeof path === "string" && path.length > 0,
+        ),
+        orderAssetPath(order.id, "interior"),
+        orderAssetPath(order.id, "cover"),
+        orderAssetPath(order.id, "frozen-interior"),
+        orderAssetPath(order.id, "frozen-cover"),
+      ]),
     ),
-  );
+  ];
 
   if (paths.length === 0) {
     return { deleted: 0, orders: 0 };

@@ -297,18 +297,22 @@ describe("a book that does not look machine-made", () => {
 
   it("makes a thin album a short book rather than an empty one", () => {
     // Twenty-five photographs, five chapters: five to a chapter, one on the
-    // opener and one on each of four pages. A five-page chapter, not a
-    // ten-page chapter with five sheets of blank paper in it.
+    // opener and four to place. Pages of one are given company, two at most,
+    // so those four make two pages: a three-page chapter, not a ten-page
+    // chapter with sheets of blank paper in it.
     const { pages } = fullBook(5);
     const photoPages = pages.filter((page) => page.kind === "photos");
 
-    expect(photoPages).toHaveLength(5 * 4);
-    for (const page of photoPages) expect(page.photoIds).toHaveLength(1);
+    expect(photoPages).toHaveLength(5 * 2);
+    for (const page of photoPages) {
+      expect(page.photoIds.length).toBeGreaterThanOrEqual(1);
+      expect(page.photoIds.length).toBeLessThanOrEqual(2);
+    }
     // Nothing is left out: every photograph the chapters hold is on a page.
     const placed = new Set(pages.flatMap((page) => page.photoIds));
     expect(placed.size).toBe(5 * 5);
-    // Five chapters of five pages, and the book's own three.
-    expect(pages).toHaveLength(5 * 5 + 3);
+    // Five chapters of three pages, and the book's own three.
+    expect(pages).toHaveLength(5 * 3 + 3);
   });
 
   it("keeps a chapter between three and ten pages", () => {
@@ -337,10 +341,12 @@ describe("a book that does not look machine-made", () => {
         .map((entry) => entry.photoIds.length);
 
       expect(counts.every((count) => count > 0)).toBe(true);
-      // Photographs only share a page once a chapter has more of them than
-      // it has pages.
-      const shared = counts.some((count) => count > 1);
-      expect(shared).toBe(perChapter - 1 > MAX_STORY_PAGES_PER_CHAPTER - 1);
+      // A chapter with room to spare keeps its pages to two photographs at
+      // most: company for a page of one, never a crowd. More than that only
+      // appears once a chapter has more photographs than two to a page can
+      // hold.
+      const roomy = perChapter - 1 <= (MAX_STORY_PAGES_PER_CHAPTER - 1) * 2;
+      if (roomy) expect(Math.max(...counts)).toBeLessThanOrEqual(2);
     }
   });
 

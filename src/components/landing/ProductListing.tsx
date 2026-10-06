@@ -79,7 +79,7 @@ export function ProductListing() {
               {formatUsd(BASE_PRICE)}
             </p>
             <p className="mt-1 text-sm text-page-ink-soft">
-              Includes {BASE_CHAPTERS} chapters. Shipping is added at checkout.
+              Includes {BASE_CHAPTERS} chapters. Shipping is added at checkout. Ships within the United States.
             </p>
 
             <p className="mt-3 inline-flex items-center gap-2 rounded-full bg-periwinkle/10 px-3.5 py-1.5 text-sm font-semibold text-periwinkle-deep">

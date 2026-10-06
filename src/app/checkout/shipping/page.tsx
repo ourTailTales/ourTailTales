@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { CheckoutRefused } from "@/components/checkout/CheckoutRefused";
 import { CheckoutShell } from "@/components/checkout/CheckoutShell";
 import { OrderSummary } from "@/components/checkout/OrderSummary";
+import { salesTaxEnabled } from "@/lib/order/tax";
 import { ShippingStep } from "@/components/checkout/ShippingStep";
 import { checkoutAccess, stepHref } from "@/lib/order/checkout-access";
 
@@ -31,7 +32,13 @@ export default async function CheckoutShippingPage({
     <CheckoutShell
       current="shipping"
       href={(step) => stepHref(step, order.id, token)}
-      aside={<OrderSummary order={order} shippingPrice={order.shippingPrice} />}
+      aside={
+        <OrderSummary
+          order={order}
+          shippingPrice={order.shippingPrice}
+          taxMayApply={salesTaxEnabled()}
+        />
+      }
     >
       <ShippingStep
         orderId={order.id}

@@ -39,10 +39,10 @@ const NAME_SIZES = [
 ] as const;
 
 const inputClass =
-  "w-full rounded-lg border border-page-line bg-white px-3.5 py-2.5 text-sm text-page-ink outline-none transition-colors placeholder:text-page-ink-faint focus:border-periwinkle focus:ring-2 focus:ring-periwinkle/20";
+  "w-full rounded-lg border border-page-line bg-white px-3.5 py-2.5 text-base text-page-ink outline-none sm:text-sm transition-colors placeholder:text-page-ink-faint focus:border-periwinkle focus:ring-2 focus:ring-periwinkle/20";
 
 const selectClass =
-  "h-10 w-full rounded-lg border border-page-line bg-white px-2.5 text-sm text-page-ink outline-none transition-colors hover:border-periwinkle focus:border-periwinkle focus:ring-2 focus:ring-periwinkle/20";
+  "h-10 w-full rounded-lg border border-page-line bg-white px-2.5 text-base text-page-ink outline-none sm:text-sm transition-colors hover:border-periwinkle focus:border-periwinkle focus:ring-2 focus:ring-periwinkle/20";
 
 /**
  * The tools for whichever page is selected — and only those.

@@ -1,3 +1,4 @@
+import { AutoRefresh } from "@/components/checkout/AutoRefresh";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -101,12 +102,20 @@ async function SavedBookProject({ id }: { id: string }) {
       <BookViewAnalytics />
       <header className="flex items-center justify-between gap-4">
         <BrandMark href="/" size="md" />
-        <Link
-          href="/create"
-          className="rounded-full border border-page-line bg-white px-4 py-2 text-sm font-semibold text-page-ink shadow-sm hover:border-periwinkle"
-        >
-          Create another book
-        </Link>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Link
+            href="/library"
+            className="inline-flex min-h-11 items-center rounded-full border border-page-line bg-white px-4 text-sm font-semibold text-page-ink shadow-sm hover:border-periwinkle"
+          >
+            Your books
+          </Link>
+          <Link
+            href="/create"
+            className="inline-flex min-h-11 items-center rounded-full border border-page-line bg-white px-4 text-sm font-semibold text-page-ink shadow-sm hover:border-periwinkle"
+          >
+            Create another book
+          </Link>
+        </div>
       </header>
 
       <section className="mt-8 overflow-hidden rounded-[1.75rem] border border-white/80 bg-white/95 shadow-[0_24px_70px_-30px_rgb(25_32_58/0.55)]">
@@ -269,10 +278,11 @@ function FreeBookPreview({
             Payment received, thank you
           </h2>
           <p className="mt-1.5 max-w-prose text-sm leading-6 text-page-ink-soft">
-            Your clean copy is being unlocked now. Refresh this page in a
-            moment and the watermark will be gone. We&rsquo;ve emailed you the
-            link too, so there is nothing to keep track of.
+            Your clean copy is being unlocked now. This page updates by
+            itself in a moment and the watermark will be gone. We&rsquo;ve
+            emailed you the link too, so there is nothing to keep track of.
           </p>
+          <AutoRefresh />
         </section>
       )}
 

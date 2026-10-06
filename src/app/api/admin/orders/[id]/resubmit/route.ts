@@ -9,6 +9,11 @@ import {
 } from "@/lib/order/after-payment";
 import { AMOUNT_MISMATCH_REASON, expectedOrderAmount } from "@/lib/order/amount";
 import { freezePrintFiles } from "@/lib/order/freeze-print-files";
+import {
+  PRINT_FILE_MISMATCH_REASON,
+  checkFrozenInterior,
+} from "@/lib/order/print-file-check";
+import { recordSalesTax } from "@/lib/order/tax";
 import { markNeedsReview, submitPaidOrderToLulu } from "@/lib/order/submit-print";
 import { stripeClient } from "@/lib/stripe";
 import { supabaseAdmin } from "@/lib/supabase/server";
@@ -43,6 +48,12 @@ const ARCHIVAL_STAGES = ["pending_archive", "archiving", "preparing_print"];
  * hand, `?force=amount` lets that one check through. Nothing lets a refund or
  * a dispute through.
  *
+ * The print file is counted against what was paid for, as the webhook does,
+ * because an order held before it was frozen has never been counted. The one
+ * exception is an order held for that very reason: a person has looked at the
+ * file and decided, which is what calling this means. `?force=pages` lets any
+ * other order through the count.
+ *
  * Orders with Video Memories are refused: they print from a file rebuilt
  * after archival, and sending them from here would print the book without it.
  *
@@ -61,13 +72,15 @@ export async function POST(
     if (!/^[0-9a-f-]{36}$/i.test(id)) {
       return Response.json({ error: "Unknown order." }, { status: 404 });
     }
-    const forceAmount = new URL(request.url).searchParams.get("force") === "amount";
+    const forced = new URL(request.url).searchParams.getAll("force");
+    const forceAmount = forced.includes("amount");
+    const forcePages = forced.includes("pages");
 
     const supabase = supabaseAdmin();
     const { data: order, error } = await supabase
       .from("orders")
       .select(
-        "id, status, paid_at, lulu_print_job_id, stripe_payment_intent_id, book_price, quantity, shipping_price, tax_price, video_memory_total_cents, selected_video_count, fulfillment_stage, review_reason, draft_id, chapter_count",
+        "id, status, paid_at, lulu_print_job_id, stripe_payment_intent_id, book_price, quantity, shipping_price, tax_price, tax_calculation_id, tax_transaction_id, video_memory_total_cents, selected_video_count, fulfillment_stage, review_reason, draft_id, chapter_count",
       )
       .eq("id", id)
       .maybeSingle();
@@ -150,6 +163,22 @@ export async function POST(
       );
     }
 
+    if (!forcePages && order.review_reason !== PRINT_FILE_MISMATCH_REASON) {
+      const verdict = await checkFrozenInterior(id).catch(() => ({
+        ok: false as const,
+        pages: null,
+        detail: "The print file could not be checked.",
+      }));
+      if (!verdict.ok) {
+        return Response.json(
+          {
+            error: `${verdict.detail} Nothing was sent to print. Look at the file, then add ?force=pages to print it anyway.`,
+          },
+          { status: 409 },
+        );
+      }
+    }
+
     // Conditional on the status that was checked, so a refund that cancels
     // the order between the check and here is not undone by this write.
     const { data: reopened, error: reopenError } = await supabase
@@ -205,6 +234,22 @@ export async function POST(
           chapterCount: order.chapter_count,
         }),
       );
+      // An order held before the webhook reached its tax step has paid tax
+      // that was never put on Stripe's records.
+      if (order.tax_calculation_id && !order.tax_transaction_id) {
+        await quietly("Sales tax record", async () => {
+          const transactionId = await recordSalesTax({
+            orderId: id,
+            calculationId: order.tax_calculation_id,
+          });
+          if (!transactionId) return;
+          const { error: taxError } = await supabase
+            .from("orders")
+            .update({ tax_transaction_id: transactionId })
+            .eq("id", id);
+          if (taxError) throw new Error(taxError.message);
+        });
+      }
     } else if (confirmationOwed && after?.status === "needs_review") {
       await keepConfirmationOwed(id);
     }

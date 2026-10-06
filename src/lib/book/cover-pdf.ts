@@ -148,8 +148,7 @@ export async function renderCoverPdf(args: {
   /* ---------------------------------- back ---------------------------------
    * Styled like a real memoir/photo-book back cover: a centered pull-quote
    * sitting in the upper-middle third,
-   * a small divider, and a publisher-style colophon anchored at the bottom —
-   * mirrors `BackCoverArt` (the on-screen version). */
+   * a small divider, and a publisher-style colophon anchored at the bottom. */
 
   const backCenterX = WRAP_PT + (TRIM_PT + BLEED_PT) / 2;
   const backWidth = TRIM_PT - 1.6 * PT_PER_INCH;

@@ -15,6 +15,7 @@ import {
   signUpOrSignInFlow,
 } from "@/components/auth/auth-flow";
 import { authConfigured, createAuthBrowserClient } from "@/lib/supabase/auth-browser";
+import { X } from "lucide-react";
 
 type Mode = "signIn" | "signUp" | "forgotPassword";
 
@@ -244,7 +245,15 @@ export function AuthGate({
       />
 
       <div className="relative w-full max-w-md rounded-2xl border border-line bg-white p-6 shadow-book">
-        <h2 id="authGateTitle" className="font-display text-2xl text-ink">
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="absolute right-2 top-2 inline-flex size-11 items-center justify-center rounded-full text-ink-soft hover:bg-ink/5 hover:text-ink"
+        >
+          <X aria-hidden className="size-5" />
+        </button>
+        <h2 id="authGateTitle" className="pr-10 font-display text-2xl text-ink">
           {mode === "signUp"
             ? "Open the whole book"
             : mode === "forgotPassword"

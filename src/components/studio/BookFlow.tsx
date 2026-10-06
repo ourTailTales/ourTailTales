@@ -389,13 +389,10 @@ export function BookFlow({
               notice={notice}
             />
             <div className="mt-8 flex justify-center">
-              <button
-                type="button"
-                onClick={onStartOver}
-                className="text-xs text-page-ink-faint underline decoration-page-line underline-offset-4 hover:text-periwinkle-deep"
-              >
-                Start over with a different album
-              </button>
+              <StartOverButton
+                label="Start over with a different album"
+                onConfirm={onStartOver}
+              />
             </div>
           </>
         ) : (
@@ -529,13 +526,7 @@ function Waiting({
           >
             Choose photos again
           </button>
-          <button
-            type="button"
-            onClick={onStartOver}
-            className="text-xs text-page-ink-faint underline decoration-page-line underline-offset-4 hover:text-periwinkle-deep"
-          >
-            Start over
-          </button>
+          <StartOverButton label="Start over" onConfirm={onStartOver} />
         </div>
         {mediaCount > 0 ? (
           <p className="text-xs text-page-ink-faint">
@@ -609,6 +600,68 @@ function Waiting({
           className="block h-full rounded-full bg-periwinkle transition-[width] duration-500"
           style={{ width: `${Math.max(4, Math.round(done * 100))}%` }}
         />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Starting over, asked twice.
+ *
+ * It deletes the album, the written chapters and every edit from this
+ * browser, and it used to do that on one tap of a small link under the
+ * editor. The second step says what will go and offers the way out first.
+ */
+function StartOverButton({
+  label,
+  onConfirm,
+}: {
+  label: string;
+  onConfirm: () => void;
+}) {
+  const [asking, setAsking] = useState(false);
+
+  if (!asking) {
+    return (
+      <button
+        type="button"
+        onClick={() => setAsking(true)}
+        className="inline-flex min-h-11 items-center text-xs text-page-ink-faint underline decoration-page-line underline-offset-4 hover:text-periwinkle-deep"
+      >
+        {label}
+      </button>
+    );
+  }
+
+  return (
+    <div
+      role="alertdialog"
+      aria-label="Start over"
+      className="flex flex-col items-center gap-3 rounded-xl border border-page-line bg-white px-5 py-4 text-center"
+    >
+      <p className="max-w-xs text-sm leading-6 text-page-ink">
+        This deletes this book and its photos from this browser. It cannot be
+        undone.
+      </p>
+      <div className="flex flex-wrap justify-center gap-3">
+        <button
+          type="button"
+          autoFocus
+          onClick={() => setAsking(false)}
+          className="inline-flex min-h-11 items-center rounded-xl bg-periwinkle px-5 text-sm font-semibold text-white hover:bg-periwinkle-deep"
+        >
+          Keep my book
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setAsking(false);
+            onConfirm();
+          }}
+          className="inline-flex min-h-11 items-center rounded-xl border border-page-line bg-white px-5 text-sm font-semibold text-page-ink hover:border-periwinkle"
+        >
+          Delete and start over
+        </button>
       </div>
     </div>
   );

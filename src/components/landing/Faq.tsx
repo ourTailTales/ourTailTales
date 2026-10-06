@@ -43,7 +43,7 @@ const buildFaqs = (videoMemories: boolean) => [
   {
     question: "What does the book cost?",
     answer:
-      `${formatUsd(BASE_PRICE)} covers the hardcover and its first ${BASE_CHAPTERS} chapters. Extra chapters are ${extraChapterRates}. Every chapter runs ${MIN_STORY_PAGES_PER_CHAPTER} to ${MAX_STORY_PAGES_PER_CHAPTER} pages. Shipping is added at checkout. Extra copies of the same book are ${EXTRA_COPY_PERCENT}% off.${
+      `${formatUsd(BASE_PRICE)} covers the hardcover and its first ${BASE_CHAPTERS} chapters. Extra chapters are ${extraChapterRates}. Every chapter runs ${MIN_STORY_PAGES_PER_CHAPTER} to ${MAX_STORY_PAGES_PER_CHAPTER} pages. Shipping is added at checkout, and we ship within the United States. Extra copies of the same book are ${EXTRA_COPY_PERCENT}% off.${
         videoMemories
           ? ` Optional Video Memories come in packs of ${VIDEO_MEMORIES_PER_PACK} QR-linked videos for ${formatUsd(VIDEO_MEMORY_PACK_PRICE_CENTS / 100)}.`
           : ""

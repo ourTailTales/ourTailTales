@@ -71,6 +71,18 @@ export function UploadMedia({
   const totalMedia = photos.length + videos.length;
   const missing = Math.max(0, MIN_PHOTOS_FOR_BOOK - photoCount);
 
+  // Photographs that were read but will not be placed. Without this the
+  // counter simply came up short: thirty photographs added, "21 more" asked
+  // for, and nothing to say where the others had gone.
+  const duplicates = photos.filter((photo) => photo.isDuplicate).length;
+  const tooWeak = photos.filter((photo) => !photo.usable).length;
+  const setAside = [
+    duplicates > 0
+      ? `${duplicates} near-duplicate${duplicates === 1 ? "" : "s"}`
+      : null,
+    tooWeak > 0 ? `${tooWeak} too small or blurry to print` : null,
+  ].filter((part): part is string => part !== null);
+
   const [emailTouched, setEmailTouched] = useState(false);
   // Empty is not wrong here — the address may already be on file from
   // earlier in the funnel, or given after the book is done. Only a typo,
@@ -115,6 +127,15 @@ export function UploadMedia({
               }. We sort them into chapters for you.`
             : `${missing} more photo${missing === 1 ? "" : "s"} and we can start sorting them into chapters.`}
       </p>
+      {setAside.length > 0 && !processing ? (
+        <p
+          role="status"
+          className="mx-auto mt-1 max-w-sm text-xs leading-5 text-page-ink-faint"
+        >
+          We set aside {setAside.join(" and ")}. They stay in your album but do
+          not count toward the {MIN_PHOTOS_FOR_BOOK}.
+        </p>
+      ) : null}
 
       <input
         ref={photosRef}
@@ -189,7 +210,7 @@ export function UploadMedia({
             }
           }}
           placeholder="you@example.com"
-          className="mt-2 min-h-11 w-full border-0 border-b border-page-line bg-transparent px-0 pb-1 text-center text-sm text-page-ink shadow-none outline-none transition-colors placeholder:text-page-ink-faint focus:border-periwinkle focus:outline-none"
+          className="mt-2 min-h-11 w-full border-0 border-b border-page-line bg-transparent px-0 pb-1 text-center text-base text-page-ink shadow-none sm:text-sm outline-none transition-colors placeholder:text-page-ink-faint focus:border-periwinkle focus:outline-none"
         />
         {emailTouched && !emailValid ? (
           <p id="uploadEmailError" role="alert" className="mt-2 text-xs text-red-600">

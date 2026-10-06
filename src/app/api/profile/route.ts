@@ -3,7 +3,7 @@ import { z } from "zod";
 import { resolveStoryProvider } from "@/lib/ai/provider";
 import { recordAiUsage } from "@/lib/ai/usage";
 import { routeError } from "@/lib/env";
-import { LIMITS, enforceRateLimit } from "@/lib/rate-limit";
+import { GLOBAL_SUBJECT, LIMITS, enforceRateLimit } from "@/lib/rate-limit";
 
 /**
  * One look at the pet before a book is written: what they look like, what
@@ -25,6 +25,11 @@ export async function POST(request: Request): Promise<Response> {
   try {
     const limited = await enforceRateLimit(request, LIMITS.profile);
     if (limited) return limited;
+    // Everybody together, so a pool of addresses cannot run the bill up.
+    const ceiling = await enforceRateLimit(request, LIMITS.profileDaily, GLOBAL_SUBJECT, {
+      failClosed: true,
+    });
+    if (ceiling) return ceiling;
 
     const parsed = requestSchema.safeParse(await request.json());
     if (!parsed.success) {

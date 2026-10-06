@@ -17,6 +17,13 @@ import { STORAGE_BUCKET, supabaseAdmin } from "@/lib/supabase/server";
 export const PRINT_FILE_MISMATCH_REASON =
   "The print file does not match this order. It is being checked by hand before printing.";
 
+/**
+ * The largest interior that is read into memory to be counted. A five-chapter
+ * book at print resolution is a few megabytes and the longest we sell is some
+ * tens; anything near this is not a book this app made.
+ */
+const MAX_CHECKABLE_BYTES = 250_000_000;
+
 export type PrintFileVerdict =
   | { ok: true; pages: number }
   | { ok: false; pages: number | null; detail: string };
@@ -65,6 +72,24 @@ export async function checkFrozenInterior(orderId: string): Promise<PrintFileVer
   const path = order?.frozen_interior_path ?? order?.interior_path;
   if (!order || !path) {
     return { ok: false, pages: null, detail: "The interior file is missing." };
+  }
+
+  // Sized before it is read. The whole file is held in memory to be counted,
+  // and one too big for that would take the function down after the order had
+  // been claimed, leaving it paid with nothing to say why.
+  const slash = path.lastIndexOf("/");
+  const { data: listed } = await supabase.storage
+    .from(STORAGE_BUCKET)
+    .list(path.slice(0, slash), { search: path.slice(slash + 1) });
+  const size = Number(
+    listed?.find((entry) => entry.name === path.slice(slash + 1))?.metadata?.size,
+  );
+  if (Number.isFinite(size) && size > MAX_CHECKABLE_BYTES) {
+    return {
+      ok: false,
+      pages: null,
+      detail: `The interior file is ${Math.round(size / 1_000_000)} MB, too large to check automatically.`,
+    };
   }
 
   const { data: file, error: downloadError } = await supabase.storage

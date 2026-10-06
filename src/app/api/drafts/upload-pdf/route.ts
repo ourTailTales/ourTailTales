@@ -113,6 +113,15 @@ export async function POST(request: Request): Promise<Response> {
       return Response.json({ error: "Unknown draft." }, { status: 401 });
     }
 
+    // Each answer is somewhere to put fifty megabytes, behind a draft anyone
+    // can mint, so the asking is counted per draft.
+    const limited = await enforceRateLimit(
+      request,
+      LIMITS.bankSign,
+      `draft:${draft.id}`,
+    );
+    if (limited) return limited;
+
     // `kind` only picks which staging slot this upload gets — no two kinds
     // ever share one — not which final file it is trusted to become.
     // That trust is still earned at finalize, from the bytes themselves.

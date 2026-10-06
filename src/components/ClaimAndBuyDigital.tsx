@@ -4,7 +4,6 @@ import { useState } from "react";
 
 import { AuthGate } from "@/components/auth/AuthGate";
 import { captureClientException } from "@/lib/analytics";
-import { renderAndBankFullBook } from "@/lib/drafts/claim";
 import { postHogHeaders } from "@/lib/posthog-client";
 import { formatUsd } from "@/lib/pricing";
 import { useIsAuthenticated } from "@/hooks/useIsAuthenticated";
@@ -84,6 +83,10 @@ export function ClaimAndBuyDigital({
     setBusy(true);
     setNotice(null);
     try {
+      // Loaded on demand. It brings the PDF renderer with it, which this page
+      // (opened from an email, often on a phone) should not download to show
+      // a button.
+      const { renderAndBankFullBook } = await import("@/lib/drafts/claim");
       await renderAndBankFullBook();
       const result = await checkout();
       if (!result.ok) {

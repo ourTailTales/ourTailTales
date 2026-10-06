@@ -4,6 +4,7 @@ import { AddressStep } from "@/components/checkout/AddressStep";
 import { CheckoutRefused } from "@/components/checkout/CheckoutRefused";
 import { CheckoutShell } from "@/components/checkout/CheckoutShell";
 import { OrderSummary } from "@/components/checkout/OrderSummary";
+import { salesTaxEnabled } from "@/lib/order/tax";
 import { checkoutAccess, stepHref } from "@/lib/order/checkout-access";
 
 export const metadata: Metadata = {
@@ -23,7 +24,13 @@ export default async function CheckoutAddressPage({
     <CheckoutShell
       current="address"
       href={(step) => stepHref(step, order.id, token)}
-      aside={<OrderSummary order={order} shippingPrice={order.shippingPrice} />}
+      aside={
+        <OrderSummary
+          order={order}
+          shippingPrice={order.shippingPrice}
+          taxMayApply={salesTaxEnabled()}
+        />
+      }
     >
       <AddressStep
         orderId={order.id}

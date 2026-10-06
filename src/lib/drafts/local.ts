@@ -14,6 +14,20 @@ import type { PhotoAsset, ProcessingProgressState } from "@/types/photo";
 
 const DATABASE = "ourtailtales-local";
 const STORE = "drafts";
+/**
+ * The photographs themselves, one record each.
+ *
+ * They used to sit inside the draft record, so every autosave, 800 ms after
+ * any keystroke, wrote every original file in the album back to disk: hundreds
+ * of megabytes for a caption edit, with the old copy held until the new one
+ * committed. A photograph never changes once it is in the album, so it is now
+ * written once, here, and the draft record carries only what does change.
+ */
+const PHOTO_STORE = "photos";
+const PHOTO_INDEX = "draftKey";
+/** The database layout. 2 added the photo store. */
+const DATABASE_VERSION = 2;
+/** The shape of a draft record. Unchanged: a record's photos may or may not carry their files. */
 const VERSION = 1;
 
 /** Pre-2026-09 records all lived under this one shared key. Migrated on first read. */
@@ -33,10 +47,29 @@ function keyForEmail(email: string | null | undefined): string {
   return normalized ? `email:${normalized}` : ANONYMOUS_KEY;
 }
 
+/**
+ * A photograph as the draft record names it. `file` and `thumbBlob` are only
+ * present on records written before the photo store existed; those are read
+ * as they are and moved across by the next save.
+ */
 type StoredPhoto = Omit<PhotoAsset, "thumbUrl"> & {
+  file?: File;
+  thumbBlob?: Blob;
+};
+
+/** One photograph's files, kept under the draft it belongs to. */
+type StoredPhotoFile = {
+  /** `photoFileKey(draftKey, id)`. */
+  key: string;
+  draftKey: string;
+  id: string;
   file: File;
   thumbBlob: Blob;
 };
+
+function photoFileKey(draftKey: string, photoId: string): string {
+  return `${draftKey}|${photoId}`;
+}
 
 type StoredVideo = {
   id: string;
@@ -201,22 +234,18 @@ export async function persistLocalDraft(
     return null;
   }
 
-  const photos: StoredPhoto[] = [];
-  let missingPhotos = 0;
-  for (const photo of state.photos) {
-    const file = assetStore.getFile(photo.id);
-    const thumbBlob = assetStore.getThumbBlob(photo.id);
-    // Counted rather than passed over in silence. The chapters and pages
-    // still name this photo, so a record saved without it restores a book
-    // with a hole in it and a PDF that cannot resolve what it points at.
-    if (!file || !thumbBlob) {
-      missingPhotos += 1;
-      continue;
-    }
+  // What this session holds in memory for each photograph. Which of them
+  // still need writing is decided inside the transaction, against what is
+  // already on disk.
+  const inMemory = state.photos.map((photo) => {
     const { thumbUrl: _thumbUrl, ...metadata } = photo;
     void _thumbUrl;
-    photos.push({ ...metadata, file, thumbBlob });
-  }
+    return {
+      metadata,
+      file: assetStore.getFile(photo.id),
+      thumbBlob: assetStore.getThumbBlob(photo.id),
+    };
+  });
 
   const videos: StoredVideo[] = [];
   for (const video of state.albumVideos) {
@@ -257,7 +286,7 @@ export async function persistLocalDraft(
     chapters: state.chapters,
     pages: state.pages,
     leadEmail: state.leadEmail,
-    photos,
+    photos: [],
     videos,
     customCover,
     previewPdf: previewPdf ?? activePreviewPdf ?? undefined,
@@ -269,9 +298,57 @@ export async function persistLocalDraft(
 
   const previousKey = activeDraftKey;
 
+  let missingPhotos = 0;
+
   await withDatabase(async (database) => {
-    const transaction = database.transaction(STORE, "readwrite");
+    // One transaction over both stores: the record and the files it names
+    // land together or not at all.
+    const transaction = database.transaction([STORE, PHOTO_STORE], "readwrite");
+    const done = committed(transaction);
     const objectStore = transaction.objectStore(STORE);
+    const photoStore = transaction.objectStore(PHOTO_STORE);
+
+    // Asked of the disk each time, not remembered: keys only, so it is cheap,
+    // and it cannot drift from what is really there.
+    const onDisk = new Set(
+      (await requestPromise(
+        photoStore.index(PHOTO_INDEX).getAllKeys(key),
+      )) as string[],
+    );
+
+    const wanted = new Set<string>();
+    for (const { metadata, file, thumbBlob } of inMemory) {
+      const fileKey = photoFileKey(key, metadata.id);
+      if (onDisk.has(fileKey)) {
+        // Already written, and a photograph does not change. This is the
+        // whole saving: nothing is rewritten for an edit to the book.
+        wanted.add(fileKey);
+        draft.photos.push(metadata);
+        continue;
+      }
+      // Counted rather than passed over in silence. The chapters and pages
+      // still name this photo, so a record saved without it restores a book
+      // with a hole in it and a PDF that cannot resolve what it points at.
+      if (!file || !thumbBlob) {
+        missingPhotos += 1;
+        continue;
+      }
+      photoStore.put({
+        key: fileKey,
+        draftKey: key,
+        id: metadata.id,
+        file,
+        thumbBlob,
+      } satisfies StoredPhotoFile);
+      wanted.add(fileKey);
+      draft.photos.push(metadata);
+    }
+
+    // A photograph taken out of the album is taken off the disk.
+    for (const fileKey of onDisk) {
+      if (!wanted.has(fileKey)) photoStore.delete(fileKey);
+    }
+
     objectStore.put(draft);
 
     // Moving from one identity to another (anonymous → email, or one email
@@ -279,9 +356,15 @@ export async function persistLocalDraft(
     // previous identity doesn't inherit this session's content. In the same
     // transaction as the put, so a failure can never take the old book away
     // without having written the new one.
-    if (previousKey && previousKey !== key) objectStore.delete(previousKey);
+    if (previousKey && previousKey !== key) {
+      objectStore.delete(previousKey);
+      const oldFiles = (await requestPromise(
+        photoStore.index(PHOTO_INDEX).getAllKeys(previousKey),
+      )) as string[];
+      for (const fileKey of oldFiles) photoStore.delete(fileKey);
+    }
 
-    await committed(transaction);
+    await done;
   });
 
   activeDraftId = localDraftId;
@@ -321,11 +404,18 @@ export async function restoreLocalDraft(
   // address is a reason to clear the screen, and "the database would not open
   // just now" is a reason to leave the book exactly where it is. Treating the
   // second as the first is how an intact record gets written straight over.
-  const stored = await withDatabase(async (database) => {
+  const { stored, files } = await withDatabase(async (database) => {
     await migrateLegacyRecord(database);
-    return (await requestPromise(
-      database.transaction(STORE, "readonly").objectStore(STORE).get(key),
+    const transaction = database.transaction([STORE, PHOTO_STORE], "readonly");
+    const record = (await requestPromise(
+      transaction.objectStore(STORE).get(key),
     )) as StoredDraft | undefined;
+    const photoFiles = record
+      ? ((await requestPromise(
+          transaction.objectStore(PHOTO_STORE).index(PHOTO_INDEX).getAll(key),
+        )) as StoredPhotoFile[])
+      : [];
+    return { stored: record, files: photoFiles };
   });
 
   if (!stored || stored.version !== VERSION) {
@@ -336,10 +426,21 @@ export async function restoreLocalDraft(
 
   activeDraftId = stored.localDraftId;
   activePreviewPdf = stored.previewPdf ?? null;
-  const photos = stored.photos.map(({ file, thumbBlob, ...metadata }) => ({
-    ...metadata,
-    thumbUrl: assetStore.putAsset(metadata.id, file, thumbBlob),
-  }));
+  // A photograph's files come from the photo store, or, for a record saved
+  // before that store existed, from the record itself. One with neither is
+  // left out here and its references are pruned below.
+  const fileById = new Map(files.map((entry) => [entry.id, entry]));
+  const photos: PhotoAsset[] = [];
+  for (const { file: inlineFile, thumbBlob: inlineThumb, ...metadata } of stored.photos) {
+    const kept = fileById.get(metadata.id);
+    const file = kept?.file ?? inlineFile;
+    const thumbBlob = kept?.thumbBlob ?? inlineThumb;
+    if (!file || !thumbBlob) continue;
+    photos.push({
+      ...metadata,
+      thumbUrl: assetStore.putAsset(metadata.id, file, thumbBlob),
+    });
+  }
   const albumVideos = stored.videos.map((video) => ({
     id: video.id,
     fileName: video.fileName,
@@ -472,9 +573,15 @@ export async function clearLocalDraft(): Promise<void> {
   if (typeof indexedDB === "undefined") return;
   await serialize(() =>
     withDatabase(async (database) => {
-      const transaction = database.transaction(STORE, "readwrite");
+      const transaction = database.transaction([STORE, PHOTO_STORE], "readwrite");
+      const done = committed(transaction);
       transaction.objectStore(STORE).delete(key);
-      await committed(transaction);
+      const photoStore = transaction.objectStore(PHOTO_STORE);
+      const fileKeys = (await requestPromise(
+        photoStore.index(PHOTO_INDEX).getAllKeys(key),
+      )) as string[];
+      for (const fileKey of fileKeys) photoStore.delete(fileKey);
+      await done;
     }),
   );
 }
@@ -484,7 +591,7 @@ const OPEN_TIMEOUT_MS = 10_000;
 
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DATABASE, VERSION);
+    const request = indexedDB.open(DATABASE, DATABASE_VERSION);
     let settled = false;
 
     const finish = (
@@ -511,6 +618,14 @@ function openDatabase(): Promise<IDBDatabase> {
       const database = request.result;
       if (!database.objectStoreNames.contains(STORE)) {
         database.createObjectStore(STORE, { keyPath: "key" });
+      }
+      // Added in layout 2. Existing draft records are left exactly as they
+      // are: they still carry their photographs, are read that way, and are
+      // moved across by their next save.
+      if (!database.objectStoreNames.contains(PHOTO_STORE)) {
+        database
+          .createObjectStore(PHOTO_STORE, { keyPath: "key" })
+          .createIndex(PHOTO_INDEX, "draftKey");
       }
     };
     request.onblocked = () =>

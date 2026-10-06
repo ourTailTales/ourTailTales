@@ -9,6 +9,7 @@ import { captureClientException } from "@/lib/analytics";
 import { formatUsd } from "@/lib/pricing";
 import { postHogHeaders } from "@/lib/posthog-client";
 import type { ShippingAddress, ShippingOption } from "@/types/order";
+import { customerMessage } from "@/lib/customer-message";
 
 /**
  * How fast, and what Lulu thinks of the address.
@@ -56,6 +57,8 @@ export function ShippingStep({
   const [archivalConsent, setArchivalConsent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Bumped to ask for the delivery prices again after a failed attempt. */
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -75,9 +78,10 @@ export function ShippingStep({
         captureClientException(quoteError);
         setOptions([]);
         setError(
-          quoteError instanceof Error
-            ? quoteError.message
-            : "Shipping could not be calculated.",
+          customerMessage(
+            quoteError,
+            "Shipping could not be calculated. Check your connection and try again.",
+          ),
         );
       }
     })();
@@ -86,7 +90,7 @@ export function ShippingStep({
     return () => {
       cancelled = true;
     };
-  }, [address, email, orderId, orderToken]);
+  }, [address, attempt, email, orderId, orderToken]);
 
   const chosen = options?.find((option) => option.level === level) ?? null;
   const needsConfirm = Boolean(addressWarning || suggestedAddress);
@@ -136,9 +140,10 @@ export function ShippingStep({
     } catch (paymentError) {
       captureClientException(paymentError);
       setError(
-        paymentError instanceof Error
-          ? paymentError.message
-          : "Payment could not be set up.",
+        customerMessage(
+          paymentError,
+          "Payment could not be set up. Check your connection and try again.",
+        ),
       );
       setBusy(false);
     }
@@ -313,6 +318,21 @@ export function ShippingStep({
         <p role="alert" className="mt-4 text-sm text-red-600">
           {error}
         </p>
+      ) : null}
+      {/* With no prices there is nothing to choose and nothing to continue
+          with, and the only way forward used to be reloading the page. */}
+      {error && options !== null && options.length === 0 ? (
+        <button
+          type="button"
+          onClick={() => {
+            setError(null);
+            setOptions(null);
+            setAttempt((count) => count + 1);
+          }}
+          className="mt-3 inline-flex min-h-11 items-center rounded-xl border border-line bg-white px-5 text-sm font-semibold text-ink hover:border-periwinkle"
+        >
+          Try again
+        </button>
       ) : null}
 
       <button

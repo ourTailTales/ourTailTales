@@ -5,10 +5,13 @@ import type { OrderView } from "@/lib/order/read";
 export function OrderSummary({
   order,
   shippingPrice,
+  taxMayApply = false,
 }: {
   order: OrderView;
   /** Null until a delivery speed has been chosen. */
   shippingPrice: number | null;
+  /** Whether sales tax may be added once delivery is chosen. */
+  taxMayApply?: boolean;
 }) {
   // Tax is locked with the shipping price, so it only counts once that is.
   const taxPrice = shippingPrice === null ? 0 : order.taxPrice;
@@ -57,9 +60,17 @@ export function OrderSummary({
           label="Shipping"
           value={shippingPrice === null ? "Calculated next" : formatUsd(shippingPrice)}
         />
-        {taxPrice > 0 ? <Row label="Sales tax" value={formatUsd(taxPrice)} /> : null}
+        {taxPrice > 0 ? (
+          <Row label="Sales tax" value={formatUsd(taxPrice)} />
+        ) : taxMayApply && shippingPrice === null ? (
+          <Row label="Sales tax" value="Calculated at payment" />
+        ) : null}
         <div className="border-t border-line pt-3" />
-        <Row label="Total" value={formatUsd(total)} strong />
+        <Row
+          label={shippingPrice === null ? "Total before shipping" : "Total"}
+          value={formatUsd(total)}
+          strong
+        />
       </dl>
       <p className="mt-4 text-xs leading-5 text-ink-faint">
         Printed and bound to order. If it arrives damaged or misprinted, tell

@@ -17,7 +17,12 @@ import {
   checkFrozenInterior,
 } from "@/lib/order/print-file-check";
 import { markNeedsReview, submitPaidOrderToLulu } from "@/lib/order/submit-print";
-import { recordSalesTax, reverseSalesTax } from "@/lib/order/tax";
+import { shippingFingerprint } from "@/lib/order/shipping-fingerprint";
+import {
+  recordSalesTax,
+  reversePartialSalesTax,
+  reverseSalesTax,
+} from "@/lib/order/tax";
 import { alertOps } from "@/lib/ops/alert";
 import {
   captureServerEvent,
@@ -84,6 +89,17 @@ export async function POST(request: Request): Promise<Response> {
       if (whole) {
         await moneyGoingBack(charge.payment_intent, "refunded");
       } else {
+        // The tax on the part that went back comes off Stripe's records. What
+        // went back this time is the change in the running total.
+        const before = Number(
+          (event.data.previous_attributes as { amount_refunded?: number } | undefined)
+            ?.amount_refunded ?? 0,
+        );
+        await partialRefundTax(
+          charge.payment_intent,
+          charge.amount_refunded - before,
+          charge.amount_refunded,
+        );
         await alertOps("An order was partly refunded and left running", {
           charge: charge.id,
           refunded: charge.amount_refunded,
@@ -125,15 +141,12 @@ async function fulfill(paymentIntent: Stripe.PaymentIntent): Promise<void> {
 
   const supabase = supabaseAdmin();
 
-  // What the order costs now, read before it is claimed. The amount on the
-  // intent was fixed when delivery was chosen; the delivery speed, the address
-  // and the number of copies could all be changed after that, and the book
-  // then went out as changed for the price as fixed.
+  // Read before the claim only to tell a redelivery from a second payment
+  // and an unknown order from a known one. The price is NOT taken from here:
+  // see the claim below.
   const { data: priced, error: pricedError } = await supabase
     .from("orders")
-    .select(
-      "status, stripe_payment_intent_id, book_price, quantity, shipping_price, tax_price, tax_calculation_id, video_memory_total_cents, draft_id, chapter_count",
-    )
+    .select("status, stripe_payment_intent_id")
     .eq("id", orderId)
     .maybeSingle();
   if (pricedError) throw new Error(pricedError.message);
@@ -151,8 +164,15 @@ async function fulfill(paymentIntent: Stripe.PaymentIntent): Promise<void> {
     .eq("id", orderId)
     .eq("status", "pending_payment")
     .is("lulu_print_job_id", null)
+    // What the order costs comes back from the claim itself. The amount on
+    // the intent was fixed when delivery was chosen; the delivery speed, the
+    // address and the number of copies can all be changed while the order is
+    // unpaid. Read in a separate statement before the claim, a change landing
+    // between the two was checked against the old price and printed as
+    // changed. The claim ends the order's unpaid state, so nothing can move
+    // these columns after the row this returns.
     .select(
-      "id, archival_consent_at, book_snapshot, selected_video_count, interior_path, cover_path, frozen_interior_path",
+      "id, archival_consent_at, book_snapshot, selected_video_count, interior_path, cover_path, frozen_interior_path, stripe_payment_intent_id, book_price, quantity, shipping_price, tax_price, tax_calculation_id, video_memory_total_cents, draft_id, chapter_count",
     )
     .maybeSingle();
 
@@ -175,12 +195,12 @@ async function fulfill(paymentIntent: Stripe.PaymentIntent): Promise<void> {
   }
 
   // The same sum the charge was made from, over the same stored columns.
-  const expected = expectedOrderAmount(priced);
+  const expected = expectedOrderAmount(claimed);
   const paid = paymentIntent.amount_received ?? paymentIntent.amount;
   if (
     expected === null ||
     paid !== expected ||
-    priced.stripe_payment_intent_id !== paymentIntent.id
+    claimed.stripe_payment_intent_id !== paymentIntent.id
   ) {
     // No confirmation is sent for this hold. The resubmit route reads this
     // reason to know the customer is still owed one.
@@ -193,6 +213,36 @@ async function fulfill(paymentIntent: Stripe.PaymentIntent): Promise<void> {
       note: "Delivery details or copies changed after the amount was set. Charge or refund the difference, then POST /api/admin/orders/<id>/resubmit with the cron secret (add ?force=amount once the difference is settled).",
     });
     return;
+  }
+
+  // The amount matches. Now the details it was quoted on: the address, speed
+  // and copies the print job is about to be made from must be the ones this
+  // payment was priced for. A payment set up before this digest existed
+  // carries none and is let through on the amount alone.
+  const pricedFor = paymentIntent.metadata?.shippingFingerprint;
+  if (pricedFor) {
+    const { data: shipping, error: shippingError } = await supabase
+      .from("order_shipping")
+      .select("name, phone, street1, street2, city, state, postcode, country, shipping_level")
+      .eq("order_id", orderId)
+      .maybeSingle();
+    if (shippingError) throw new Error(shippingError.message);
+    const stored = shipping
+      ? shippingFingerprint({
+          address: shipping,
+          level: shipping.shipping_level ?? "",
+          quantity: claimed.quantity,
+        })
+      : null;
+    if (stored !== pricedFor) {
+      await markNeedsReview(orderId, AMOUNT_MISMATCH_REASON);
+      await alertOps("A paid order's delivery details do not match what was priced", {
+        order: orderId,
+        paymentIntent: paymentIntent.id,
+        note: "The address, delivery speed or copies on the order are not the ones the payment was quoted for. Check the order, settle any difference, then POST /api/admin/orders/<id>/resubmit with the cron secret (add ?force=amount once settled).",
+      });
+      return;
+    }
   }
 
   // The print job first. Everything after it is a courtesy by comparison, and
@@ -216,11 +266,11 @@ async function fulfill(paymentIntent: Stripe.PaymentIntent): Promise<void> {
   const distinctId = paymentIntent.metadata?.posthogDistinctId || orderId;
   // The tax the customer has just paid, put on Stripe's tax records. After
   // the print job, because it is bookkeeping and the book is not.
-  if (priced.tax_calculation_id) {
+  if (claimed.tax_calculation_id) {
     await quietly("Sales tax record", async () => {
       const transactionId = await recordSalesTax({
         orderId,
-        calculationId: priced.tax_calculation_id,
+        calculationId: claimed.tax_calculation_id,
       });
       if (!transactionId) return;
       const { error } = await supabase
@@ -234,9 +284,9 @@ async function fulfill(paymentIntent: Stripe.PaymentIntent): Promise<void> {
   // The clean PDF comes with the hardcover.
   await quietly("Included PDF unlock", () =>
     includeDigitalCopy({
-      draftId: priced.draft_id,
+      draftId: claimed.draft_id,
       paymentIntentId: paymentIntent.id,
-      chapterCount: priced.chapter_count,
+      chapterCount: claimed.chapter_count,
     }),
   );
   await quietly(
@@ -375,6 +425,33 @@ async function sendToPrint(
   if (stageError) {
     console.error("[ourTailTales] Could not stage for archival", orderId, stageError);
     await markNeedsReview(orderId, "The order could not be staged for archival.");
+  }
+}
+
+/** Adjusts the recorded sales tax for a partial refund. Never throws. */
+async function partialRefundTax(
+  paymentIntent: string | { id: string } | null | undefined,
+  refundedCents: number,
+  refundedToDateCents: number,
+): Promise<void> {
+  const paymentIntentId =
+    typeof paymentIntent === "string" ? paymentIntent : paymentIntent?.id;
+  if (!paymentIntentId || refundedCents <= 0) return;
+  try {
+    const { data: order } = await supabaseAdmin()
+      .from("orders")
+      .select("id, tax_transaction_id")
+      .eq("stripe_payment_intent_id", paymentIntentId)
+      .maybeSingle();
+    if (!order?.tax_transaction_id) return;
+    await reversePartialSalesTax({
+      orderId: order.id,
+      transactionId: order.tax_transaction_id,
+      refundedCents,
+      refundedToDateCents,
+    });
+  } catch (error) {
+    console.error("[ourTailTales] Could not adjust tax for a partial refund", error);
   }
 }
 
@@ -605,10 +682,16 @@ async function grantDigitalAccess(
       ? session.payment_intent
       : (session.payment_intent?.id ?? null);
 
+  // The length the session was priced for. A session opened for a short book
+  // could otherwise be paid after a longer one was saved onto the same draft.
+  // Sessions opened before this was recorded carry none and are not limited.
+  const paidChapters = Math.floor(Number(session.metadata?.chapterCount));
+  const limited = Number.isFinite(paidChapters) && paidChapters > 0;
+
   // Conditional on not already being purchased, so a redelivered webhook
   // cannot re-grant or send a second confirmation.
-  const claim = (withPaymentIntent: boolean) =>
-    supabase
+  const claim = (withPaymentIntent: boolean) => {
+    const query = supabase
       .from("book_drafts")
       .update({
         digital_purchased_at: new Date().toISOString(),
@@ -620,9 +703,15 @@ async function grantDigitalAccess(
         updated_at: new Date().toISOString(),
       })
       .eq("id", draftId)
-      .is("digital_purchased_at", null)
+      .is("digital_purchased_at", null);
+    return (
+      limited
+        ? query.or(`chapter_count.is.null,chapter_count.lte.${paidChapters}`)
+        : query
+    )
       .select("id, pet_name")
       .maybeSingle();
+  };
 
   let { data: claimed, error } = await claim(true);
 
@@ -636,7 +725,26 @@ async function grantDigitalAccess(
   }
 
   if (error) throw new Error(error.message);
-  if (!claimed) return;
+  if (!claimed) {
+    // Either a redelivery of a purchase already granted, which is fine, or a
+    // paid session whose book has grown since. The second has taken money and
+    // released nothing, so a person is told.
+    const { data: current } = await supabase
+      .from("book_drafts")
+      .select("digital_purchased_at, chapter_count")
+      .eq("id", draftId)
+      .maybeSingle();
+    if (current && !current.digital_purchased_at) {
+      await alertOps("A PDF was paid for but not released", {
+        draft: draftId,
+        paymentIntent: paymentIntentId,
+        paidForChapters: limited ? paidChapters : "unknown",
+        bookChapters: current.chapter_count,
+        note: "The book on the draft is longer than the one the payment was for. Refund the payment, or charge the difference and release it by hand.",
+      });
+    }
+    return;
+  }
 
   await captureServerEvent(
     session.metadata?.posthogDistinctId || draftId,

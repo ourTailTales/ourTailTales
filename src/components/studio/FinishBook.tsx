@@ -150,7 +150,7 @@ export function FinishBook({
             />
           ) : null}
           <Row label="Clean PDF of the book" value="Included" muted />
-          <Row label="Shipping" value="Quoted at checkout" muted />
+          <Row label="Shipping (United States only)" value="Quoted at checkout" muted />
           <div className="mt-1 border-t border-page-line pt-3">
             <Row
               label="Total before shipping"
@@ -195,9 +195,10 @@ export function FinishBook({
       <section className="rounded-2xl border border-line bg-white p-5 shadow-lift sm:p-6">
         <h2 className="font-display text-xl text-ink">Or keep it as a file</h2>
         <p className="mt-1 text-sm leading-6 text-ink-soft">
-          The clean PDF comes free with the hardcover. On its own, the free
-          copy carries a small watermark across each page. The clean one does
-          not, and is yours to print or share however you like.
+          The clean PDF comes free with the hardcover. The free copy is the
+          first pages of the book, or the whole book with a small watermark
+          once you have a free account. The clean one is the whole book with
+          no watermark, yours to print or share however you like.
         </p>
         <div className="mt-4 flex flex-col gap-3 sm:flex-row">
           <button

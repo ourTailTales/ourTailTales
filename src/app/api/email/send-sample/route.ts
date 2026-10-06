@@ -6,7 +6,7 @@ import { claimUrl, draftPdfPath } from "@/lib/drafts/storage";
 import { routeError } from "@/lib/env";
 import { sendTeaserEmail } from "@/lib/email/send";
 import { MAX_CHAPTERS } from "@/lib/pricing";
-import { LIMITS, enforceRateLimit } from "@/lib/rate-limit";
+import { GLOBAL_SUBJECT, LIMITS, enforceRateLimit } from "@/lib/rate-limit";
 import { PREVIEW_BUCKET, supabaseAdmin } from "@/lib/supabase/server";
 
 /**
@@ -68,7 +68,7 @@ export async function POST(request: Request): Promise<Response> {
     const supabase = supabaseAdmin();
     const { data: row } = await supabase
       .from("book_drafts")
-      .select("pdf_stored_at, pet_name")
+      .select("pdf_stored_at, pet_name, lead_email")
       .eq("id", draft.id)
       .maybeSingle();
 
@@ -80,6 +80,30 @@ export async function POST(request: Request): Promise<Response> {
         { status: 409 },
       );
     }
+
+    // One book, one inbox. Once a book has been mailed, it is only ever
+    // mailed to that address again. Left open, anybody holding a draft could
+    // have our verified domain send an attachment of their choosing to any
+    // address they liked, five times every ten minutes.
+    const recipient = parsed.data.email.trim().toLowerCase();
+    const sentTo = (row.lead_email ?? "").trim().toLowerCase();
+    if (sentTo && sentTo !== recipient) {
+      return Response.json(
+        {
+          error:
+            "This book has already been emailed to a different address. Make your free account to open it, or write to hello@ourtailtales.com and we will help.",
+        },
+        { status: 409 },
+      );
+    }
+
+    const ceiling = await enforceRateLimit(
+      request,
+      LIMITS.sampleDaily,
+      GLOBAL_SUBJECT,
+      { failClosed: true },
+    );
+    if (ceiling) return ceiling;
 
     const { data: file, error: downloadError } = await supabase.storage
       .from(PREVIEW_BUCKET)

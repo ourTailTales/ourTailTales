@@ -41,11 +41,16 @@ const playfair = Playfair_Display({
   variable: "--font-playfair",
   subsets: ["latin"],
   weight: ["400", "600", "700"],
+  // Only the book itself uses this face. Not preloaded, so the landing page,
+  // checkout and the legal pages do not fetch it before they can paint.
+  preload: false,
 });
 
 const caveat = Caveat({
   variable: "--font-caveat",
   subsets: ["latin"],
+  // As above: a book face, fetched when a book is on screen.
+  preload: false,
   // 600 is the book's handwriting (captions, the title page); the PDF embeds
   // the same weight.
   weight: ["500", "600", "700"],

@@ -151,7 +151,17 @@ function PayForm({
 
   return (
     <div className="mt-5">
-      <PaymentElement />
+      <PaymentElement
+        // Cards only. The payment is created for cards, but Link adds its own
+        // "Bank" and pay-later tabs to the form unless it is told not to, and
+        // a bank debit can bounce after the book has been printed.
+        options={{ wallets: { link: "never" } }}
+        onLoadError={() =>
+          setError(
+            "The card form could not load. Reload this page, or turn off any content blocker for this site.",
+          )
+        }
+      />
       <button
         type="button"
         onClick={() => void pay()}

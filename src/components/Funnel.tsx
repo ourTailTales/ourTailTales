@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { AuthGate } from "@/components/auth/AuthGate";
 import { EmailSampleModal } from "@/components/EmailSampleModal";
@@ -9,13 +9,7 @@ import { SaveStatusIndicator } from "@/components/create/SaveStatusIndicator";
 import { BookFlow } from "@/components/studio/BookFlow";
 import { SiteHeader } from "@/components/SiteHeader";
 import { captureClientException, identifyLead, track } from "@/lib/analytics";
-import {
-  previewFileName,
-  renderCleanBookPdf,
-  renderFullPreviewPdf,
-  renderTeaserPdf,
-  teaserFileName,
-} from "@/lib/book/sample-pdf";
+import { previewFileName, teaserFileName } from "@/lib/book/pdf-file-names";
 import { summarizeTeaser } from "@/lib/book/teaser";
 import {
   partitionMedia,
@@ -30,9 +24,7 @@ import { bankBook } from "@/lib/drafts/upload";
 import { generateChapterStory } from "@/lib/story/client";
 import { withoutUsedCaptions } from "@/lib/story/lines";
 import { generatePetProfile } from "@/lib/story/profile";
-import { bankCleanBookForOrder } from "@/lib/drafts/claim";
 import { clearPdfOwed, markPdfOwed, pdfIsOwed } from "@/lib/drafts/pdf-owed";
-import { prepareOrder } from "@/lib/order/prepare";
 import { bookSpec } from "@/lib/pricing";
 import { placedMemoriesReadyForCheckout } from "@/lib/video-memory/checkout-ready";
 import {
@@ -51,6 +43,18 @@ import { shouldAutoClaim } from "@/components/auth/auto-claim";
 import { useSessionEmail } from "@/components/auth/useSessionEmail";
 import { useIsAuthenticated } from "@/hooks/useIsAuthenticated";
 import { authConfigured } from "@/lib/supabase/auth-browser";
+import { customerMessage } from "@/lib/customer-message";
+import { useShallow } from "zustand/react/shallow";
+
+/*
+ * The PDF renderer, and the two flows built on it, are loaded when they are
+ * first needed. Together they are about a megabyte of script (the PDF library
+ * and the font engine), and the editor used to download all of it before
+ * anything could be seen.
+ */
+const loadSamplePdf = () => import("@/lib/book/sample-pdf");
+const loadClaim = () => import("@/lib/drafts/claim");
+const loadPrepare = () => import("@/lib/order/prepare");
 
 /** How long after leaving for checkout the finish page stops saying "preparing". */
 const CHECKOUT_SETTLE_MS = 8_000;
@@ -118,7 +122,38 @@ export function Funnel({
   videoMemoriesEnabled?: boolean;
 }) {
   const router = useRouter();
-  const store = useOurTailTalesStore();
+  // Only what this component renders from, compared field by field. It used
+  // to subscribe to the whole store, so every progress tick while photographs
+  // were read and both "saving" flips of every autosave re-rendered the whole
+  // editor beneath it.
+  const store = useOurTailTalesStore(
+    useShallow((state) => ({
+      meta: state.meta,
+      chapters: state.chapters,
+      pages: state.pages,
+      customCover: state.customCover,
+      photos: state.photos,
+      albumVideos: state.albumVideos,
+      leadEmail: state.leadEmail,
+      bookExpiresAt: state.bookExpiresAt,
+      funnelState: state.funnelState,
+      localDraftId: state.localDraftId,
+      claimedAt: state.claimedAt,
+      claim: state.claim,
+      claimAttemptedFor: state.claimAttemptedFor,
+      // Actions. Their identity never changes.
+      startProcessing: state.startProcessing,
+      addProcessedPhotos: state.addProcessedPhotos,
+      noteFailures: state.noteFailures,
+      failProcessing: state.failProcessing,
+      addAlbumVideos: state.addAlbumVideos,
+      advanceProcessing: state.advanceProcessing,
+      setProgressPhase: state.setProgressPhase,
+      finishProcessing: state.finishProcessing,
+      addPhotosToPage: state.addPhotosToPage,
+      reset: state.reset,
+    })),
+  );
 
   const searchParams = useSearchParams();
   const ingestion = useRef<Ingestion | null>(null);
@@ -186,6 +221,25 @@ export function Funnel({
       current = false;
     };
   }, [emailParam, emailKey]);
+
+  // The address in the URL is what a reload restores the book by. Somebody
+  // who arrived with none and gave their address inside the editor had their
+  // book saved under that address while the URL still named nobody, so a
+  // reload opened an empty editor. The URL is brought into line here, and
+  // `hydratedFor` is moved with it so the change is not mistaken for a
+  // different person arriving, which would read the old copy back off disk
+  // over what is on screen.
+  const pathname = usePathname();
+  const givenEmail = store.leadEmail?.trim() || null;
+  useEffect(() => {
+    if (embedded || !localReady || !givenEmail) return;
+    if (givenEmail === emailKey) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(givenEmail)) return;
+    hydratedFor = givenEmail;
+    router.replace(`${pathname}?email=${encodeURIComponent(givenEmail)}`, {
+      scroll: false,
+    });
+  }, [embedded, emailKey, givenEmail, localReady, pathname, router]);
 
   // Autosave: anything the customer types or picks — pet name, cover style,
   // chapter text, photo order, a custom cover upload — lands in
@@ -495,9 +549,10 @@ export function Funnel({
               ? "You stopped this one. Write it again whenever you like."
               : chapterAbort.signal.aborted
                 ? "This chapter took too long to write. Try it again."
-                : error instanceof Error
-                  ? error.message
-                  : "Story generation failed.",
+                : customerMessage(
+                    error,
+                    "This chapter could not be written. Try it again.",
+                  ),
           );
         } finally {
           clearTimeout(timer);
@@ -644,7 +699,7 @@ export function Funnel({
       };
       if (!stillThisBook()) return "abandoned";
 
-      const pdf = await renderCleanBookPdf({
+      const pdf = await (await loadSamplePdf()).renderCleanBookPdf({
         pages: state.pages,
         chapters: state.chapters,
         meta: state.meta,
@@ -809,7 +864,9 @@ export function Funnel({
     const owedKey = leadEmail ?? "";
     if (!pdfIsOwed(owedKey)) return;
     pdfRetryStarted.current = true;
-    void bankCleanBookForOrder().then(
+    void loadClaim()
+            .then((claim) => claim.bankCleanBookForOrder())
+            .then(
       () => clearPdfOwed(owedKey),
       (error: unknown) => captureClientException(error),
     );
@@ -883,8 +940,8 @@ export function Funnel({
         photos,
       };
       const blob = unlocked
-        ? await renderFullPreviewPdf(args)
-        : await renderTeaserPdf({
+        ? await (await loadSamplePdf()).renderFullPreviewPdf(args)
+        : await (await loadSamplePdf()).renderTeaserPdf({
             ...args,
             expiresAt: state.bookExpiresAt ?? previewExpiryFrom(),
           });
@@ -927,7 +984,12 @@ export function Funnel({
         // Never block the book on lead capture.
       });
 
+      // Whether there was a book to send. Before the book is written there
+      // is nothing to mail yet; the address is kept and the pages go out by
+      // themselves once it is, and the dialog says that and not "on its way".
+      const hasBook = useOurTailTalesStore.getState().pages.length > 0;
       await deliverTeaser();
+      return hasBook;
     },
     [deliverTeaser],
   );
@@ -983,7 +1045,9 @@ export function Funnel({
           draftId = draft.draftId;
           draftSecret = draft.secret;
           markPdfOwed(owedKey);
-          banking = bankCleanBookForOrder().then(
+          banking = loadClaim()
+            .then((claim) => claim.bankCleanBookForOrder())
+            .then(
             () => {
               clearPdfOwed(owedKey);
               return true;
@@ -998,7 +1062,7 @@ export function Funnel({
         }
       }
 
-      const { orderId, orderToken } = await prepareOrder({
+      const { orderId, orderToken } = await (await loadPrepare()).prepareOrder({
         meta: state.meta,
         chapters: state.chapters,
         pages: state.pages,
@@ -1042,9 +1106,10 @@ export function Funnel({
       useOurTailTalesStore.getState().setExporting(null);
       useOurTailTalesStore.getState().goToEditing();
       setNotice(
-        error instanceof Error
-          ? error.message
-          : "Your book could not be prepared for printing.",
+        customerMessage(
+          error,
+          "Your book could not be prepared for printing. Check your connection and try again.",
+        ),
       );
       checkoutRunning.current = false;
     }
@@ -1077,9 +1142,10 @@ export function Funnel({
     // was written, but that never reaches this session's live state on its
     // own — only a page load re-reads storage. Without this, the clean-PDF
     // button on the finish screen is missing until the customer refreshes.
-    if (!state.draftId || !state.draftSecret) {
-      useOurTailTalesStore.getState().hydrateDraft();
-    }
+    // Read again every time, not only when missing: saving a second book in a
+    // browser whose stored draft was a bought one starts a new draft, and the
+    // PDF button must point at that one, not the book already paid for.
+    useOurTailTalesStore.getState().hydrateDraft();
     router.push(withEmail("/create/finish"));
   }, [router, withEmail]);
 
@@ -1101,6 +1167,7 @@ export function Funnel({
     <div className="flex min-h-[calc(100dvh-5rem)] items-center justify-center">
       <span
         className="size-10 animate-spin rounded-full border-[3px] border-periwinkle/25 border-t-periwinkle"
+        role="status"
         aria-label="Restoring your book"
       />
     </div>
@@ -1251,7 +1318,7 @@ async function deliverTeaserOnce(): Promise<void> {
   if (state.pages.length === 0) return;
 
   const teaser = summarizeTeaser(state.pages, state.chapters);
-  const pdf = await renderTeaserPdf({
+  const pdf = await (await loadSamplePdf()).renderTeaserPdf({
     pages: state.pages,
     chapters: state.chapters,
     meta: state.meta,

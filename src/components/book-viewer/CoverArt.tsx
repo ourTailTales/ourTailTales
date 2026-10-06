@@ -1,7 +1,6 @@
 "use client";
 
 import { CoverLayoutChrome } from "@/components/book-viewer/CoverLayoutChrome";
-import { CLOSING_LINE } from "@/lib/book/pagination";
 import {
   DEFAULT_COVER_FONT,
   DEFAULT_COVER_LAYOUT,
@@ -14,7 +13,6 @@ import {
 } from "@/lib/book/coverLayouts";
 import { lifespanText } from "@/lib/book/design/primitives";
 import { resolvePalette } from "@/lib/book/palette";
-import { brand } from "@/lib/brand";
 import type { BookMeta } from "@/types/book";
 import { getFullUrl } from "@/lib/photo/assetStore";
 import type { PhotoAsset } from "@/types/photo";
@@ -100,36 +98,6 @@ export function CoverFrontArt({
           {petName}
         </p>
       ) : null}
-    </div>
-  );
-}
-
-/**
- * Hardcover back — styled after real memoir/photo-book backs: a centered
- * pull-quote in the upper-middle third, a small divider, and a
- * publisher-style colophon anchored at the bottom.
- */
-export function BackCoverArt() {
-  const body = CLOSING_LINE;
-
-  return (
-    <div className="relative z-[1] flex h-full w-full flex-col bg-transparent px-[13%] py-[13%] text-page-ink">
-      <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
-        <p className="font-cover text-[clamp(0.95rem,2.3vw,1.15rem)] italic leading-7">
-          &ldquo;{body}&rdquo;
-        </p>
-        <span aria-hidden className="text-[10px] tracking-[0.4em] text-page-ink/35">
-          &bull;&nbsp;&bull;&nbsp;&bull;
-        </span>
-      </div>
-      <div className="flex flex-col items-center gap-0.5 text-center">
-        <p className="font-display text-[0.7rem] font-semibold tracking-wide text-page-ink/80">
-          {brand.name}
-        </p>
-        <p className="font-sans text-[0.6rem] tracking-wide text-page-ink/45">
-          {brand.domain}
-        </p>
-      </div>
     </div>
   );
 }

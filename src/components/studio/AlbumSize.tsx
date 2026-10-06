@@ -8,6 +8,7 @@ import {
   bookPrice,
   chaptersForSpan,
   chaptersForTier,
+  formatUsd,
   photoRangeForTier,
   photosForTier,
   recommendedTier,
@@ -73,7 +74,6 @@ export function AlbumSize() {
   const chapters = chaptersForTier(chosen, { wantedChapters, usablePhotoCount });
 
   const name = petName.trim();
-  const years = spanInYears(album.firstAt, album.lastAt);
 
   return (
     <section
@@ -180,18 +180,19 @@ function TierChoice({
         </span>
         <span className="block text-xs text-page-ink-faint">photos total</span>
         {available ? (
-          <span className="mt-1 block text-xs text-page-ink-soft">
-            {chapters} {chapters === 1 ? "chapter" : "chapters"} for your book
-          </span>
+          <>
+            <span className="mt-1 block text-xs text-page-ink-soft">
+              {chapters} {chapters === 1 ? "chapter" : "chapters"} for your book
+            </span>
+            {/* The price where the choice is made. It used to appear for the
+                first time on the finish page, after the longer book had
+                already been picked. */}
+            <span className="mt-1 block text-sm font-semibold text-page-ink">
+              {formatUsd(bookPrice(chapters))} if printed
+            </span>
+          </>
         ) : null}
       </button>
     </li>
   );
-}
-
-/** Whole years between the first photograph and the last, or null if undated. */
-function spanInYears(firstAt: number | null, lastAt: number | null): number | null {
-  if (firstAt === null || lastAt === null || lastAt < firstAt) return null;
-  const years = Math.round((lastAt - firstAt) / (365.2425 * 24 * 60 * 60 * 1000));
-  return Math.max(1, years);
 }

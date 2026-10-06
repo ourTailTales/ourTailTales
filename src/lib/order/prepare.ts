@@ -182,6 +182,7 @@ async function postJson<T>(
   });
 
   if (!response.ok) {
+    // Named for the log; `customerMessage` keeps it off the screen.
     let message = `Request to ${url} failed (${response.status}).`;
     try {
       const data = (await response.json()) as { error?: string };

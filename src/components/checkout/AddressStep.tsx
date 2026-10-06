@@ -9,6 +9,7 @@ import { captureClientException } from "@/lib/analytics";
 import { EXTRA_COPY_DISCOUNT, MAX_COPIES, copiesTotal, extraCopyPrice, formatUsd } from "@/lib/pricing";
 import { postHogHeaders } from "@/lib/posthog-client";
 import type { ShippingAddress } from "@/types/order";
+import { customerMessage } from "@/lib/customer-message";
 
 const US_ZIP_PATTERN = /^\d{5}(-\d{4})?$/;
 
@@ -113,9 +114,10 @@ export function AddressStep({
     } catch (saveError) {
       captureClientException(saveError);
       setError(
-        saveError instanceof Error
-          ? saveError.message
-          : "That address could not be saved.",
+        customerMessage(
+          saveError,
+          "That address could not be saved. Check your connection and try again.",
+        ),
       );
       setBusy(false);
     }
@@ -123,6 +125,15 @@ export function AddressStep({
 
   return (
     <StepCard title="Where should it go?">
+      {/* A real form, so Enter moves on and the browser's autofill has
+          something to attach to. Our own checks run in `save`. */}
+      <form
+        noValidate
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!busy) void save();
+        }}
+      >
       <p className="mt-2 text-sm text-ink-soft">
         We print and ship within the United States.
       </p>
@@ -246,14 +257,10 @@ export function AddressStep({
         </p>
       ) : null}
 
-      <button
-        type="button"
-        onClick={() => void save()}
-        disabled={busy}
-        className={primaryButton}
-      >
+      <button type="submit" disabled={busy} className={primaryButton}>
         {busy ? "Saving…" : "See delivery options"}
       </button>
+      </form>
     </StepCard>
   );
 }

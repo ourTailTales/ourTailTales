@@ -97,6 +97,9 @@ export async function POST(request: Request): Promise<Response> {
     const createSession = (withTax: boolean) =>
       stripeClient().checkout.sessions.create({
         mode: "payment",
+        // Cards only, as for the hardcover. A method that settles days later
+        // completes the session unpaid, and the PDF was then never released.
+        payment_method_types: ["card"],
         ...(withTax ? { automatic_tax: { enabled: true } } : {}),
         line_items: [
           {
@@ -122,6 +125,9 @@ export async function POST(request: Request): Promise<Response> {
         metadata: {
           draftId: draft.id,
           draftSecret: secret,
+          // The length this price is for. The webhook releases the file only
+          // if the book on the draft is still no longer than this.
+          chapterCount: String(row.chapter_count ?? BASE_CHAPTERS),
           ...(posthogDistinctId ? { posthogDistinctId } : {}),
         },
         success_url: `${returnUrl}&purchased=true`,

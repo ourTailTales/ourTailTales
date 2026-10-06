@@ -66,8 +66,9 @@ export function EmailCaptureCta({
       body: JSON.stringify({ email: trimmedEmail }),
       keepalive: true,
     }).catch(() => undefined);
+    // Left busy: the page is on its way out, and putting the button back let
+    // a second tap during the navigation save the lead twice.
     router.push(`/create?email=${encodeURIComponent(trimmedEmail)}`);
-    setStatus("idle");
   };
 
   const isDark = theme === "dark";

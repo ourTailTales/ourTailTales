@@ -139,27 +139,54 @@ describe("two photographs of one moment", () => {
       scene("d", 1200, "00ff00ff00ff00ff"),
       scene("e", 1800, "f000f000f000f000"),
     ]);
-    expect(photosOf(pages)).toEqual([["a", "b"], ["c"], ["d"], ["e"]]);
+    // The two frames of one moment lead the chapter together. What the
+    // other three do is the company pass's business (a page of one is folded
+    // into a neighbour, two at most), and every photograph is still placed
+    // once, in order.
+    expect(photosOf(pages)[0]).toEqual(["a", "b"]);
+    expect(photosOf(pages).flat()).toEqual(["a", "b", "c", "d", "e"]);
   });
 
-  it("stay apart when only their timestamps are close", () => {
-    // Four minutes apart in the same spot, and of completely different
-    // things: the camera was out, which is not the same as one moment.
+  // One moment may put three photographs on a page. Company for a page of
+  // one never puts more than two. So a page of three is the mark of a moment,
+  // and the two tests below use it to say what is not one.
+
+  it("is not one moment when only the timestamps are close", () => {
+    // Minutes apart in the same spot, and the third is of something else
+    // entirely: the camera was out, which is not the same as one moment.
     const pages = planPages([
       scene("a", 0, SAME),
-      scene("b", 4, NOTHING_ALIKE),
-      scene("c", 600, "00ff00ff00ff00ff"),
+      scene("b", 2, NEARLY),
+      scene("c", 4, NOTHING_ALIKE),
+      scene("d", 600, "00ff00ff00ff00ff"),
+      scene("e", 1200, "f000f000f000f000"),
     ]);
-    expect(photosOf(pages)).toEqual([["a"], ["b"], ["c"]]);
+    expect(photosOf(pages)[0]).toEqual(["a", "b"]);
+    expect(photosOf(pages).every((page) => page.length <= 2)).toBe(true);
   });
 
-  it("stay apart when the same scene was shot hours later", () => {
+  it("is not one moment when the same scene was shot hours later", () => {
     const pages = planPages([
       scene("a", 0, SAME),
-      scene("b", 60 * 6, NEARLY),
-      scene("c", 60 * 20, NOTHING_ALIKE),
+      scene("b", 2, NEARLY),
+      scene("c", 60 * 6, SAME),
+      scene("d", 60 * 20, NOTHING_ALIKE),
+      scene("e", 60 * 40, "f000f000f000f000"),
     ]);
-    expect(photosOf(pages)).toEqual([["a"], ["b"], ["c"]]);
+    expect(photosOf(pages)[0]).toEqual(["a", "b"]);
+    expect(photosOf(pages).every((page) => page.length <= 2)).toBe(true);
+  });
+
+  it("does put three frames of one moment on a page", () => {
+    const pages = planPages([
+      scene("a", 0, SAME),
+      scene("b", 2, NEARLY),
+      scene("c", 4, SAME),
+      scene("d", 600, NOTHING_ALIKE),
+      scene("e", 1200, "f000f000f000f000"),
+      scene("f", 1800, "00ff00ff00ff00ff"),
+    ]);
+    expect(photosOf(pages)[0]).toEqual(["a", "b", "c"]);
   });
 
   it("never takes a chapter below the pages it must have", () => {

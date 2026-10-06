@@ -178,6 +178,40 @@ export async function reverseSalesTax(args: {
   }
 }
 
+/**
+ * Takes part of an order's tax back out of Stripe's records after a partial
+ * refund. `refundedCents` is what went back to the customer this time, tax
+ * included; Stripe splits it between the sale and the tax in proportion.
+ * `refundedToDateCents` only makes the reference unique per refund.
+ */
+export async function reversePartialSalesTax(args: {
+  orderId: string;
+  transactionId: string | null;
+  refundedCents: number;
+  refundedToDateCents: number;
+}): Promise<void> {
+  if (!args.transactionId || args.refundedCents <= 0) return;
+  try {
+    await stripeClient().tax.transactions.createReversal(
+      {
+        mode: "partial",
+        original_transaction: args.transactionId,
+        flat_amount: -Math.abs(args.refundedCents),
+        reference: `${taxReference(args.orderId)}-refund-${args.refundedToDateCents}`,
+      },
+      { idempotencyKey: `order-tax-refund-${args.orderId}-${args.refundedToDateCents}` },
+    );
+  } catch (error) {
+    await alertOps("A partly refunded order's sales tax could not be adjusted", {
+      order: args.orderId,
+      transaction: args.transactionId,
+      refundedCents: args.refundedCents,
+      error: error instanceof Error ? error.message : String(error),
+      note: "Adjust the tax transaction in Stripe by hand so the refunded tax is not paid over.",
+    });
+  }
+}
+
 function taxReference(orderId: string): string {
   return `order-${orderId}`;
 }

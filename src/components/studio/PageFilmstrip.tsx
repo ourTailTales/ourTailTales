@@ -1,7 +1,7 @@
 "use client";
 
 import { Lock } from "lucide-react";
-import { useCallback, useEffect, useRef } from "react";
+import { memo, useCallback, useEffect, useRef, type ComponentProps } from "react";
 
 import { CoverCanvas, PageCanvas } from "@/components/book-viewer/PageCanvas";
 import type { StudioSlide } from "@/lib/book/studio";
@@ -314,17 +314,14 @@ export function PageFilmstrip({
                       : "border-page-line group-hover:border-periwinkle/60"
                   }`}
                 >
-                  {slide.page ? (
-                    <PageCanvas
-                      page={slide.page}
-                      meta={meta}
-                      chapters={chapters}
-                      photos={photos}
-                      placeholder={slide.locked || !nearby}
-                    />
-                  ) : (
-                    <CoverCanvas meta={meta} photos={photoList} />
-                  )}
+                  <FilmstripArt
+                    page={slide.page ?? null}
+                    meta={meta}
+                    chapters={chapters}
+                    photos={photos}
+                    photoList={photoList}
+                    placeholder={slide.locked || !nearby}
+                  />
 
                   {slide.locked ? (
                     <span className="absolute inset-0 flex items-center justify-center bg-white/70 backdrop-blur-[3px]">
@@ -361,3 +358,42 @@ export function PageFilmstrip({
     </div>
   );
 }
+
+type PageCanvasProps = ComponentProps<typeof PageCanvas>;
+
+/**
+ * One thumbnail's picture, drawn again only when the picture changes.
+ *
+ * The strip re-renders whenever the selected page does, which while the
+ * editor is being scrolled is every frame, and each pass used to lay out every
+ * page of the book again to change two borders. Nothing here depends on which
+ * page is selected except whether it is near enough to show its photographs,
+ * so everything else is skipped.
+ */
+const FilmstripArt = memo(function FilmstripArt({
+  page,
+  meta,
+  chapters,
+  photos,
+  photoList,
+  placeholder,
+}: {
+  page: PageCanvasProps["page"] | null;
+  meta: PageCanvasProps["meta"];
+  chapters: PageCanvasProps["chapters"];
+  photos: PageCanvasProps["photos"];
+  photoList: ComponentProps<typeof CoverCanvas>["photos"];
+  placeholder: boolean;
+}) {
+  return page ? (
+    <PageCanvas
+      page={page}
+      meta={meta}
+      chapters={chapters}
+      photos={photos}
+      placeholder={placeholder}
+    />
+  ) : (
+    <CoverCanvas meta={meta} photos={photoList} />
+  );
+});

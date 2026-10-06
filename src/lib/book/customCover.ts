@@ -1,5 +1,3 @@
-import { PDFDocument } from "pdf-lib";
-
 import type { CoverDimensionsPt } from "@/lib/book/cover-pdf";
 
 const PT_PER_INCH = 72;
@@ -48,6 +46,9 @@ export async function validateCustomCoverFile(
   if (kind === "pdf") {
     let pdf;
     try {
+      // Loaded only when a PDF cover is actually checked: the PDF library is
+      // large and the editor does not need it to open.
+      const { PDFDocument } = await import("pdf-lib");
       pdf = await PDFDocument.load(await file.arrayBuffer());
     } catch {
       return {

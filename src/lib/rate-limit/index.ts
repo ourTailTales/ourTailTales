@@ -61,6 +61,32 @@ export const LIMITS = {
    * budget, behind a draft anyone can mint.
    */
   bank: { name: "bank", limit: 12, windowSeconds: 60 * 10 },
+  /**
+   * Setting up the payment for one order. Each call asks the printer for a
+   * price, asks Stripe Tax for the tax and updates the payment, and Stripe
+   * bills for tax calculations. Counted per order: a customer changing their
+   * mind about delivery a dozen times never meets it.
+   */
+  payment: { name: "payment", limit: 30, windowSeconds: 60 * 10 },
+  /**
+   * Everybody's AI calls in a day, added together.
+   *
+   * The per-address limits above bound one visitor. Nothing bounded all of
+   * them, so a script behind a pool of addresses could run the model bill up
+   * without ever meeting a limit. These are ceilings, not targets: three
+   * thousand chapter calls is several hundred books in a day. Counted under
+   * one shared subject, and they refuse when the limiter itself cannot be
+   * reached, because an unbounded day is the thing they exist to prevent.
+   */
+  storyDaily: { name: "story_daily", limit: 3000, windowSeconds: 60 * 60 * 24 },
+  profileDaily: { name: "profile_daily", limit: 600, windowSeconds: 60 * 60 * 24 },
+  /** Every sample email sent in a day, to protect the sending domain. */
+  sampleDaily: { name: "sample_daily", limit: 400, windowSeconds: 60 * 60 * 24 },
+  /**
+   * Asking for somewhere to upload a book to, per draft. Each answer is a
+   * storage URL good for fifty megabytes.
+   */
+  bankSign: { name: "bank_sign", limit: 30, windowSeconds: 60 * 10 },
   /** Email capture. Generous enough for retries, tight enough to bore a bot. */
   lead: { name: "lead", limit: 10, windowSeconds: 60 * 10 },
   /** Outbound calls to the geocoder. One per chapter while editing. */
@@ -91,6 +117,9 @@ export const LIMITS = {
    */
   videoAuthorize: { name: "video_authorize", limit: 60, windowSeconds: 60 * 10 },
 } as const satisfies Record<string, RateLimit>;
+
+/** The one subject every caller shares, for the daily ceilings. */
+export const GLOBAL_SUBJECT = "global";
 
 /**
  * Best available caller identity.
@@ -123,8 +152,25 @@ export async function enforceRateLimit(
    * pool of addresses still gets one budget this way.
    */
   subject?: string,
+  /**
+   * Refuse when the limiter cannot answer. Off by default: a limiter that is
+   * down must not close the site. On for the shared daily ceilings, which
+   * exist to bound spend and bound nothing if they give way under load.
+   */
+  options: { failClosed?: boolean } = {},
 ): Promise<Response | null> {
   if (!supabaseConfigured()) return null;
+
+  const unavailable = (): Response | null =>
+    options.failClosed
+      ? Response.json(
+          {
+            error: "We are very busy right now. Please try again in a few minutes.",
+            code: "rate_limited",
+          },
+          { status: 503, headers: { "retry-after": "300" } },
+        )
+      : null;
 
   try {
     const { data, error } = await supabaseAdmin().rpc("rate_limit_hit", {
@@ -135,9 +181,14 @@ export async function enforceRateLimit(
 
     if (error) {
       console.error("[ourTailTales] Rate limiter unavailable", error);
-      return null;
+      return unavailable();
     }
     if (data === false) {
+      // A shared ceiling being reached is something a person should see in
+      // the log: either the day is going very well or something is wrong.
+      if (subject === GLOBAL_SUBJECT) {
+        console.error(`[ourTailTales] OPS: the ${limit.name} ceiling was reached`);
+      }
       return Response.json(
         {
           error:
@@ -153,6 +204,6 @@ export async function enforceRateLimit(
     return null;
   } catch (error) {
     console.error("[ourTailTales] Rate limiter threw", error);
-    return null;
+    return unavailable();
   }
 }

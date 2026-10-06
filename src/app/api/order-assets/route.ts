@@ -70,7 +70,10 @@ export async function POST(request: Request): Promise<Response> {
     const { error: updateError } = await supabase
       .from("orders")
       .update({ interior_path: interiorPath, cover_path: coverPath })
-      .eq("id", orderId);
+      .eq("id", orderId)
+      // Paid in the moment since the read above: the files have been frozen
+      // and the order must keep pointing at the frozen copies.
+      .eq("status", "pending_payment");
 
     if (updateError) throw new Error(updateError.message);
 

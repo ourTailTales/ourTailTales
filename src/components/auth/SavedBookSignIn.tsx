@@ -14,7 +14,15 @@ import { AuthGate } from "@/components/auth/AuthGate";
  * back to the book they had clicked. Staying on the URL keeps the link
  * working: sign in and the page they asked for renders.
  */
-export function SavedBookSignIn() {
+export function SavedBookSignIn({
+  eyebrow = "Private book",
+  title = "Sign in to open this book",
+  body = "This one is saved to an account. Sign in with the email you used and it will open here.",
+}: {
+  eyebrow?: string;
+  title?: string;
+  body?: string;
+} = {}) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
@@ -24,14 +32,13 @@ export function SavedBookSignIn() {
       <section className="mt-10 rounded-[1.75rem] border border-page-line bg-white/95 p-8 text-center shadow-[0_24px_70px_-30px_rgb(25_32_58/0.55)]">
         <p className="flex items-center justify-center gap-1.5 text-xs font-semibold tracking-[0.16em] text-periwinkle uppercase">
           <LockKeyhole aria-hidden className="size-3.5" />
-          Private book
+          {eyebrow}
         </p>
         <h1 className="mt-3 font-display text-3xl font-bold text-page-ink">
-          Sign in to open this book
+          {title}
         </h1>
         <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-page-ink-soft">
-          This one is saved to an account. Sign in with the email you used and
-          it will open here.
+          {body}
         </p>
         <button
           type="button"

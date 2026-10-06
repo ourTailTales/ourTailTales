@@ -123,21 +123,3 @@ export async function renderCleanBookPdf(args: {
 
   return new Blob([bytes as unknown as BlobPart], { type: "application/pdf" });
 }
-
-export function teaserFileName(petName: string): string {
-  return `ourtailtales-${slug(petName)}-first-pages.pdf`;
-}
-
-export function previewFileName(petName: string): string {
-  return `ourtailtales-${slug(petName)}-story.pdf`;
-}
-
-function slug(petName: string): string {
-  return (
-    petName
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "") || "pet"
-  );
-}

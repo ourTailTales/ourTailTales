@@ -1,6 +1,5 @@
-"use client";
-
 import Image from "next/image";
+import Link from "next/link";
 import { brand } from "@/lib/brand";
 import { EmailCaptureCta } from "@/components/landing/EmailCaptureCta";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -31,7 +30,17 @@ export function LandingHero() {
       <div className="relative z-10 mx-auto flex w-full max-w-[100rem] flex-1 flex-col px-5 pt-5 pb-16 sm:px-8 sm:pt-6 sm:pb-20 lg:pl-8 lg:pr-14">
         {/* In the flow rather than floated over the hero, so it takes up its
             own room and the headline can never slide up underneath it. */}
-        <SiteHeader className="text-white" />
+        <SiteHeader
+          className="text-white"
+          right={
+            <Link
+              href="/library"
+              className="inline-flex min-h-11 items-center rounded-full px-3 text-sm font-semibold text-white/90 underline decoration-white/40 underline-offset-4 hover:text-white"
+            >
+              Your books
+            </Link>
+          }
+        />
 
         {/* LEFT — hook + email CTA */}
         <div className="mt-12 flex max-w-5xl flex-1 flex-col justify-center sm:mt-16">

@@ -12,7 +12,9 @@ import {
   isOfferedShippingLevel,
 } from "@/lib/lulu/client";
 import { expectedOrderAmount } from "@/lib/order/amount";
+import { shippingFingerprint } from "@/lib/order/shipping-fingerprint";
 import { calculateSalesTax } from "@/lib/order/tax";
+import { LIMITS, enforceRateLimit } from "@/lib/rate-limit";
 import { clampCopies, copiesTotal } from "@/lib/pricing";
 import { fulfilmentModeMismatch, stripeClient, toMinorUnits } from "@/lib/stripe";
 import { supabaseAdmin } from "@/lib/supabase/server";
@@ -76,6 +78,13 @@ export async function POST(request: Request): Promise<Response> {
     const unauthorized = requireOrderToken(request, parsed.data.orderId);
     if (unauthorized) return unauthorized;
 
+    const limited = await enforceRateLimit(
+      request,
+      LIMITS.payment,
+      `order:${parsed.data.orderId}`,
+    );
+    if (limited) return limited;
+
     // Asked before anybody is charged. The same check used to run only after
     // the payment had been taken, which left a real customer with a receipt
     // and a book that could not be sent to print.
@@ -131,6 +140,27 @@ export async function POST(request: Request): Promise<Response> {
         { status: 409 },
       );
     }
+    // A payment that has already been made, or is on its way through, is
+    // left alone. Stripe refuses to change it, and unlocking the price for a
+    // change that then fails left an honest paid order with no price, which
+    // the webhook holds as a mismatch. This happens to a customer who pays and
+    // then presses Back, or has checkout open in a second tab.
+    if (order.stripe_payment_intent_id) {
+      const existing = await stripeClient().paymentIntents.retrieve(
+        order.stripe_payment_intent_id,
+      );
+      if (
+        existing.status === "succeeded" ||
+        existing.status === "processing" ||
+        existing.status === "requires_capture"
+      ) {
+        return Response.json(
+          { error: "This order has already been paid for." },
+          { status: 409 },
+        );
+      }
+    }
+
     const revision = order.book_snapshot as FrozenBookRevision | null;
     const placedVideos = revision ? videosEligibleForArchival(revision) : [];
     const quote = videoMemoryQuote(placedVideos.length);
@@ -295,7 +325,17 @@ export async function POST(request: Request): Promise<Response> {
       // Refreshed every time, so the number of copies on the receipt is the
       // number being paid for.
       description: `ourTailTales hardcover (${order.chapter_count} chapters${quantity > 1 ? `, ${quantity} copies` : ""})`,
-      metadata: analyticsMetadata,
+      // The digest of what this amount was quoted on, set in the same call
+      // as the amount. The webhook compares it with the delivery details the
+      // print job is made from.
+      metadata: {
+        ...analyticsMetadata,
+        shippingFingerprint: shippingFingerprint({
+          address,
+          level: shippingLevel,
+          quantity,
+        }),
+      },
     });
 
     // The delivery details first, the locked price last. Whatever fails on
